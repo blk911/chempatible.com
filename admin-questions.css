@@ -1,4 +1,5 @@
 [hidden]{display:none!important}
+.preview-panel{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
 .bank-editor{margin-top:28px;border-top:1px solid #dbe3df;padding:20px 23px 12px}
 .bank-editor h3{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:1.15rem}
 .bank-editor h3 span{font-size:.8rem;color:#ad5a43;white-space:nowrap}
@@ -57,3 +58,4 @@
 @media(max-width:850px){.question-list,.test-list{grid-template-columns:1fr}.section-heading{display:block}.count-badge{margin-top:13px}}
 @media(max-width:550px){.question-controls{display:block}.question-controls label+label{margin-top:12px}.question-controls input,.question-controls select{width:100%}.question-hero,.question-section{border-radius:14px}.phase-pill{margin-left:0}}
 @media(max-width:700px){.bank-editor{padding:20px 19px 12px}#bankEditorList{max-height:none;overflow:visible}}
+@media(max-width:1150px){.preview-panel{position:static;max-height:none;overflow:visible}}
