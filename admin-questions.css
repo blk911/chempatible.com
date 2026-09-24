@@ -31,14 +31,14 @@
 .question-controls label{display:grid;gap:6px;color:#365058;font-size:.72rem;font-weight:800;min-width:0}
 .question-controls label:first-child{flex:1}
 .question-controls input,.question-controls select{padding:11px;border:1px solid #cbd7d3;border-radius:9px;min-height:43px;color:#263d46;background:#fff;max-width:100%}
-.question-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.question-list{display:grid;grid-template-columns:1fr;gap:10px}
 .question-card{border:1px solid #dce4e0;border-radius:12px;padding:17px 18px;background:#fcfdfc;min-width:0}
 .question-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .question-card-head .eyebrow{letter-spacing:.1em;font-size:.61rem}
 .number{color:#b65a45;font-weight:900;font-size:.86rem}
 .phase-pill{margin-left:auto;color:#365867;background:#ebf1ef;border-radius:999px;font-size:.56rem;letter-spacing:.06em;padding:6px 7px;font-weight:850}
 .phase-pill.return{background:#fcece6;color:#ad5a43}
-.question-card h3{font-size:1rem;line-height:1.4;margin:15px 0;color:#1b2b35;letter-spacing:-.02em}
+.question-card h3{font-size:1rem;line-height:1.4;margin:10px 0 2px;color:#1b2b35;letter-spacing:-.02em}
 .question-card details{border-top:1px solid #e8eeeb;padding-top:10px;font-size:.75rem;color:#52676d}
 .question-card summary{font-weight:750;cursor:pointer;color:#a95340}
 .question-card ol{padding-left:22px;margin-bottom:0;line-height:1.6}
