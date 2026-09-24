@@ -1,17 +1,21 @@
-# Chempatibility prototype
+# Chempatibility walkthrough
 
-Mobile-first static prototype of the member introduction and reciprocal question flow, plus a Member Profile template editor at `/admin`.
+A mobile-first, static two-person game prototype. Serve this directory with `python3 -m http.server 4173` and open `http://localhost:4173`.
 
-## Local preview
+## Walkthrough
 
-Run `python3 -m http.server 4173` in this directory and open `http://localhost:4173`.
+1. On a phone, enter a name and email or cell and take a camera selfie. Finish to open the member page.
+2. Answer ten default, three-choice situations. The invitation unlocks when all ten have answers.
+3. Open **Connect Now**, then use **Simulate a scan on this device** to enter the prospect view. It shows the member's first name and picture and invites them to **Five to Vibe**.
+4. Answer the first five as the prospect. Compare the two sets of answers side by side. Send a first-name and cell connection request.
+5. Switch to the member view, accept from **Chempats**, and open the chat. Switch back to the prospect view to answer the next five. Review the second reveal, enter email, and open the test briefs.
 
-This is a static demo. Registration, selfie, questions, and messages live only in the current browser tab. The QR image and invitation Send action are previews, not working cross-device features. Do not use this build to collect real member data.
+The **View as** button switches between the two people in the same browser tab. Walkthrough state lives in `sessionStorage`. Camera access requires HTTPS or localhost.
 
-The admin route has no authentication. It uses sample member data; its Member Profile draft saves only in the current browser's local storage and does not alter the public member page. Add authentication and a server-backed template store before connecting it to real member data.
+## Prototype limits
 
-The admin Questions page displays the ten drafted prompts from the prototype and five linked in-house test briefs. The remaining 40 bank questions, live assessments, scoring, and reciprocal result sharing are planned, not implemented.
+The QR marker is a visual preview. Sending an invitation prepares local demo data only. There is no shared account, real QR destination, email or text delivery, phone verification, server-backed chat, or live test assessment. Prospect contact appears masked in the member view. The `/admin` route has no login; its question and template drafts remain separate from this public walkthrough. Do not collect real member data in this static build.
 
 ## Deployment
 
-Vercel can deploy this directory as a static site using the `Other` framework preset. The output directory is the project root; there is no build command.
+Vercel can deploy the directory as a static site with the `Other` framework preset, no build command and the project root as output directory.
