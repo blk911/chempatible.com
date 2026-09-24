@@ -1,0 +1,44 @@
+[hidden]{display:none!important}
+.other-page.questions-layout{max-width:none;border:0;padding:0;background:transparent;margin-top:27px}
+.question-page{max-width:1060px}
+.question-hero{background:#173b4c;color:#fff;border-radius:18px;padding:clamp(23px,4vw,38px);box-shadow:0 13px 35px #18394320}
+.question-hero .eyebrow{color:#ffc0aa}
+.question-hero h2{font-size:clamp(1.8rem,3vw,2.65rem);letter-spacing:-.048em;margin:10px 0}
+.question-hero p{color:#d6e4e3;max-width:700px;font-size:.96rem;margin:0;line-height:1.55}
+.sequence{display:flex;gap:8px;flex-wrap:wrap;margin-top:25px}
+.sequence span{border:1px solid #54717a;border-radius:999px;color:#e9f5f1;padding:8px 11px;font-size:.66rem;font-weight:850;letter-spacing:.08em}
+.question-section{background:#fff;border:1px solid #dbe3df;border-radius:18px;margin-top:20px;padding:clamp(20px,3vw,32px);box-shadow:0 10px 30px #152a340a}
+.section-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:21px}
+.section-heading h3{font-size:1.55rem;letter-spacing:-.04em;margin:7px 0}
+.section-heading p{max-width:660px;margin:0;color:#5b6c70;line-height:1.5;font-size:.87rem}
+.count-badge,.test-status{display:inline-block;background:#fcece6;color:#a94f3d;border-radius:999px;padding:8px 10px;font-size:.65rem;letter-spacing:.08em;font-weight:900;white-space:nowrap}
+.question-controls{display:flex;gap:12px;margin:18px 0}
+.question-controls label{display:grid;gap:6px;color:#365058;font-size:.72rem;font-weight:800;min-width:0}
+.question-controls label:first-child{flex:1}
+.question-controls input,.question-controls select{padding:11px;border:1px solid #cbd7d3;border-radius:9px;min-height:43px;color:#263d46;background:#fff;max-width:100%}
+.question-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.question-card{border:1px solid #dce4e0;border-radius:12px;padding:17px 18px;background:#fcfdfc;min-width:0}
+.question-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.question-card-head .eyebrow{letter-spacing:.1em;font-size:.61rem}
+.number{color:#b65a45;font-weight:900;font-size:.86rem}
+.phase-pill{margin-left:auto;color:#365867;background:#ebf1ef;border-radius:999px;font-size:.56rem;letter-spacing:.06em;padding:6px 7px;font-weight:850}
+.phase-pill.return{background:#fcece6;color:#ad5a43}
+.question-card h3{font-size:1rem;line-height:1.4;margin:15px 0;color:#1b2b35;letter-spacing:-.02em}
+.question-card details{border-top:1px solid #e8eeeb;padding-top:10px;font-size:.75rem;color:#52676d}
+.question-card summary{font-weight:750;cursor:pointer;color:#a95340}
+.question-card ol{padding-left:22px;margin-bottom:0;line-height:1.6}
+.question-caveat{font-size:.77rem;color:#768487;margin:15px 0 0;line-height:1.5}
+.test-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.test-card{display:flex;align-items:center;gap:13px;border:1px solid #dbe3df;border-radius:12px;padding:17px;text-decoration:none;color:#1b2b35;min-width:0;background:#fcfdfc}
+.test-card:hover,.test-card:focus-visible{border-color:#d76c50;background:#fff8f5}
+.test-order{font-size:1.28rem;font-weight:900;color:#ce684e}
+.test-card b,.test-card small{display:block}
+.test-card b{font-size:.88rem}.test-card small{color:#6d7e80;font-size:.7rem;margin-top:3px;line-height:1.4}
+.test-arrow{margin-left:auto;color:#b95440}
+.back-link{display:inline-block;color:#ab523f;font-size:.75rem;font-weight:850;letter-spacing:.04em;text-decoration:none;margin-bottom:18px}
+.test-brief{background:#fff;border:1px solid #dbe3df;border-radius:18px;margin-top:20px;padding:clamp(20px,3vw,32px);max-width:730px}
+.test-brief h3{margin:0 0 7px;font-size:1.12rem}.test-brief h3:not(:first-child){margin-top:27px}
+.test-brief p,.test-brief li{color:#53676c;line-height:1.6;font-size:.87rem}.test-brief ol{padding-left:22px}.test-brief li{padding:3px 0}
+.question-hero .test-status{margin-top:22px}
+@media(max-width:850px){.question-list,.test-list{grid-template-columns:1fr}.section-heading{display:block}.count-badge{margin-top:13px}}
+@media(max-width:550px){.question-controls{display:block}.question-controls label+label{margin-top:12px}.question-controls input,.question-controls select{width:100%}.question-hero,.question-section{border-radius:14px}.phase-pill{margin-left:0}}
