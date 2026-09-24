@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Member Profile Template · Chempatibility</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="sidebar" aria-label="Admin navigation">
+      <a class="brand" href="/admin" aria-label="Chempatibility admin home">CHEM<span>PATIBILITY</span><small>ADMIN</small></a>
+      <nav class="side-nav" aria-label="Main menu">
+        <button data-page="dash">DASH</button>
+        <button data-page="members">MEMBERS</button>
+        <button data-page="questions">QUESTIONS</button>
+        <button data-page="templates" class="active" aria-current="page">TEMPLATES</button>
+        <button data-page="settings">SETTINGS</button>
+      </nav>
+      <a class="exit" href="/">EXIT <span aria-hidden="true">↗</span></a>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-header">
+        <div><span class="eyebrow">CHEMPATIBILITY / ADMIN</span><h1 id="pageTitle">Member Profile</h1></div>
+        <span class="draft-badge">DESIGN DRAFT <span class="badge-dot"></span></span>
+      </header>
+
+      <section id="templatePage" class="page">
+        <div class="page-intro">
+          <p>The member’s place to start a connection and pick up a conversation. Shape the page here, then see it as a member would.</p>
+          <div class="page-actions"><span id="saveStatus" role="status" aria-live="polite">Changes stay in this browser.</span><button id="resetButton" class="text-button">Reset draft</button><button id="saveButton" class="button primary">Save draft</button></div>
+        </div>
+        <div class="editor-layout">
+          <section class="editor-panel" aria-labelledby="editorHeading">
+            <div class="panel-top"><span class="eyebrow">01 / TEMPLATE</span><h2 id="editorHeading">Member Profile</h2><p>Write the invitation and choose what appears on the page.</p></div>
+            <div class="editor-fields">
+              <label>Greeting <input id="greeting" data-copy placeholder="Hi, {name}." maxlength="60"><small>Use <code>{name}</code> for the member’s first name.</small></label>
+              <label>Page introduction <textarea id="intro" data-copy rows="3" maxlength="180"></textarea></label>
+              <label>Connection headline <input id="connectTitle" data-copy maxlength="90"></label>
+              <label>Invitation line <textarea id="connectText" data-copy rows="3" maxlength="180"></textarea></label>
+              <label>Button label <input id="connectButton" data-copy maxlength="28"></label>
+              <label>QR instructions <textarea id="qrText" data-copy rows="3" maxlength="180"></textarea></label>
+            </div>
+            <fieldset class="visibility"><legend>On this page</legend>
+              <label><input type="checkbox" id="showConnect" data-visible> Connect now <span>First action</span></label>
+              <label><input type="checkbox" id="showQr" data-visible> My QR <span>In-person invitation</span></label>
+              <label><input type="checkbox" id="showPriorities" data-visible> My 10 <span>Questions that matter</span></label>
+              <label><input type="checkbox" id="showConnections" data-visible> Connections <span>Conversation list</span></label>
+            </fieldset>
+            <p class="editor-note">This is a template draft with sample content. Saving it does not update member accounts yet.</p>
+          </section>
+
+          <section class="preview-panel" aria-labelledby="previewHeading">
+            <div class="preview-toolbar"><div><span class="eyebrow">02 / LIVE PREVIEW</span><h2 id="previewHeading">The member view</h2></div><div class="view-switch" role="group" aria-label="Preview size"><button id="desktopView" class="selected" aria-pressed="true">Desktop</button><button id="mobileView" aria-pressed="false">Mobile</button></div></div>
+            <div class="preview-stage"><div id="profilePreview" class="member-preview" aria-label="Sample member profile"></div></div>
+            <p class="preview-caption">Sample member: Cindy. QR and conversation controls show the layout; delivery and shared accounts come later.</p>
+          </section>
+        </div>
+      </section>
+
+      <section id="otherPage" class="page other-page" hidden></section>
+    </main>
+  </div>
+</body>
+</html>
