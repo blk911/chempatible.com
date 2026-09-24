@@ -1,9 +1,9 @@
 [hidden]{display:none!important}
-.bank-editor{margin-top:28px;border-top:1px solid #dbe3df;padding-top:20px}
+.bank-editor{margin-top:28px;border-top:1px solid #dbe3df;padding:20px 23px 12px}
 .bank-editor h3{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:1.15rem}
 .bank-editor h3 span{font-size:.8rem;color:#ad5a43;white-space:nowrap}
 .bank-editor>p{color:#5b6c70;line-height:1.5}
-#bankEditorList{display:grid;gap:9px;margin-top:17px}
+#bankEditorList{display:grid;gap:9px;margin-top:17px;max-height:570px;overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
 .bank-row{display:flex;align-items:flex-start;gap:12px;border:1px solid #dce4e0;border-radius:10px;padding:13px;background:#fff}
 .bank-select input{width:20px;height:20px;accent-color:#b65a45;cursor:pointer}
 .bank-copy{flex:1;min-width:0}
@@ -56,3 +56,4 @@
 .question-hero .test-status{margin-top:22px}
 @media(max-width:850px){.question-list,.test-list{grid-template-columns:1fr}.section-heading{display:block}.count-badge{margin-top:13px}}
 @media(max-width:550px){.question-controls{display:block}.question-controls label+label{margin-top:12px}.question-controls input,.question-controls select{width:100%}.question-hero,.question-section{border-radius:14px}.phase-pill{margin-left:0}}
+@media(max-width:700px){.bank-editor{padding:20px 19px 12px}#bankEditorList{max-height:none;overflow:visible}}
