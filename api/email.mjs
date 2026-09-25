@@ -52,11 +52,12 @@ async function handler(req){
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
    const token=randomBytes(32).toString('hex');const link=`https://chempatible.com/?invite=${token}`;
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail})`;
+   await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`;
    const safeName=escape(name),safeRecipient=escape(theirName);
    const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center"><p style="font-size:13px;letter-spacing:2px;color:#c45b46;font-weight:bold">CHEMPATIBILITY</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><h1 style="margin:18px 0 4px">${safeName}</h1><h2 style="margin:0 0 16px">Let’s talk!</h2><p>Hi ${safeRecipient}, pick your answers to five quick situations, then see how we answered.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:14px 24px;border-radius:9px;text-decoration:none;font-weight:bold">PLAY MY FIVE →</a><p style="font-size:12px;color:#677880;margin-top:24px">Invitation from ${safeName} via Chempatibility.</p></div>`;
    const text=`${name} — Let's talk!\n\nHi ${theirName}, pick your answers to five quick situations, then see how we answered.\n\nOpen your invitation: ${link}`;
    try{await sendMail(theirEmail,`${name} says: Let's talk!`,html,text,member.photo)}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
-   return json({ok:true});
+   return json({ok:true,id:hash(token)});
   }
   return json({error:'Unknown action.'},400);
  }catch(e){console.error('Email invitation error:',e);return json({error:'Could not complete that request. Try again shortly.'},500)}

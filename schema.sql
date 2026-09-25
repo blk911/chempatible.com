@@ -21,3 +21,14 @@ CREATE TABLE IF NOT EXISTS invitations (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS invitations_sender_idx ON invitations(sender_email, created_at DESC);
+CREATE TABLE IF NOT EXISTS connection_state (
+  invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,
+  prospect_name text,
+  prospect_photo text,
+  prospect_answers jsonb NOT NULL DEFAULT '[]'::jsonb,
+  prospect_phone text,
+  prospect_email text,
+  status text NOT NULL DEFAULT 'invited',
+  messages jsonb NOT NULL DEFAULT '[]'::jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
