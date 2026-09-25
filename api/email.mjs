@@ -16,7 +16,8 @@ async function sendMail(to,subject,html,text,photo){
 }
 async function session(req,sql){const token=cookie(req).chempat_session;if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const rows=await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(token)} AND expires_at>now()`;return rows[0]?.email||null}
 async function handler(req){
- if(!process.env.DATABASE_URL||!process.env.SENDGRID_API_KEY||!process.env.CHEMPAT_FROM_EMAIL)return json({error:'Email invitations are being set up. Please try again shortly.'},503);
+ const missing=['DATABASE_URL','SENDGRID_API_KEY','CHEMPAT_FROM_EMAIL'].filter(key=>!process.env[key]);
+ if(missing.length)return json({error:'Email invitations are being set up. Please try again shortly.',missing},503);
  const sql=neon(process.env.DATABASE_URL);
  try{
   const url=new URL(req.url);
