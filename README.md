@@ -5,7 +5,7 @@ A mobile-first, static two-person game prototype. Serve this directory with `pyt
 ## Walkthrough
 
 1. On a phone, enter a name and email or cell, then tap **Next Step**. Choose a picture or use the camera. A welcome modal shows the photo; **Step 3 — Open My Page** opens the member profile and its ten-question prompt.
-2. Answer ten default, three-choice situations. The invitation unlocks when all ten have answers.
+2. On the member page, tap **Let's Play My Ten**. The ten default, three-choice situations appear one at a time in the right side of the top card. **My 10** appears below after the first saved answer and fills in with each question and choice. The invitation unlocks when all ten have answers.
 3. Open **Connect Now**, then use **Simulate a scan on this device** to enter the prospect view. It shows the member's first name and picture and invites them to **Five to Vibe**.
 4. The prospect sees the inviter's name and photo, answers the first five, adds a picture, and compares answers. Matching choices are green; different choices are grey. The request screen keeps the inviter's card visible and lets the prospect change or retake their own picture before entering a first name and cell.
 5. The prospect sees a waiting card after sending. Switch to the member view: **Chempats** displays the requester's picture, name, masked cell, and Accept/Pass controls. Accept opens the chat; Pass closes this demo connection. Switch back to the prospect view to answer the next five after acceptance. Review the second reveal, enter email, and open the test briefs.
