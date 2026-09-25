@@ -4,7 +4,7 @@ A mobile-first, static two-person game prototype. Serve this directory with `pyt
 
 ## Walkthrough
 
-1. On a phone, enter a name and email or cell and upload a picture. Finish to open the member page.
+1. On a phone, enter a name and email or cell and choose a picture beneath the inputs. The selected photo appears beside the form and opens a welcome modal; **Enter the Game** opens the member page.
 2. Answer ten default, three-choice situations. The invitation unlocks when all ten have answers.
 3. Open **Connect Now**, then use **Simulate a scan on this device** to enter the prospect view. It shows the member's first name and picture and invites them to **Five to Vibe**.
 4. Answer the first five as the prospect. Compare the two sets of answers side by side. Upload the prospect picture, then send a first-name and cell connection request.
