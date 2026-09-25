@@ -4,13 +4,13 @@ A mobile-first, static two-person game prototype. Serve this directory with `pyt
 
 ## Walkthrough
 
-1. On a phone, enter a name and email or cell and take a camera selfie. Finish to open the member page.
+1. On a phone, enter a name and email or cell and upload a picture. Finish to open the member page.
 2. Answer ten default, three-choice situations. The invitation unlocks when all ten have answers.
 3. Open **Connect Now**, then use **Simulate a scan on this device** to enter the prospect view. It shows the member's first name and picture and invites them to **Five to Vibe**.
-4. Answer the first five as the prospect. Compare the two sets of answers side by side. Send a first-name and cell connection request.
+4. Answer the first five as the prospect. Compare the two sets of answers side by side. Upload the prospect picture, then send a first-name and cell connection request.
 5. Switch to the member view, accept from **Chempats**, and open the chat. Switch back to the prospect view to answer the next five. Review the second reveal, enter email, and open the test briefs.
 
-The **View as** button switches between the two people in the same browser tab. Walkthrough state lives in `sessionStorage`. Camera access requires HTTPS or localhost.
+The **View as** button switches between the two people in the same browser tab. Walkthrough state lives in `sessionStorage`. Use **RESET** in the header to clear the current browser tab and begin again. The new build also starts with an empty walkthrough. An incognito window has its own storage and cannot share this demo’s answers or chat with the regular window.
 
 ## Prototype limits
 
