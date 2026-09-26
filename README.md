@@ -18,11 +18,11 @@ QR scanning and email invitations are live on the deployed domain. There is no t
 
 ## Deployment
 
-Vercel can deploy the repository with the `Other` framework preset and no build command. Its Node functions install `@neondatabase/serverless` and `qrcode` from `package-lock.json`.
+Vercel can deploy the repository with the `Other` framework preset and no build command. The QR drawing code is bundled in the static `qr-client.js`; the server creates the invitation record and returns its URL.
 
 To enable live email:
 
-1. Create a dedicated Neon Postgres database for Chempatibility and run `schema.sql` in its SQL editor, one statement at a time if required. Existing installations add the QR columns automatically on the first request.
+1. Create a dedicated Neon Postgres database for Chempatibility and run `schema.sql` in its SQL editor, one statement at a time if required. Existing databases need the four QR columns in `api/qr-schema.mjs` before deploying this version.
 2. Authenticate `chempatible.com` in SendGrid, adding its required DNS records in GoDaddy, and create a restricted Mail Send API key.
 3. In the Chempatibility Vercel project, set Production environment variables `DATABASE_URL` (Neon connection string), `SENDGRID_API_KEY`, and `CHEMPAT_FROM_EMAIL` (for example `hello@chempatible.com`, once verified). Redeploy after adding them. Never commit keys.
 4. Register a member using their own email, answer ten, open **Connect Now → Can’t scan? Send it instead**, and send to a second email in a separate browser. The sender gets a six digit email code before the first send. A successful SendGrid API response means accepted for delivery, not proof of inbox arrival.

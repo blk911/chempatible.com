@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').replace('<script src="game.js"></script>','');
 const source=fs.readFileSync(new URL('../game.js',import.meta.url),'utf8');
+const qrRenderer=fs.readFileSync(new URL('../qr-client.js',import.meta.url),'utf8');
 const token='a'.repeat(64),id='b'.repeat(64),photo='data:image/jpeg;base64,AA==';
 const qrToken='e'.repeat(64),qrId='f'.repeat(64);
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
@@ -13,7 +14,7 @@ async function mockFetch(url,opt={},context){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
  if(u.pathname==='/api/member'){if(opt.method==='POST'){registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
- else if(u.pathname==='/api/qr')data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,svg:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><path d="M0 0h2v2H0z"/></svg>',expiresAt:new Date(Date.now()+900000).toISOString()};
+ else if(u.pathname==='/api/qr')data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,expiresAt:new Date(Date.now()+900000).toISOString()};
  else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id:body.member?.name==='Mike'?outgoingId:id};else data={email:'cindy@example.com'}}
  else if(u.searchParams.has('inbox'))data={connections:context?.eval('s.actor')==='prospect'?[{id:outgoingId,recipient_name:'Sam',recipient_email:'sam@example.com',...outgoingState}]:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
  else if(u.searchParams.has('invite'))data=u.searchParams.get('invite')===qrToken?{...inviter,answers:[],recipientName:'',prospectName:null,prospectPhoto:null,prospectAnswers:[],status:'invited',messages:[]}:{...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
@@ -26,10 +27,11 @@ async function mockFetch(url,opt={},context){
  else{status=400;data={error:'Unknown action'}}
  return {ok:status===200,status,json:async()=>data};
 }
-function page(url){const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true});d.window.fetch=(url,opt)=>mockFetch(url,opt,d.window);d.window.scrollTo=()=>{};d.window.HTMLElement.prototype.scrollIntoView=()=>{};const script=d.window.document.createElement('script');script.textContent=source;d.window.document.body.append(script);return d}
+function page(url){const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true});d.window.fetch=(url,opt)=>mockFetch(url,opt,d.window);d.window.eval(qrRenderer);d.window.scrollTo=()=>{};d.window.HTMLElement.prototype.scrollIntoView=()=>{};const script=d.window.document.createElement('script');script.textContent=source;d.window.document.body.append(script);return d}
 const member=page('https://chempatible.com/');
 member.window.eval(`s.member.name='Cindy';s.member.contact='cindy@example.com';s.member.photo='${photo}';s.member.answers=[0,1,2,0,1,2,0,1,2,0];s.phase='ready';navigate('dashboard','member')`);
-member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,20));
+await new Promise(r=>setTimeout(r,30));assert.equal(member.window.eval('s.qrInvite.id'),qrId);
+member.window.eval('openInvite()');
 assert.equal(member.window.eval('s.qrInvite.id'),qrId);
 assert.match(member.window.document.querySelector('.liveQr').getAttribute('src'),/^data:image\/svg\+xml/);
 assert.match(member.window.document.querySelector('#qrTimer').textContent,/Ready for/);

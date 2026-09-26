@@ -52,6 +52,7 @@ function connectionActions(c){
 }
 function renderSocialDashboard(){
  const who=owner(),ready=who.answers.length===10,people=memberConnections(),chosen=people.find(c=>c.id===s.selectedChempat)||people[0];
+ if(ready&&!s.qrError&&!qrPending&&!validQrInvite())Promise.resolve().then(primeQrInvite);
  if(chosen){s.selectedChempat=chosen.id;if(chosen.side==='sent'&&s.actor==='prospect')s.selectedOutgoing=chosen.id;if(s.actor==='member'&&s.liveMember&&chosen.id!==s.liveId){s.liveId=chosen.id;const c=s.inbox.find(item=>item.id===chosen.id);if(c)applyConnection(c)}}
  const action=ready?button('INSTANT VIBE →','openInvite()'):button('UNLOCK MY NEXT FIVE →','startMyNextFive()');
  const contacts=people.map(c=>`<div class="chempatContact ${chosen?.id===c.id?'selected':''}"><button type="button" class="chempatPerson" onclick="selectChempat('${c.id}')" aria-label="Show ${esc(c.name)} and connection status">${c.photo?`<span class="face"><img src="${c.photo}" alt=""></span>`:`<span class="face">${esc(c.name[0])}</span>`}<span><b>${esc(c.name)}</b><small>${esc(connectionLine(c))}</small></span>${c.status==='request'?'<i aria-label="New request"></i>':''}</button><button type="button" class="secretsButton ${s.secretsFor===c.id?'on':''}" onclick="selectChempat('${c.id}',true)" aria-label="Our Secrets with ${esc(c.name)}">Our Secrets</button></div>`).join('');
@@ -143,10 +144,31 @@ function enterGame(){s.modal='';navigate('dashboard','member')}
 function startMemberQuestions(){s.actor='member';s.view='dashboard';s.memberQuestionsOpen=true;s.pick=null;render();$('memberQuestion')?.scrollIntoView({behavior:'smooth',block:'nearest'})}
 function pick(i){s.pick=i;document.querySelectorAll('.option').forEach((el,j)=>{el.classList.toggle('on',j===i);el.setAttribute('aria-pressed',j===i)})}
 async function answerQuestion(){if(s.pick===null){$('answerError').textContent='Pick one answer to continue.';return}let member=s.actor==='member',arr=member?s.member.answers:s.prospect.answers;arr.push(s.pick);s.pick=null;if(member&&arr.length===10){try{if(!s.memberId){const data=await memberApi({action:'register',...s.member});s.memberId=data.member.id}else await memberApi({action:'answers',answers:arr});s.memberQuestionsOpen=false;s.phase='ready';navigate('dashboard','member')}catch(e){arr.pop();$('answerError').textContent=e.message}}else if(!member&&arr.length===5){s.phase='awaitingPhoto';navigate('revealPhoto','prospect')}else if(!member&&arr.length===10){try{if(s.liveInvite)await memberApi({action:'answers',answers:arr});if(s.phase==='secondFive'){if(s.liveInvite)await connectionApi({action:'second',token:s.liveToken,answers:arr});s.phase='secondResults';navigate('results','prospect')}else{s.phase=s.resumePhase||'firstResults';navigate('dashboard','prospect')}}catch(e){arr.pop();$('answerError').textContent=e.message}}else render()}
-function openInvite(){if(owner().answers.length!==10)return;s.qrInvite=null;s.qrError='';s.modal='qr';renderModal();makeQrInvite()}
-async function makeQrInvite(){s.qrInvite=null;s.qrError='';renderModal();try{const response=await fetch('/api/qr',{method:'POST',credentials:'same-origin'}),data=await response.json();if(!response.ok)throw Error(data.error||'Could not make your code.');s.qrInvite=data;if(s.actor==='member'){s.liveMember=true;s.liveId=data.id;s.selectedChempat=data.id;refreshLive()}else{s.outgoing.unshift({id:data.id,name:'Someone',status:'invited',channel:'qr',claimed:false});s.selectedChempat=data.id;refreshOutgoing()}save();if(s.modal==='qr')renderModal()}catch(e){s.qrError=e.message;if(s.modal==='qr')renderModal()}}
+let qrPending=null;
+const validQrInvite=()=>s.qrInvite&&new Date(s.qrInvite.expiresAt).getTime()>Date.now()+60000;
+function primeQrInvite(){if(validQrInvite()||qrPending)return qrPending;return makeQrInvite(true)}
+function openInvite(){if(owner().answers.length!==10)return;if(!validQrInvite())s.qrInvite=null;s.modal='qr';s.qrError='';renderModal();if(!s.qrInvite)primeQrInvite()}
+function makeQrInvite(background=false){
+ if(qrPending)return qrPending;
+ s.qrInvite=null;s.qrError='';if(!background&&s.modal==='qr')renderModal();
+ qrPending=(async()=>{
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),20000);
+  try{
+   const response=await fetch('/api/qr',{method:'POST',credentials:'same-origin',signal:controller.signal});
+   const data=await response.json();if(!response.ok)throw Error(data.error||'Could not make your code.');
+   if(!globalThis.ChempatQR?.toString)throw Error('Code display is still loading. Refresh this page and try again.');
+   data.svg=await ChempatQR.toString(data.url,{type:'svg',errorCorrectionLevel:'Q',margin:3,width:384,color:{dark:'#173b4c',light:'#ffffff'}});
+   s.qrInvite=data;
+   if(s.actor==='member'){s.liveMember=true;s.liveId=data.id;s.selectedChempat=data.id;refreshLive()}
+   else{s.outgoing.unshift({id:data.id,name:'Someone',status:'invited',channel:'qr',claimed:false});s.selectedChempat=data.id;refreshOutgoing()}
+   save();
+  }catch(e){s.qrError=e.name==='AbortError'?'The code is taking too long. Tap NEW CODE to try again.':e.message||'Could not make your code.'}
+  finally{clearTimeout(timeout);qrPending=null;if(s.modal==='qr')renderModal()}
+  return s.qrInvite;
+ })();return qrPending;
+}
 function updateQrCountdown(){const timer=$('qrTimer');if(!timer||!s.qrInvite)return;const seconds=Math.max(0,Math.ceil((new Date(s.qrInvite.expiresAt).getTime()-Date.now())/1000));timer.textContent=seconds?`Ready for ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`:'Code expired · make a new one';if(!seconds&&!timer.dataset.expired){timer.dataset.expired='1';renderModal()}}
-function closeInvite(e){if(e&&e.target!==e.currentTarget)return;s.modal='';renderModal()}
+function closeInvite(e){if(e&&e.target!==e.currentTarget)return;const wasInvitation=['qr','send'].includes(s.modal);s.modal='';renderModal();if(wasInvitation&&s.qrInvite){s.qrInvite=null;primeQrInvite()}}
 function inviteMode(m){s.modal=m;renderModal()}
 function openOutgoing(id){if(!s.outgoing.some(item=>item.id===id))return;s.selectedOutgoing=id;s.modal='outgoing';renderModal();refreshOutgoing()}
 function renderOutgoing(){const item=s.outgoing.find(c=>c.id===s.selectedOutgoing);if(!item){s.modal='';$('modalHost').innerHTML='';return}const theirs=item.answers||[],ours=s.prospect.answers,showFive=theirs.length>=5;const status=({invited:'Invitation sent. Their first five are next.',firstResults:'Their first five are in.',request:'They want to connect with you.',chat:'Your Private Chat is open.',secondResults:'Your next five are in.',email:'Email shared.',declined:'Connection passed.'})[item.status]||'Your invitation is open.';$('modalHost').innerHTML=`<div class="modalBackdrop" onclick="closeInvite(event)"><section class="modal outgoingModal" role="dialog" aria-modal="true" aria-labelledby="outgoingTitle"><button class="close" type="button" aria-label="Close" onclick="closeInvite()">×</button><div class="eyebrow">YOUR CHEMPAT</div><h2 id="outgoingTitle">${esc(first(item.name))}</h2><div class="outgoingFaces"><img src="${s.prospect.photo}" alt="${esc(name('prospect'))}">${item.photo?`<img src="${item.photo}" alt="${esc(first(item.name))}">`:`<span class="face">${esc(first(item.name)[0])}</span>`}</div><p>${esc(status)}</p>${showFive?`<details class="outgoingFive"><summary>OUR FIRST FIVE →</summary>${QUESTIONS.slice(0,5).map((q,i)=>`<div><b>${esc(q.topic)}</b><span>You: ${esc(q.a[ours[i]]||'—')}</span><span>${esc(first(item.name))}: ${esc(q.a[theirs[i]]||'—')}</span></div>`).join('')}</details>`:''}${item.status==='request'?`<div class="row">${button('ACCEPT & CHAT →',"decideOutgoing('accept')")}${button('PASS',"decideOutgoing('decline')",'light')}</div>`:''}${['chat','secondResults','email','tests'].includes(item.status)?`<div class="outgoingMessages">${(item.messages||[]).map(m=>`<p class="${m.by==='member'?'mine':''}"><b>${esc(m.by==='member'?'You':first(item.name))}</b> ${esc(m.text)}</p>`).join('')}</div><input id="outgoingMessage" class="joinInput" maxlength="500" aria-label="Private message" placeholder="Say something…" onkeydown="if(event.key==='Enter')sendOutgoingMessage()"><div class="row">${button('SEND →','sendOutgoingMessage()','alt')}</div>`:''}<p class="error" id="outgoingError" role="alert"></p></section></div>`}

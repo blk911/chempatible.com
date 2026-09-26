@@ -3,13 +3,13 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
-    "qrcode": "^1.5.4"
+    "@neondatabase/serverless": "^1.0.2"
   },
   "scripts": {
     "test": "node tests/schema.test.mjs && node tests/email.test.mjs && node tests/connection.test.mjs && node tests/qr.test.mjs && node tests/two-browser.test.mjs"
   },
   "devDependencies": {
-    "jsdom": "^30.1.1"
+    "jsdom": "^30.1.1",
+    "qrcode": "^1.5.4"
   }
 }

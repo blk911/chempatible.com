@@ -22,16 +22,13 @@ async function sql(strings,...values){const query=strings.join('?').replace(/\s+
  throw Error('Unmocked QR SQL '+query);
 }
 globalThis.__qrSql=sql;process.env.DATABASE_URL='postgres://test';
-const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import {ensureConnectionSchema} from './connection-schema.mjs';",'const ensureConnectionSchema=async()=>{};').replace("import {ensureQrSchema} from './qr-schema.mjs';",'const ensureQrSchema=async()=>{};');
-// QRCode remains a real package import; the API and database are mocked.
-const qrTestSource=qrSource.replace("import QRCode from 'qrcode';",`const QRCode=globalThis.__qrRenderer;`);
-globalThis.__qrRenderer=(await import('qrcode')).default;
-const qrApi=(await import('data:text/javascript;base64,'+Buffer.from(qrTestSource).toString('base64'))).default;
-const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import {ensureConnectionSchema} from './connection-schema.mjs';",'const ensureConnectionSchema=async()=>{};').replace("import {ensureQrSchema} from './qr-schema.mjs';",'const ensureQrSchema=async()=>{};');
+const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;');
+const qrApi=(await import('data:text/javascript;base64,'+Buffer.from(qrSource).toString('base64'))).default;
+const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;');
 const connection=(await import('data:text/javascript;base64,'+Buffer.from(connSource).toString('base64'))).default;
 const memberCookie=`chempat_member=${memberToken}`;
 const create=()=>qrApi.fetch(new Request('https://chempatible.com/api/qr',{method:'POST',headers:{cookie:memberCookie}}));
-const initial=await create(),code=await initial.json();assert.equal(initial.status,200);assert.match(code.url,/^https:\/\/chempatible\.com\/\?invite=[a-f0-9]{64}$/);assert.match(code.svg,/<svg[^>]*>/);assert.equal(invitation.sender_member_id,member.id);assert.equal(invitation.channel,'qr');assert.equal(state.token_hash,code.id);
+const initial=await create(),code=await initial.json();assert.equal(initial.status,200);assert.match(code.url,/^https:\/\/chempatible\.com\/\?invite=[a-f0-9]{64}$/);const svg=await (await import('qrcode')).default.toString(code.url,{type:'svg'});assert.match(svg,/<svg[^>]*>/);assert.equal(invitation.sender_member_id,member.id);assert.equal(invitation.channel,'qr');assert.equal(state.token_hash,code.id);
 const get=(cookie='')=>connection.fetch(new Request(`https://chempatible.com/api/connection?invite=${code.url.split('invite=')[1]}`,{headers:cookie?{cookie}:{}}));
 assert.equal((await get(memberCookie)).status,409,'The inviter cannot claim their own QR');
 const first=await get();assert.equal(first.status,200);assert.equal((await first.json()).name,'Cindy');assert(first.headers.get('set-cookie'));const guestCookie=first.headers.get('set-cookie').split(';')[0];
