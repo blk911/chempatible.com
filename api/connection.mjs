@@ -48,6 +48,8 @@ async function handler(req){
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
   const actor=await ops.memberIdFromToken(sql,cookie(req).chempat_member);
   if(!['unmatch','report'].includes(body.action)){const paused=await ops.standing(sql,actor);if(paused)return reply(paused,403)}
+  // Scanners can reveal their first five before confirming their email; everything after needs it.
+  if(['request','decision','message','second','email'].includes(body.action)){const unproven=await ops.requireVerified(sql,actor);if(unproven)return reply(unproven,403)}
   if(body.action==='first'){
    const row=await ownInvitation(sql,body.token,req);
    if(!row)return reply({error:'Invitation not found.'},404);

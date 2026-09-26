@@ -4,6 +4,8 @@ globalThis.__ops={
  log:async(sql,kind,info={})=>{calls.push({kind,...info})},
  standing:async()=>null,
  standingByContact:async()=>null,
+ requireVerified:async()=>null,
+ markVerified:async()=>{},
  memberIdFromToken:async()=>null,
  linkProspect:async(sql,connection)=>{calls.push({kind:'link',connection})},
  endConnection:async(sql,args)=>{calls.push({kind:'end',...args});return {status:200,body:{ok:true,status:'ended'}}}

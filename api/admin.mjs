@@ -17,7 +17,7 @@ async function login(sql,body){
   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before trying again.'},429);
   const code=String(randomInt(100000,1000000));
   await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${codeKey},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
-  await ops.sendMail(ops.ADMIN_EMAIL,'Chempatibility admin code',`Your admin sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, someone may be trying to reach the admin page.`);
+  await ops.sendMail(ops.ADMIN_EMAIL,`${code} is your Chempatibility admin code`,`Your admin sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, someone may be trying to reach the admin page.`);
   return reply({ok:true});
  }
  if(body.action==='verify'){
@@ -62,7 +62,7 @@ async function view(sql,url){
  }
  if(name==='members'){
   const q=`%${String(url.searchParams.get('q')||'').trim().toLowerCase()}%`;
-  const rows=await sql`SELECT m.id,m.name,m.contact,m.created_at,jsonb_array_length(m.answers) AS answered,m.suspended_until,m.blocked_at,
+  const rows=await sql`SELECT m.id,m.name,m.contact,m.created_at,jsonb_array_length(m.answers) AS answered,m.email_verified_at IS NOT NULL AS verified,m.suspended_until,m.blocked_at,
    (SELECT count(*)::int FROM reports r WHERE r.reported_member_id=m.id AND r.status<>'dismissed') AS strikes,
    (SELECT count(*)::int FROM invitations i WHERE i.sender_member_id=m.id) AS invites,
    (SELECT max(at) FROM activity a WHERE a.member_id=m.id) AS last_active
