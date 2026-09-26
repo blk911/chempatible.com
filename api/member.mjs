@@ -40,6 +40,7 @@ async function handler(req){
   if(body.action==='register'){
    const name=String(body.name||'').trim(),contact=String(body.contact||'').trim().toLowerCase(),photo=body.photo,answers=body.answers||[];
    if(name.length<1||name.length>50||!validContact(contact)||!validPhoto(photo)||!validAnswers(answers))return reply({error:'Add your first name, contact, and picture.'},400);
+   if(body.agreed!==true)return reply({error:'Confirm you’re 18 or older and agree to the Terms and Privacy Policy.'},400);
    if(token){
     const existing=await sql`SELECT contact FROM members WHERE session_hash=${hash(token)}`;
     if(existing[0]&&existing[0].contact!==contact)return reply({error:'This device already has a different member page. Open this invitation in a private window.'},409);
