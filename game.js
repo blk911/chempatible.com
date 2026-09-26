@@ -19,6 +19,7 @@ try{sessionStorage.removeItem('chempatibility.walkthrough.v2');sessionStorage.re
 const blank=()=>({view:'landing',joinStep:1,actor:'member',member:{name:'',contact:'',photo:'',answers:[]},prospect:{name:'',phone:'',email:'',photo:'',answers:[]},connectionId:'',liveInvite:false,liveToken:'',liveMember:false,liveId:'',inbox:[],memberQuestionsOpen:false,prospectQuestionsOpen:false,phase:'registration',index:0,pick:null,modal:'',messages:[],notice:'',testRequest:''});
 let s;try{s={...blank(),...JSON.parse(sessionStorage.getItem(KEY)||'{}')}}catch{s=blank()}
 if(!['landing','dashboard','profile','questions','invitee','revealPhoto','results','request','conversation','email','tests'].includes(s.view))s.view='landing';
+if(s.view==='request'&&['request','declined'].includes(s.phase)&&s.actor==='prospect')s.view='profile';
 if(s.view==='questions'&&s.actor==='member'){s.view='dashboard';s.memberQuestionsOpen=true}
 if(s.view==='questions'&&s.actor==='prospect'&&s.phase!=='secondFive'&&s.prospect.answers.length<5){s.view='invitee';s.prospectQuestionsOpen=true}
 const $=id=>document.getElementById(id);
