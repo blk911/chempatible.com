@@ -5,6 +5,16 @@ CREATE TABLE IF NOT EXISTS email_codes (
   last_sent_at timestamptz NOT NULL DEFAULT now(),
   attempts integer NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS members (
+  id uuid PRIMARY KEY,
+  session_hash text NOT NULL UNIQUE,
+  name text NOT NULL,
+  contact text NOT NULL,
+  photo text NOT NULL,
+  answers jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS email_sessions (
   token_hash text PRIMARY KEY,
   email text NOT NULL,

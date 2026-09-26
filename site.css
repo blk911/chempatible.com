@@ -45,3 +45,4 @@
 .chempatRow .face{width:100px;height:112px;border-radius:12px;font-size:2rem}
 .chempatRow p{margin:3px 0}
 @media(max-width:700px){.visitorIntro .memberQuestion{padding:12px}.visitorStatus .profilePair .face{height:110px}.chempatRow .face{width:82px;height:96px}.visitorIntro .introPitch h2{font-size:1.35rem}}
+.revealIdentity{display:flex;align-items:center;gap:12px;margin:10px 0}.revealIdentity .face{width:82px;height:82px;border-radius:12px}.revealPhotoStep .joinInput{margin:9px 0}.revealPhotoStep .photoActions{margin:10px 0}.revealPhotoStep>p{margin-bottom:10px}@media(max-width:700px){.revealPhotoStep .revealIdentity .face{width:68px;height:68px}.revealPhotoStep h2{font-size:1.3rem}.revealPhotoStep .button{min-height:43px}}

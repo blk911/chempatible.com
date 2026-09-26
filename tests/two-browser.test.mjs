@@ -6,10 +6,12 @@ const source=fs.readFileSync(new URL('../game.js',import.meta.url),'utf8');
 const token='a'.repeat(64),id='b'.repeat(64),photo='data:image/jpeg;base64,AA==';
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
 const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
+let registeredMember=null;
 async function mockFetch(url,opt={}){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
- if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id};else data={email:'cindy@example.com'}}
+ if(u.pathname==='/api/member'){if(opt.method==='POST'){registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
+ else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id};else data={email:'cindy@example.com'}}
  else if(u.searchParams.has('inbox'))data={connections:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
  else if(u.searchParams.has('invite'))data={...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
  else if(body.action==='first'){Object.assign(state,{prospect_name:'Mike',prospect_photo:body.photo,prospect_answers:body.answers,status:'firstResults'});data={ok:true,answers:inviter.answers.slice(0,5)}}
@@ -40,18 +42,27 @@ assert.equal(prospect.window.document.getElementById('cameraPreview').hidden,tru
 await prospect.window.eval('openCamera()');
 assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/No camera is available/);
 assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
-prospect.window.eval(`s.prospect.photo='${photo}'`);await prospect.window.eval('recordFirstFive()');prospect.window.eval("s.phase='firstResults';navigate('results','prospect')");
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');
+prospect.window.eval(`s.prospect.photo='${photo}';render()`);prospect.window.document.getElementById('newMemberName').value='Mike';prospect.window.document.getElementById('newMemberContact').value='mike@example.com';await prospect.window.eval('finishProspectRegistration()');assert.equal(prospect.window.eval('s.prospectId'),'member-id');assert.equal(prospect.window.eval('s.view'),'results');
+await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.dashboardLower').textContent,/FINISH MY TEN/);prospect.window.eval("navigate('results','prospect')");
 prospect.window.eval('showRequest()');assert.equal(prospect.window.document.querySelectorAll('.requestInviter img').length,1);assert.equal(prospect.window.document.querySelectorAll('.requestCard input[type=file]').length,0);prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
 assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/YOUR GAME IS ON/);assert.match(prospect.window.document.querySelector('.dashboardLower').textContent,/Chempats/i);assert.equal(prospect.window.document.querySelectorAll('.visitorStatus .profilePair img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');
+prospect.window.eval('startMyNextFive()');
+for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
+assert.equal(prospect.window.eval('s.view'),'dashboard');
+assert.equal(prospect.window.eval('s.prospect.answers.length'),10);
+assert.equal(prospect.window.eval('s.phase'),'request');
+prospect.window.eval('openInvite()');assert.match(prospect.window.document.querySelector('#inviteTitle').textContent,/five secrets/);
+await prospect.window.eval("pendingInvite={name:'Sam',email:'sam@example.com'};s.modal='send';renderModal();sendInvitation()");
+assert.equal(prospect.window.eval('s.view'),'dashboard');
+assert.equal(prospect.window.eval('s.outgoing.length'),1);
+assert.match(prospect.window.document.querySelector('.outgoingCard').textContent,/Sam/);
 await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/PRIVATE CHAT IS OPEN/);prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
 assert.match(prospect.window.document.querySelector('.chatHeader h1').textContent,/Private Chat/);
 assert.equal(prospect.window.document.querySelectorAll('.chatPair img').length,2);
 prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/PRIVATE CHAT IS OPEN/);prospect.window.eval('openConversation()');
 prospect.window.document.getElementById('message').value='Hello';await prospect.window.eval('sendMessage()');await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.messages.length'),1);
-prospect.window.eval('startSecondFive()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.phase'),'secondFive');
-for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
+await prospect.window.eval('startSecondFive()');
 assert.equal(prospect.window.eval('s.view'),'results');assert.equal(prospect.window.eval('s.member.answers.length'),10);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.prospect.answers.length'),10);
 prospect.window.eval('continueAfterSecond()');prospect.window.document.getElementById('prospectEmail').value='mike@example.com';await prospect.window.eval('saveEmail()');assert.equal(prospect.window.eval('s.view'),'tests');
@@ -61,5 +72,9 @@ await member.window.eval('verifyAndSend()');
 assert.equal(member.window.document.getElementById('emailCode').disabled,true);
 assert.match(member.window.document.querySelector('.modalForm button').textContent,/RETRY SEND/);
 assert.match(member.window.document.getElementById('verifyError').textContent,/Temporary send failure/);
-member.window.close();prospect.window.close();
+const resumed=page('https://chempatible.com/');await new Promise(r=>setTimeout(r,20));
+assert.equal(resumed.window.eval('s.view'),'dashboard');
+assert.equal(resumed.window.eval('s.memberId'),'member-id');
+assert.equal(resumed.window.eval('s.member.answers.length'),10);
+member.window.close();prospect.window.close();resumed.window.close();
 console.log('Two-browser UI path passed');
