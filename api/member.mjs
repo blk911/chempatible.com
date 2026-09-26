@@ -37,7 +37,8 @@ async function handler(req){
   const token=tokenFrom(req);
   if(req.method==='GET'){
    if(!token)return reply({error:'No member on this device.'},401);
-   const rows=await sql`SELECT id,name,contact,photo,answers FROM members WHERE session_hash=${hash(token)}`;
+   await ops.ensureOps(sql);
+   const rows=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE session_hash=${hash(token)}`;
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
   }
   if(req.method!=='POST')return reply({error:'Method not allowed.'},405);
@@ -47,21 +48,26 @@ async function handler(req){
    if(name.length<1||name.length>50||!validContact(contact)||!validPhoto(photo)||!validAnswers(answers))return reply({error:ops.CELL_ENABLED?'Add your first name, contact, and picture.':'Add your first name, email, and picture.'},400);
    if(body.agreed!==true)return reply({error:'Confirm you’re 18 or older and agree to the Terms and Privacy Policy.'},400);
    const paused=await ops.standingByContact(sql,contact);if(paused)return reply(paused,403);
+   await ops.ensureOps(sql);
+   const session=cookieValue(req,'chempat_session'),proven=session?(await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(session)} AND expires_at>now()`)[0]?.email===contact:false;
    if(token){
     const existing=await sql`SELECT contact FROM members WHERE session_hash=${hash(token)}`;
     if(existing[0]&&existing[0].contact!==contact)return reply({error:'This device already has a different member page. Open this invitation in a private window.'},409);
-    const rows=await sql`UPDATE members SET name=${name},contact=${contact},photo=${photo},answers=CASE WHEN jsonb_array_length(answers)>${answers.length} THEN answers ELSE ${JSON.stringify(answers)}::jsonb END,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers`;
+    const rows=await sql`UPDATE members SET name=${name},contact=${contact},photo=${photo},answers=CASE WHEN jsonb_array_length(answers)>${answers.length} THEN answers ELSE ${JSON.stringify(answers)}::jsonb END,email_verified_at=CASE WHEN ${proven} THEN coalesce(email_verified_at,now()) ELSE email_verified_at END,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
     if(rows[0]){await ops.log(sql,'profile_updated',{member:rows[0].id});return reply({member:rows[0]})}
    }
+   // One page per email: an address that already has a page signs in with a code instead.
+   const taken=await sql`SELECT id FROM members WHERE contact=${contact} LIMIT 1`;
+   if(taken[0])return reply({error:'That email already has a page. Enter the code we send to open it.',exists:true},409);
    const fresh=randomBytes(32).toString('hex');
-   const rows=await sql`INSERT INTO members(id,session_hash,name,contact,photo,answers) VALUES(${randomUUID()},${hash(fresh)},${name},${contact},${photo},${JSON.stringify(answers)}::jsonb) RETURNING id,name,contact,photo,answers`;
+   const rows=await sql`INSERT INTO members(id,session_hash,name,contact,photo,answers,email_verified_at) VALUES(${randomUUID()},${hash(fresh)},${name},${contact},${photo},${JSON.stringify(answers)}::jsonb,${proven?new Date().toISOString():null}) RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
    await ops.log(sql,'signup',{member:rows[0].id,detail:{channel:answers.length?'invitation':'direct'}});
    return reply({member:rows[0]},200,{'set-cookie':`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`});
   }
   if(body.action==='answers'){
    if(!token)return reply({error:'Join the game first.'},401);
    if(!validAnswers(body.answers)||body.answers.length!==10)return reply({error:'Answer all ten to finish your page.'},400);
-   const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers`;
+   const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
    if(rows[0])await ops.log(sql,'ten_answered',{member:rows[0].id});
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
   }
@@ -71,34 +77,36 @@ async function handler(req){
    const names=new Set(['chempat_member','chempat_session',...((req.headers.get('cookie')||'').match(/chempat_pair_[a-f0-9]{16}/g)||[])]);
    return withCookies({ok:true},[...names].map(n=>`${n}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`));
   }
-  // Sign back in: a six digit code to the email on the member's page. The reply never says whether a page exists.
-  if(body.action==='signin_start'){
-   const email=String(body.email||'').trim().toLowerCase();if(!validEmail(email))return reply({error:'Enter the email on your page.'},400);
+  // Email codes prove an address for sign-up, sign-in, and a scanner confirming before they connect.
+  // Any valid address can get a code, so the reply never says whether a page exists.
+  if(body.action==='code_start'||body.action==='signin_start'){
+   const email=String(body.email||'').trim().toLowerCase();if(!validEmail(email))return reply({error:'Enter a valid email.'},400);
    const key=`member:${email}`;
    const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${key}`;
-   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before trying again.'},429);
-   const found=await sql`SELECT id FROM members WHERE contact=${email} LIMIT 1`;
-   if(found[0]){
-    const code=String(randomInt(100000,1000000));
-    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
-    await ops.sendMail(email,'Your Chempatibility sign-in code',`Your sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, you can ignore this email.`);
-   }
+   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before asking for another.'},429);
+   const code=String(randomInt(100000,1000000));
+   await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
+   // The code leads the subject so it shows in the phone's notification.
+   await ops.sendMail(email,`${code} is your Chempatibility code`,`Your Chempatibility code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
    return reply({ok:true});
   }
-  if(body.action==='signin_verify'){
+  if(body.action==='code_verify'||body.action==='signin_verify'){
    const email=String(body.email||'').trim().toLowerCase(),code=String(body.code||''),key=`member:${email}`;
    if(!validEmail(email)||!/^\d{6}$/.test(code))return reply({error:'Code expired or incorrect.'},400);
    const codes=await sql`UPDATE email_codes SET attempts=attempts+1 WHERE email=${key} AND expires_at>now() AND attempts<5 RETURNING code_hash`;
    if(!codes[0]||!timingSafeEqual(Buffer.from(hash(code)),Buffer.from(codes[0].code_hash)))return reply({error:'Code expired or incorrect.'},400);
    await sql`DELETE FROM email_codes WHERE email=${key}`;
-   // A new sign-in replaces the old one, so a page is open on one phone at a time.
-   const fresh=randomBytes(32).toString('hex'),session=randomBytes(32).toString('hex');
-   const rows=await sql`UPDATE members SET session_hash=${hash(fresh)},updated_at=now() WHERE id=(SELECT id FROM members WHERE contact=${email} ORDER BY jsonb_array_length(answers) DESC,created_at ASC LIMIT 1) RETURNING id,name,contact,photo,answers`;
-   if(!rows[0])return reply({error:'Code expired or incorrect.'},400);
-   // The code also proves the email, so emailed invitations work without a second code.
+   // The proven email also lets emailed invitations go out without another code.
+   const session=randomBytes(32).toString('hex');
    await sql`INSERT INTO email_sessions(token_hash,email,expires_at) VALUES(${hash(session)},${email},now()+interval '30 days')`;
+   const sessionCookie=`chempat_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`;
+   await ops.ensureOps(sql);
+   // An email that already has a page opens it here; a new sign-in replaces the old one, so a page is open on one phone at a time.
+   const fresh=randomBytes(32).toString('hex');
+   const rows=await sql`UPDATE members SET session_hash=${hash(fresh)},email_verified_at=coalesce(email_verified_at,now()),updated_at=now() WHERE id=(SELECT id FROM members WHERE contact=${email} ORDER BY jsonb_array_length(answers) DESC,created_at ASC LIMIT 1) RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
+   if(!rows[0])return withCookies({existing:false,email},[sessionCookie]);
    await ops.log(sql,'signin',{member:rows[0].id});
-   return withCookies({member:rows[0]},[`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`,`chempat_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`]);
+   return withCookies({existing:true,member:rows[0]},[`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`,sessionCookie]);
   }
   return reply({error:'Unknown action.'},400);
  }catch(error){console.error('Member error:',error);return reply({error:'Could not save your page. Try again.'},500)}

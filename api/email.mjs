@@ -35,7 +35,7 @@ async function handler(req){
    if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return json({error:'A code was just sent. Wait a minute before trying again.'},429);
    const code=String(randomInt(100000,1000000));
    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${address},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
-   await sendMail(address,'Your Chempatibility code',`<p>Your code is <strong>${code}</strong>. It expires in ten minutes.</p>`,`Your Chempatibility code is ${code}. It expires in ten minutes.`);
+   await sendMail(address,`${code} is your Chempatibility code`,`<p>Your code is <strong>${code}</strong>. It expires in ten minutes.</p>`,`Your Chempatibility code is ${code}. It expires in ten minutes.`);
    return json({ok:true});
   }
   if(body.action==='verify'){
@@ -43,6 +43,7 @@ async function handler(req){
    const rows=await sql`UPDATE email_codes SET attempts=attempts+1 WHERE email=${address} AND expires_at>now() AND attempts<5 RETURNING code_hash`;
    if(!rows[0]||!timingSafeEqual(Buffer.from(hash(code)),Buffer.from(rows[0].code_hash)))return json({error:'Code expired or incorrect.'},400);
    await sql`DELETE FROM email_codes WHERE email=${address}`;
+   await ops.markVerified(sql,address);
    const token=randomBytes(32).toString('hex');await sql`INSERT INTO email_sessions(token_hash,email,expires_at) VALUES(${hash(token)},${address},now()+interval '30 days')`;
    return json({ok:true,email:address},200,{'set-cookie':`chempat_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`});
   }

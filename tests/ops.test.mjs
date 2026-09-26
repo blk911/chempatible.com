@@ -12,6 +12,7 @@ const bad={id:'22222222-2222-4222-8222-222222222222',name:'Mike',contact:'bad@ex
 members[bad.id]=bad;
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
  if(/^(CREATE|ALTER)/.test(q))return [];
+ if(q.startsWith('SELECT email_verified_at FROM members WHERE id='))return members[v[0]]?[{email_verified_at:members[v[0]].email_verified_at??null}]:[];
  if(q.startsWith('INSERT INTO activity')){activity.push({kind:v[0],member_id:v[1],connection_id:v[2],detail:JSON.parse(v[3])});return []}
  if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE id='))return members[v[0]]?[members[v[0]]]:[];
  if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE contact='))return Object.values(members).filter(m=>m.contact===v[0]&&(m.blocked_at||m.suspended_until>new Date()));
@@ -41,6 +42,10 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
 }
 sql.transaction=async queries=>Promise.all(queries);
 const connection=(n,extra={})=>{const id=String(n).repeat(64).slice(0,64);connections[id]={token_hash:id,sender_member_id:'11111111-1111-4111-8111-111111111111',sender_name:'Cindy',sender_email:'cindy@example.com',status:'chat',prospect_member_id:bad.id,prospect_name:'Mike',prospect_email:'bad@example.com',prospect_phone:null,messages:[{by:'prospect',text:'hey',at:'2026-09-26T20:00:00Z'}],...extra};return id};
+
+// Unconfirmed emails can't play past the reveal; confirmed ones and visitors without a page pass.
+assert.equal((await ops.requireVerified(sql,bad.id)).needsVerify,true);
+bad.email_verified_at=new Date();assert.equal(await ops.requireVerified(sql,bad.id),null);assert.equal(await ops.requireVerified(sql,null),null);
 
 // Strike ladder: 1-2 flag, 3 suspends 30 days, 4+ blocks.
 assert.deepEqual([1,2,3,4,5].map(ops.strikeAction),['flag','flag','suspend','block','block']);

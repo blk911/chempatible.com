@@ -22,6 +22,7 @@ export function ensureOps(sql){
   await sql`ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS prospect_member_id uuid`;
   await sql`ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS ended_at timestamptz`;
   await sql`ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS ended_by text`;
+  await sql`ALTER TABLE members ADD COLUMN IF NOT EXISTS email_verified_at timestamptz`;
  })().catch(error=>{ready=undefined;throw error});
  return ready;
 }
@@ -52,6 +53,18 @@ export async function standingByContact(sql,contact){
  await ensureOps(sql);
  const rows=await sql`SELECT suspended_until,blocked_at FROM members WHERE contact=${contact} AND (blocked_at IS NOT NULL OR suspended_until>now()) LIMIT 1`;
  return verdict(rows[0]);
+}
+// Members prove their email with a code before they can show a code, invite, ask to connect, or message.
+export const NEEDS_VERIFY={error:'Confirm your email first. We sent you a code.',needsVerify:true};
+export async function requireVerified(sql,memberId){
+ if(!memberId)return null;
+ await ensureOps(sql);
+ const rows=await sql`SELECT email_verified_at FROM members WHERE id=${memberId}`;
+ return rows[0]&&!rows[0].email_verified_at?NEEDS_VERIFY:null;
+}
+export async function markVerified(sql,email){
+ try{await ensureOps(sql);await sql`UPDATE members SET email_verified_at=coalesce(email_verified_at,now()) WHERE contact=${email}`}
+ catch(error){console.error('Mark verified error:',error)}
 }
 export async function memberIdFromToken(sql,token){
  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return null;
