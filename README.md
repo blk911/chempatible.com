@@ -14,7 +14,7 @@ QR and email invitations create the same shared connection record. Both browsers
 
 ## Prototype limits
 
-QR scanning and email invitations are live on the deployed domain. There is no text delivery or phone verification. Deeper discoveries are briefs, not completed games. The `/admin` route has no login; its question and template drafts remain separate from the public game.
+QR scanning and email invitations are live on the deployed domain. There is no text delivery or phone verification. Deeper discoveries are briefs, not completed games. The public `live` branch does not include the development-only `/admin` editor.
 
 ## Deployment
 
@@ -31,7 +31,7 @@ QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and an a
 
 ## Development and live
 
-`main` is the development branch. `live` is the public release branch. Set the existing Vercel project to continue using `main` on its Vercel URL; create a second Vercel project from this same repository using `live` as its production branch. Give each project its **own Neon database** and `DATABASE_URL`. Give the live project `SENDGRID_API_KEY`, authenticate `chempatible.com` in SendGrid, and assign `chempatible.com` to the live Vercel project after removing it from the development project. The outgoing From address is `hello@chempatible.com` with display name `Chempatibility`. Keep the development deployment on its Vercel URL. Verify the live URL before moving the domain.
+`main` is the development branch and includes the unlocked `/admin` editor. `live` is the public release branch without that editor. Set the existing Vercel project to continue using `main` on its Vercel URL; create a second Vercel project from this same repository using `live` as its production branch. Give each project its **own Neon database** and `DATABASE_URL`. Give the live project `SENDGRID_API_KEY`, authenticate `chempatible.com` in SendGrid, and assign `chempatible.com` to the live Vercel project after removing it from the development project. The outgoing From address is `hello@chempatible.com` with display name `Chempatibility`. Keep the development deployment on its Vercel URL. Verify the live URL before moving the domain.
 
 Run `ops/clear-test-data.sql` in the old test database before a fresh test. It removes all members, pair records, messages, QR and email invitations, email codes, and sessions. Browser tabs will start a fresh walkthrough with this release; older server cookies no longer match a member or session after the reset. Never run this reset against a database containing public member data.
 
