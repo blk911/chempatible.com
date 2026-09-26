@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').replace('<script src="game.js"></script>','');
 const source=fs.readFileSync(new URL('../game.js',import.meta.url),'utf8');
 const token='a'.repeat(64),id='b'.repeat(64),photo='data:image/jpeg;base64,AA==';
+const qrToken='e'.repeat(64),qrId='f'.repeat(64);
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
 const outgoingId='c'.repeat(64),outgoingState={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]};
 const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
@@ -12,9 +13,10 @@ async function mockFetch(url,opt={},context){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
  if(u.pathname==='/api/member'){if(opt.method==='POST'){registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
+ else if(u.pathname==='/api/qr')data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,svg:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2"><path d="M0 0h2v2H0z"/></svg>',expiresAt:new Date(Date.now()+900000).toISOString()};
  else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id:body.member?.name==='Mike'?outgoingId:id};else data={email:'cindy@example.com'}}
  else if(u.searchParams.has('inbox'))data={connections:context?.eval('s.actor')==='prospect'?[{id:outgoingId,recipient_name:'Sam',recipient_email:'sam@example.com',...outgoingState}]:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
- else if(u.searchParams.has('invite'))data={...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
+ else if(u.searchParams.has('invite'))data=u.searchParams.get('invite')===qrToken?{...inviter,answers:[],recipientName:'',prospectName:null,prospectPhoto:null,prospectAnswers:[],status:'invited',messages:[]}:{...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
  else if(body.action==='first'){Object.assign(state,{prospect_name:'Mike',prospect_photo:body.photo,prospect_answers:body.answers,status:'firstResults'});data={ok:true,answers:inviter.answers.slice(0,5)}}
  else if(body.action==='request'){Object.assign(state,{prospect_name:body.name,prospect_email:body.contact,prospect_photo:body.photo,status:'request'});data={ok:true}}
  else if(body.action==='decision'){(body.id===outgoingId?outgoingState:state).status=body.decision==='accept'?'chat':'declined';data={ok:true}}
@@ -27,6 +29,11 @@ async function mockFetch(url,opt={},context){
 function page(url){const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true});d.window.fetch=(url,opt)=>mockFetch(url,opt,d.window);d.window.scrollTo=()=>{};d.window.HTMLElement.prototype.scrollIntoView=()=>{};const script=d.window.document.createElement('script');script.textContent=source;d.window.document.body.append(script);return d}
 const member=page('https://chempatible.com/');
 member.window.eval(`s.member.name='Cindy';s.member.contact='cindy@example.com';s.member.photo='${photo}';s.member.answers=[0,1,2,0,1,2,0,1,2,0];s.phase='ready';navigate('dashboard','member')`);
+member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,20));
+assert.equal(member.window.eval('s.qrInvite.id'),qrId);
+assert.match(member.window.document.querySelector('.liveQr').getAttribute('src'),/^data:image\/svg\+xml/);
+assert.match(member.window.document.querySelector('#qrTimer').textContent,/Ready for/);
+member.window.eval('closeInvite()');
 await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s.modal='send';renderModal();sendInvitation()");
 assert.equal(member.window.eval('s.liveMember'),true);
 assert.equal(member.window.eval('s.view'),'dashboard');
@@ -103,5 +110,12 @@ const resumed=page('https://chempatible.com/');await new Promise(r=>setTimeout(r
 assert.equal(resumed.window.eval('s.view'),'dashboard');
 assert.equal(resumed.window.eval('s.memberId'),'member-id');
 assert.equal(resumed.window.eval('s.member.answers.length'),10);
-member.window.close();prospect.window.close();resumed.window.close();
+const existingMemberScan=page('https://chempatible.com/?invite='+qrToken);await new Promise(r=>setTimeout(r,20));
+assert.equal(existingMemberScan.window.eval('s.prospectId'),'member-id');
+assert.equal(existingMemberScan.window.eval('s.view'),'invitee');
+assert.equal(existingMemberScan.window.eval('s.prospect.answers.length'),0);
+existingMemberScan.window.eval('startProspect()');assert.match(existingMemberScan.window.document.querySelector('#prospectQuestion').textContent,/CORE VALUES/);
+for(let i=0;i<5;i++){existingMemberScan.window.eval('pick(0)');await existingMemberScan.window.eval('answerQuestion()')}
+assert.equal(existingMemberScan.window.eval('s.view'),'revealPhoto');
+member.window.close();prospect.window.close();resumed.window.close();existingMemberScan.window.close();
 console.log('Two-browser UI path passed');

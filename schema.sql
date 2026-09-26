@@ -28,6 +28,9 @@ CREATE TABLE IF NOT EXISTS invitations (
   sender_answers jsonb NOT NULL,
   recipient_name text NOT NULL,
   recipient_email text NOT NULL,
+  sender_member_id uuid,
+  channel text NOT NULL DEFAULT 'email',
+  expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS invitations_sender_idx ON invitations(sender_email, created_at DESC);
@@ -40,5 +43,6 @@ CREATE TABLE IF NOT EXISTS connection_state (
   prospect_email text,
   status text NOT NULL DEFAULT 'invited',
   messages jsonb NOT NULL DEFAULT '[]'::jsonb,
+  claim_hash text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
