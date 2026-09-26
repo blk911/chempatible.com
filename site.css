@@ -24,3 +24,17 @@
 @media(max-width:700px){.chatPerson{flex-direction:column;align-items:flex-start}.chatPerson .face{max-width:100%}}
 
 .photoPick{position:relative;display:inline-flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}.photoPick:focus-within{outline:3px solid #dc704e;outline-offset:2px}.photoFileInput{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;left:50%;bottom:0;pointer-events:none}.photoActions .photoPick{flex:1}
+/* Faces stay recognizable in the invitation and connection spaces. */
+.face{border-radius:10px}
+.requestLayout{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(245px,.78fr);gap:22px;align-items:stretch}
+.requestLayout .requestForm{border:0;margin:0;padding:2px 0}
+.requestInviter{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:18px;background:#f5f8f6;border:1px solid #dce7e0;border-radius:14px}
+.requestInviter .face{width:100%;height:250px;max-width:320px;border-radius:13px;font-size:4rem}
+.requestInviter b{font-size:1.2rem}
+.requestInviter span:last-child{line-height:1.35;color:#53656e}
+.profileIdentity .face{width:128px;height:138px;border-radius:12px;font-size:2rem}
+.profilePair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:390px}
+.profilePair>div{min-width:0}
+.profilePair .face{width:100%;height:150px;border-radius:12px;font-size:2rem}
+.profilePair b{display:block;margin:5px 0 0;overflow-wrap:anywhere}
+@media(max-width:700px){.requestLayout{grid-template-columns:1fr;gap:11px;padding:12px}.requestInviter{order:-1;padding:10px;display:grid;grid-template-columns:105px minmax(0,1fr);align-items:start;gap:4px 11px}.requestInviter .eyebrow{grid-column:2}.requestInviter .face{grid-column:1;grid-row:1/4;width:105px;height:130px;font-size:2rem}.requestInviter b{grid-column:2;font-size:1rem}.requestInviter span:last-child{grid-column:2;font-size:.82rem}.requestLayout .requestForm{padding:5px}.profileIdentity .face{width:105px;height:125px}.profilePair .face{height:132px}.profileGrid{gap:10px}}

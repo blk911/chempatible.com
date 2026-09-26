@@ -30,6 +30,7 @@ assert.equal(member.window.eval('s.view'),'dashboard');
 const prospect=page('https://chempatible.com/?invite='+token);
 await new Promise(r=>setTimeout(r,20));
 assert.equal(prospect.window.eval('s.view'),'invitee');
+assert.match(prospect.window.document.querySelector('.introPitch h2').textContent,/five secrets about me/);
 assert.equal(prospect.window.eval('s.member.name'),'Cindy');
 prospect.window.eval('startProspect()');
 for(let i=0;i<5;i++){prospect.window.eval('pick(0)');await prospect.window.eval('answerQuestion()')}
@@ -41,8 +42,8 @@ assert.match(prospect.window.document.getElementById('revealPhotoError').textCon
 assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
 prospect.window.eval(`s.prospect.photo='${photo}'`);await prospect.window.eval('recordFirstFive()');prospect.window.eval("s.phase='firstResults';navigate('results','prospect')");
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');
-prospect.window.eval('showRequest()');prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
-assert.equal(prospect.window.eval('s.view'),'profile');assert.match(prospect.window.document.querySelector('.profileGrid').textContent,/Chempats/i);
+prospect.window.eval('showRequest()');assert.equal(prospect.window.document.querySelectorAll('.requestInviter img').length,1);assert.equal(prospect.window.document.querySelectorAll('.requestCard input[type=file]').length,0);prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
+assert.equal(prospect.window.eval('s.view'),'profile');assert.match(prospect.window.document.querySelector('.profileGrid').textContent,/Chempats/i);assert.equal(prospect.window.document.querySelectorAll('.profilePair img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');
 await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'profile');prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
 assert.match(prospect.window.document.querySelector('.chatHeader h1').textContent,/Private Chat/);
