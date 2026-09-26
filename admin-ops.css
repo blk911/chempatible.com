@@ -51,3 +51,4 @@ a.ops-tile:hover{border-color:#d76c50}
 .exit.ops-logout{margin-top:0;cursor:pointer;font-family:inherit}
 @media(max-width:760px){.ops-feed li{grid-template-columns:1fr;gap:2px}.ops-funnel div{grid-template-columns:110px 1fr 36px}.ops-profile{flex-direction:column}.ops-search{flex-wrap:wrap}.ops-report header{flex-direction:column}}
 @media(max-width:700px){.exit.ops-logout{right:66px}}
+.ops-actions .button.danger{background:#fbe3e0;color:#9a2b22;margin-left:auto}

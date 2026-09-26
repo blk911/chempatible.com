@@ -130,6 +130,26 @@ async function act(sql,body){
   await ops.log(sql,`report_${body.status}`,{member:rows[0].reported_member_id,detail:{report:id}});
   return reply({ok:true});
  }
+ if(body.action==='delete_member'){
+  if(!uuid(id))return reply({error:'Member not found.'},404);
+  const rows=await sql`SELECT name,contact FROM members WHERE id=${id}`;
+  if(!rows[0])return reply({error:'Member not found.'},404);
+  const {name,contact}=rows[0];
+  // One transaction: their page, invitations they sent (connections cascade), reports and activity about them,
+  // their email sign-ins, and their details on connections they joined through someone else's invitation.
+  await sql.transaction([
+   sql`DELETE FROM reports WHERE reporter_member_id=${id} OR reported_member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
+   sql`DELETE FROM activity WHERE member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
+   sql`UPDATE connection_state SET prospect_name='Deleted member',prospect_photo=NULL,prospect_phone=NULL,prospect_email=NULL,prospect_answers='[]'::jsonb,messages='[]'::jsonb,prospect_member_id=NULL,status=CASE WHEN status='invited' THEN status ELSE 'ended' END,ended_at=coalesce(ended_at,now()),ended_by=coalesce(ended_by,'admin'),updated_at=now() WHERE prospect_member_id=${id} OR prospect_email=${contact} OR prospect_phone=${contact}`,
+   sql`UPDATE invitations SET recipient_name='Deleted member',recipient_email='' WHERE recipient_email=${contact} AND sender_member_id IS DISTINCT FROM ${id}::uuid`,
+   sql`DELETE FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact}`,
+   sql`DELETE FROM email_sessions WHERE email=${contact}`,
+   sql`DELETE FROM email_codes WHERE email=${contact}`,
+   sql`DELETE FROM members WHERE id=${id}`
+  ]);
+  await ops.log(sql,'admin_delete',{detail:{name}});
+  return reply({ok:true});
+ }
  if(body.action==='link_report'){
   if(!uuid(id)||!uuid(body.member))return reply({error:'Choose a member to link.'},400);
   const rows=await sql`UPDATE reports SET reported_member_id=${body.member} WHERE id=${id} RETURNING id`;

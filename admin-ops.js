@@ -6,8 +6,8 @@ const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const when=v=>v?new Date(v).toLocaleString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}):'—';
 const day=v=>v?new Date(v).toLocaleDateString('en-US',{timeZone:'America/Denver',month:'short',day:'numeric',year:'numeric'}):'—';
-const KINDS={signup:'Signed up',profile_updated:'Updated profile',ten_answered:'Finished their ten',qr_created:'Made a QR code',qr_scanned:'QR code scanned',invite_emailed:'Emailed an invitation',first_five:'Answered first five',request:'Asked to connect',accept:'Accepted',pass:'Passed',message:'Sent a message',next_five:'Answered next five',email_shared:'Shared email',unmatch:'Unmatched',report:'Filed a report',auto_suspend:'Auto-suspended (3rd report)',auto_block:'Auto-blocked (4th report)',admin_login:'Admin signed in',admin_note:'Admin note added',admin_suspend:'Admin suspended',admin_block:'Admin blocked',admin_reinstate:'Admin reinstated',report_reviewed:'Report reviewed',report_dismissed:'Report dismissed',report_open:'Report reopened',report_linked:'Report linked to member'};
-const ALERT=new Set(['report','auto_suspend','auto_block','admin_suspend','admin_block']);
+const KINDS={signup:'Signed up',profile_updated:'Updated profile',ten_answered:'Finished their ten',qr_created:'Made a QR code',qr_scanned:'QR code scanned',invite_emailed:'Emailed an invitation',first_five:'Answered first five',request:'Asked to connect',accept:'Accepted',pass:'Passed',message:'Sent a message',next_five:'Answered next five',email_shared:'Shared email',unmatch:'Unmatched',report:'Filed a report',auto_suspend:'Auto-suspended (3rd report)',auto_block:'Auto-blocked (4th report)',admin_login:'Admin signed in',admin_note:'Admin note added',admin_suspend:'Admin suspended',admin_block:'Admin blocked',admin_reinstate:'Admin reinstated',admin_delete:'Admin deleted a member',report_reviewed:'Report reviewed',report_dismissed:'Report dismissed',report_open:'Report reopened',report_linked:'Report linked to member'};
+const ALERT=new Set(['report','auto_suspend','auto_block','admin_suspend','admin_block','admin_delete']);
 let reasons={harassment:'Harassment or threats',fake:'Fake profile or impersonation',inappropriate:'Inappropriate photo or messages',safety:'Made me feel unsafe',underage:'May be under 18',other:'Something else'};
 
 async function api(path,body){
@@ -25,6 +25,7 @@ function standing(m){
 const memberLink=(id,name)=>id?`<a href="/admin#members/${esc(id)}" data-ops-link="members/${esc(id)}">${esc(name||'Member')}</a>`:esc(name||'—');
 function detailText(a){
  const d=a.detail||{},bits=[];
+ if(d.name)bits.push(d.name);
  if(d.reason)bits.push(reasons[d.reason]||d.reason);
  if(d.side)bits.push(d.side==='member'?'as inviter':'as invitee');
  if(d.strikes)bits.push(`strike ${d.strikes}`);
@@ -105,7 +106,7 @@ async function memberDetail(id){
  const paused=m.suspended_until&&new Date(m.suspended_until)>new Date();
  return `<a class="text-button" href="/admin#members" data-ops-link="members">← All members</a>
  <section class="ops-card ops-profile">${/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(m.photo||'')?`<img src="${m.photo}" alt="">`:''}<div><h2>${esc(m.name)}</h2><p>${esc(m.contact)} · joined ${esc(day(m.created_at))} · ${m.answers.length}/10 answered</p>${standing(m)} <b class="${strikes>=3?'strike':''}">${strikes} strike${strikes===1?'':'s'}</b>
-  <div class="ops-actions">${!paused&&!m.blocked_at?`<button class="button" data-act="suspend" data-id="${esc(m.id)}" data-confirm="Pause ${esc(m.name)} for 30 days?">SUSPEND 30 DAYS</button>`:''}${!m.blocked_at?`<button class="button" data-act="block" data-id="${esc(m.id)}" data-confirm="Block ${esc(m.name)} from playing?">BLOCK</button>`:''}${paused||m.blocked_at?`<button class="button primary" data-act="reinstate" data-id="${esc(m.id)}" data-confirm="Lift the pause or block for ${esc(m.name)}?">REINSTATE</button>`:''}</div></div></section>
+  <div class="ops-actions">${!paused&&!m.blocked_at?`<button class="button" data-act="suspend" data-id="${esc(m.id)}" data-confirm="Pause ${esc(m.name)} for 30 days?">SUSPEND 30 DAYS</button>`:''}${!m.blocked_at?`<button class="button" data-act="block" data-id="${esc(m.id)}" data-confirm="Block ${esc(m.name)} from playing?">BLOCK</button>`:''}${paused||m.blocked_at?`<button class="button primary" data-act="reinstate" data-id="${esc(m.id)}" data-confirm="Lift the pause or block for ${esc(m.name)}?">REINSTATE</button>`:''}<button class="button danger" data-act="delete_member" data-id="${esc(m.id)}" data-name="${esc(m.name)}" data-blocked="${m.blocked_at||paused?'1':''}">DELETE MEMBER</button></div></div></section>
  <section class="ops-card"><span class="eyebrow">PRIVATE NOTES · ADMIN ONLY</span><form class="ops-noteform" data-note="${esc(m.id)}"><textarea name="text" rows="2" maxlength="1000" placeholder="Add a note only admins can see"></textarea><button class="button primary" type="submit">ADD NOTE</button></form>${notes.length?`<ol class="ops-feed">${notes.map(n=>`<li class="${n.by==='system'?'alert':''}"><time>${esc(when(n.at))}</time><b>${n.by==='system'?'System':'Admin'}</b><span>${esc(n.text)}</span></li>`).join('')}</ol>`:'<p class="ops-empty">No notes.</p>'}</section>
  <section class="ops-card"><span class="eyebrow">REPORTS AGAINST (${reportsAgainst.length})</span>${reportsAgainst.length?`<ol class="ops-feed">${reportsAgainst.map(r=>`<li class="${r.status==='dismissed'?'':'alert'}"><time>${esc(when(r.created_at))}</time><b>${esc(reasons[r.reason]||r.reason)}</b><span>from ${esc(r.reporter_name||'a member')} · ${esc(r.status)}${r.note?` · “${esc(r.note)}”`:''}</span></li>`).join('')}</ol>`:'<p class="ops-empty">None.</p>'}</section>
  <section class="ops-card"><span class="eyebrow">REPORTS FILED (${reportsFiled.length})</span>${reportsFiled.length?`<ol class="ops-feed">${reportsFiled.map(r=>`<li><time>${esc(when(r.created_at))}</time><b>${esc(reasons[r.reason]||r.reason)}</b><span>against ${memberLink(r.reported_member_id,r.reported_name)} · ${esc(r.status)}</span></li>`).join('')}</ol>`:'<p class="ops-empty">None.</p>'}</section>
@@ -141,8 +142,14 @@ document.addEventListener('click',async event=>{
  const act=event.target.closest('[data-act]');
  if(!act)return;
  if(act.dataset.confirm&&!confirm(act.dataset.confirm))return;
+ if(act.dataset.act==='delete_member'){
+  const typed=prompt(`Permanently delete ${act.dataset.name}? This removes their page, picture, answers, invitations, chats, reports and activity, and can’t be undone.${act.dataset.blocked?' It also removes their pause or block, so they could sign up again.':''}
+
+Type DELETE to confirm.`);
+  if(typed!=='DELETE')return;
+ }
  act.disabled=true;
- try{await api('/api/admin',{action:act.dataset.act,id:act.dataset.id,status:act.dataset.status,member:act.dataset.member});route()}
+ try{await api('/api/admin',{action:act.dataset.act,id:act.dataset.id,status:act.dataset.status,member:act.dataset.member});if(act.dataset.act==='delete_member')open('members');else route()}
  catch(e){alert(e.message);act.disabled=false}
 });
 document.addEventListener('submit',async event=>{
