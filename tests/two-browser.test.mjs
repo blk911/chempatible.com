@@ -40,6 +40,8 @@ await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s
 assert.equal(member.window.eval('s.liveMember'),true);
 assert.equal(member.window.eval('s.view'),'dashboard');
 assert.match(member.window.document.querySelector('.socialMemberHeader').textContent,/INSTANT VIBE/);
+assert.equal(member.window.document.querySelector('.resetLink'),null);
+assert.doesNotMatch(member.window.document.body.textContent,/View as|RESET THIS TAB/);
 const prospect=page('https://chempatible.com/?invite='+token);
 await new Promise(r=>setTimeout(r,20));
 assert.equal(prospect.window.eval('s.view'),'invitee');
@@ -102,6 +104,7 @@ await prospect.window.eval('startSecondFive()');
 assert.equal(prospect.window.eval('s.view'),'results');assert.equal(prospect.window.eval('s.member.answers.length'),10);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.prospect.answers.length'),10);
 prospect.window.eval('continueAfterSecond()');prospect.window.document.getElementById('prospectEmail').value='mike@example.com';await prospect.window.eval('saveEmail()');assert.equal(prospect.window.eval('s.view'),'tests');
+assert.equal(prospect.window.document.querySelector('a[href^="/admin"]'),null);
 member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};renderVerify();emailApi=async(data)=>{if(data.action==='verify')return {ok:true};throw Error('Temporary send failure')}");
 member.window.document.getElementById('emailCode').value='123456';
 await member.window.eval('verifyAndSend()');

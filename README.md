@@ -10,7 +10,7 @@ A mobile-first two-person game with live QR and email invitations. The static pa
 4. Tap **Play My Five** to load one question at a time in that right panel. The inviter's selected answers stay hidden until the five-question reveal. After five, the prospect adds a picture and compares answers. Matching choices are green; different choices are grey. The request screen keeps the inviter's card visible and lets the prospect change or retake their own picture before entering a first name and cell.
 5. After the five and a picture, the visitor becomes a member and the inviter sees their name and picture in **Chempats**. The visitor can request a connection; the inviter can Accept/Pass. Accept opens a shared chat, and the next five sync between both browsers.
 
-QR and email invitations create the same shared connection record. Both browsers poll for changes every five seconds while open. A scanned QR is bound to the first browser that opens it. The current page state lives in `sessionStorage`; the QR claim also has a device cookie so a reload on that phone can continue. **RESET THIS TAB** clears local page state, not server records.
+QR and email invitations create the same shared connection record. Both browsers poll for changes every five seconds while open. A scanned QR is bound to the first browser that opens it. The current page state lives in `sessionStorage`; the QR claim also has a device cookie so a reload on that phone can continue.
 
 ## Prototype limits
 
@@ -24,17 +24,15 @@ To enable live email:
 
 1. Create a dedicated Neon Postgres database for Chempatibility and run `schema.sql` in its SQL editor, one statement at a time if required. Existing databases need the four QR columns in `api/qr-schema.mjs` before deploying this version.
 2. Authenticate `chempatible.com` in SendGrid, adding its required DNS records in GoDaddy, and create a restricted Mail Send API key.
-3. In the Chempatibility Vercel project, set Production environment variables `DATABASE_URL` (Neon connection string), `SENDGRID_API_KEY`, and `CHEMPAT_FROM_EMAIL` (for example `hello@chempatible.com`, once verified). Redeploy after adding them. Never commit keys.
+3. In the Chempatibility Vercel project, set Production environment variables `DATABASE_URL` (Neon connection string) and `SENDGRID_API_KEY`. Authenticate `chempatible.com` as a sender domain in SendGrid for `hello@chempatible.com`. Redeploy after adding the variables. Never commit keys.
 4. Register a member using their own email, answer ten, open **Connect Now → Can’t scan? Send it instead**, and send to a second email in a separate browser. The sender gets a six digit email code before the first send. A successful SendGrid API response means accepted for delivery, not proof of inbox arrival.
 
-QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and `CHEMPAT_FROM_EMAIL`.
+QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and an authenticated `chempatible.com` sender domain.
 
-## Clean test run
+## Development and live
 
-After deploying the new code and creating `connection_state`, run this one statement in the dedicated Chempatibility database to remove test invitations, sessions, and codes:
+`main` is the development branch. `live` is the public release branch. Set the existing Vercel project to continue using `main` on its Vercel URL; create a second Vercel project from this same repository using `live` as its production branch. Give each project its **own Neon database** and `DATABASE_URL`. Give the live project `SENDGRID_API_KEY`, authenticate `chempatible.com` in SendGrid, and assign `chempatible.com` to the live Vercel project after removing it from the development project. The outgoing From address is `hello@chempatible.com` with display name `Chempatibility`. Keep the development deployment on its Vercel URL. Verify the live URL before moving the domain.
 
-```sql
-TRUNCATE TABLE connection_state, invitations, email_sessions, email_codes;
-```
+Run `ops/clear-test-data.sql` in the old test database before a fresh test. It removes all members, pair records, messages, QR and email invitations, email codes, and sessions. Browser tabs will start a fresh walkthrough with this release; older server cookies no longer match a member or session after the reset. Never run this reset against a database containing public member data.
 
-This database command invalidates previous QR and emailed invitation links and verification sessions. It does not remove registered members.
+Promote tested changes by merging or fast-forwarding `main` into `live`, then confirm the live deployment. Do not point both Vercel projects at the same database.

@@ -362,12 +362,6 @@ $('saveButton').addEventListener('click', () => {
   try { localStorage.setItem(storageKey, JSON.stringify(draft)); $('saveStatus').textContent = 'Draft saved in this browser.'; }
   catch (_) { $('saveStatus').textContent = 'This browser could not save the draft.'; }
 });
-$('resetButton').addEventListener('click', () => {
-  if (!confirm('Reset the Member Profile template draft in this browser?')) return;
-  draft = { ...defaults, selectedQuestions: [], questionEdits: {} };
-  try { localStorage.removeItem(storageKey); } catch (_) { /* The page still resets. */ }
-  writeFields(); renderBankEditor(); preview(); $('saveStatus').textContent = 'Draft reset.';
-});
 const initial = location.hash.slice(1);
 if (initial.startsWith('questions/test-')) showPage('questions', initial.slice('questions/test-'.length));
 else if (pages[initial]) showPage(initial);
