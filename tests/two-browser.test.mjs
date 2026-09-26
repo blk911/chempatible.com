@@ -34,10 +34,11 @@ assert.equal(prospect.window.eval('s.member.name'),'Cindy');
 prospect.window.eval('startProspect()');
 for(let i=0;i<5;i++){prospect.window.eval('pick(0)');await prospect.window.eval('answerQuestion()')}
 assert.equal(prospect.window.eval('s.view'),'revealPhoto');
-assert.equal(prospect.window.document.getElementById('revealCameraInput').getAttribute('capture'),'user');
-assert.equal(prospect.window.document.getElementById('revealCameraInput').closest('label').textContent,'TAKE PHOTO');
-assert.equal(prospect.window.document.getElementById('revealCameraInput').hidden,false);
-assert.equal(prospect.window.document.querySelector('.revealPhotoStep video'),null);
+assert.match(prospect.window.document.querySelector('.revealPhotoStep').textContent,/CAMERA.*CHOOSE FILE PHOTO/);
+assert.equal(prospect.window.document.getElementById('cameraPreview').hidden,true);
+await prospect.window.eval('openCamera()');
+assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/No camera is available/);
+assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
 prospect.window.eval(`s.prospect.photo='${photo}'`);await prospect.window.eval('recordFirstFive()');prospect.window.eval("s.phase='firstResults';navigate('results','prospect')");
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');
 prospect.window.eval('showRequest()');prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
