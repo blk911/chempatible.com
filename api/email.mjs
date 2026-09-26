@@ -54,7 +54,7 @@ async function handler(req){
    if(!member||member.contact!==sender)return json({error:'Verify the email on your member page.'},403);
    if(name.length<1||name.length>50||theirName.length<1||theirName.length>50||!email(theirEmail)||!photoData(member.photo)||!Array.isArray(member.answers)||member.answers.length!==10||!member.answers.every(x=>Number.isInteger(x)&&x>=0&&x<=2))return json({error:'Complete your ten answers and enter a valid recipient name and email.'},400);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
-   const token=randomBytes(32).toString('hex');const link=`https://chempatible.com/?invite=${token}`;
+   const token=randomBytes(32).toString('hex');const link=new URL(`/?invite=${token}`,req.url).href;
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail},${member.id})`;
    try{await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
    const senderFirst=first(name),recipientFirst=first(theirName),safeName=escape(senderFirst),safeRecipient=escape(recipientFirst);

@@ -48,4 +48,5 @@ assert.equal(state.messages.length,2);
 const newer=await create(),next=await newer.json();assert.notEqual(next.id,code.id,'Each code gets a new pair ID');
 invitation.expires_at=new Date(Date.now()-1000);
 const expired=await connection.fetch(new Request(next.url));assert.equal(expired.status,410);
+const devCode=await qrApi.fetch(new Request('https://chempatible-dev.vercel.app/api/qr',{method:'POST',headers:{cookie:memberCookie}}));assert.match((await devCode.json()).url,/^https:\/\/chempatible-dev\.vercel\.app\/\?invite=[a-f0-9]{64}$/);
 console.log('QR creation, first-phone claim, pair ownership, expiration, and chat passed');
