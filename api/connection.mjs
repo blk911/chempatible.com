@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
+import {ensureConnectionSchema} from './connection-schema.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
@@ -15,6 +16,7 @@ async function handler(req){
  if(!process.env.DATABASE_URL)return reply({error:'Connection storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{
+  await ensureConnectionSchema(sql);
   const url=new URL(req.url);
   if(req.method==='GET'){
    const token=url.searchParams.get('invite');

@@ -1,5 +1,6 @@
 import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
+import {ensureConnectionSchema} from './connection-schema.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -50,9 +51,10 @@ async function handler(req){
    const {member,recipient}=body,name=String(member?.name||'').trim(),theirName=String(recipient?.name||'').trim(),theirEmail=String(recipient?.email||'').trim().toLowerCase();
    if(name.length<1||name.length>50||theirName.length<1||theirName.length>50||!email(theirEmail)||!photoData(member?.photo)||!Array.isArray(member?.answers)||member.answers.length!==10||!member.answers.every(x=>Number.isInteger(x)&&x>=0&&x<=2))return json({error:'Complete your ten answers and enter a valid recipient name and email.'},400);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
+   await ensureConnectionSchema(sql);
    const token=randomBytes(32).toString('hex');const link=`https://chempatible.com/?invite=${token}`;
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail})`;
-   await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`;
+   try{await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
    const safeName=escape(name),safeRecipient=escape(theirName);
    const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center"><p style="font-size:13px;letter-spacing:2px;color:#c45b46;font-weight:bold">CHEMPATIBILITY</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><h1 style="margin:18px 0 4px">${safeName}</h1><h2 style="margin:0 0 16px">Let’s talk!</h2><p>Hi ${safeRecipient}, pick your answers to five quick situations, then see how we answered.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:14px 24px;border-radius:9px;text-decoration:none;font-weight:bold">PLAY MY FIVE →</a><p style="font-size:12px;color:#677880;margin-top:24px">Invitation from ${safeName} via Chempatibility.</p></div>`;
    const text=`${name} — Let's talk!\n\nHi ${theirName}, pick your answers to five quick situations, then see how we answered.\n\nOpen your invitation: ${link}`;

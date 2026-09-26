@@ -44,5 +44,11 @@ for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval(
 assert.equal(prospect.window.eval('s.view'),'results');assert.equal(prospect.window.eval('s.member.answers.length'),10);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.prospect.answers.length'),10);
 prospect.window.eval('continueAfterSecond()');prospect.window.document.getElementById('prospectEmail').value='mike@example.com';await prospect.window.eval('saveEmail()');assert.equal(prospect.window.eval('s.view'),'tests');
+member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};renderVerify();emailApi=async(data)=>{if(data.action==='verify')return {ok:true};throw Error('Temporary send failure')}");
+member.window.document.getElementById('emailCode').value='123456';
+await member.window.eval('verifyAndSend()');
+assert.equal(member.window.document.getElementById('emailCode').disabled,true);
+assert.match(member.window.document.querySelector('.modalForm button').textContent,/RETRY SEND/);
+assert.match(member.window.document.getElementById('verifyError').textContent,/Temporary send failure/);
 member.window.close();prospect.window.close();
 console.log('Two-browser UI path passed');

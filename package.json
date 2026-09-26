@@ -6,7 +6,7 @@
     "@neondatabase/serverless": "^1.0.2"
   },
   "scripts": {
-    "test": "node tests/email.test.mjs && node tests/connection.test.mjs && node tests/two-browser.test.mjs"
+    "test": "node tests/schema.test.mjs && node tests/email.test.mjs && node tests/connection.test.mjs && node tests/two-browser.test.mjs"
   },
   "devDependencies": {
     "jsdom": "^30.1.1"

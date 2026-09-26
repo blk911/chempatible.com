@@ -17,7 +17,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(v[0]));return [{messages:state.messages}]}
  throw Error('Unmocked SQL '+q)
 }
-let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;');globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
+let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import {ensureConnectionSchema} from './connection-schema.mjs';",'const ensureConnectionSchema=async()=>{};');globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
 const {default:api}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const call=async(body,cookie)=>{let r=await api.fetch(new Request('https://chempatible.com/api/connection',{method:'POST',headers:{'content-type':'application/json',...(cookie?{cookie:`chempat_session=${'b'.repeat(64)}`}:{})},body:JSON.stringify(body)}));return [r.status,await r.json()]};
 const get=async(query,cookie)=>{let r=await api.fetch(new Request('https://chempatible.com/api/connection?'+query,{headers:cookie?{cookie:`chempat_session=${'b'.repeat(64)}`}:{}}));return [r.status,await r.json()]};
