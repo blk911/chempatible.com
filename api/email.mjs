@@ -5,12 +5,13 @@ import {ensureConnectionSchema} from './connection-schema.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const first=s=>String(s).trim().split(/\s+/)[0];
 const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store',...headers}});
 const cookie=req=>Object.fromEntries((req.headers.get('cookie')||'').split(';').map(x=>x.trim().split('=')));
 const photoData=s=>typeof s==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(s)&&s.length<250000;
-async function sendMail(to,subject,html,text,photo){
+async function sendMail(to,subject,html,text,photo,fromName='Chempatibility'){
  const from=process.env.CHEMPAT_FROM_EMAIL;
- const body={personalizations:[{to:[{email:to}]}],from:{email:from,name:'Chempatibility'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
+ const body={personalizations:[{to:[{email:to}]}],from:{email:from,name:fromName},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
  if(photo)body.attachments=[{content:photo.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}];
  const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
@@ -55,10 +56,10 @@ async function handler(req){
    const token=randomBytes(32).toString('hex');const link=`https://chempatible.com/?invite=${token}`;
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail})`;
    try{await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
-   const safeName=escape(name),safeRecipient=escape(theirName);
-   const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">CHEMPATIBILITY · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><h1 style="font-size:30px;margin:20px 0 7px">${safeName} picked their five.<br>Your move.</h1><p style="font-size:17px;line-height:1.5;margin:15px 0 22px">Hey ${safeRecipient}, I caught your vibe. Answer five quick situations and we’ll see where we click. It takes a minute.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">I’M IN · PLAY THE FIVE →</a><p style="font-size:12px;color:#677880;margin-top:25px">Your answers reveal together after you play.</p></div>`;
-   const text=`${name} picked their five. Your move.\n\nHey ${theirName}, I caught your vibe. Answer five quick situations and we'll see where we click. It takes a minute.\n\nI'm in — play the five: ${link}`;
-   try{await sendMail(theirEmail,`${name} picked their five. Your move.`,html,text,member.photo)}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
+   const senderFirst=first(name),recipientFirst=first(theirName),safeName=escape(senderFirst),safeRecipient=escape(recipientFirst);
+   const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">CHEMPATIBILITY · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#c45b46;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">I like your vibe.<br>Tell me more!</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Answer five quick situations. Then you’ll see how we both answered.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">I’LL PLAY — GO →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeName}</p></div>`;
+   const text=`Hey ${recipientFirst},\n\nI like your vibe. Tell me more!\n\nAnswer five quick situations. Then you'll see how we both answered.\n\nI'll play — go: ${link}\n\n— ${senderFirst}`;
+   try{await sendMail(theirEmail,`${senderFirst}: I like your vibe. Tell me more!`,html,text,member.photo,`${senderFirst} via Chempatibility`)}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
    return json({ok:true,id:hash(token)});
   }
   return json({error:'Unknown action.'},400);
