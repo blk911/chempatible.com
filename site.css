@@ -22,3 +22,5 @@
 @media(max-width:700px){.navHome{font-size:.65rem;padding:6px}.chatPair{gap:8px;margin:8px 0}.chatPerson{padding:6px;gap:7px;font-size:.82rem}.chatPerson .face{width:clamp(92px,27vw,128px);height:clamp(92px,27vw,128px);font-size:1.5rem}.chatPerson b{min-width:0}.chatHeader.hero{padding:12px 0 8px}}
 
 @media(max-width:700px){.chatPerson{flex-direction:column;align-items:flex-start}.chatPerson .face{max-width:100%}}
+
+.photoPick{position:relative;display:inline-flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}.photoPick:focus-within{outline:3px solid #dc704e;outline-offset:2px}.photoFileInput{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;left:50%;bottom:0;pointer-events:none}.photoActions .photoPick{flex:1}
