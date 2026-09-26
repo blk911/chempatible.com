@@ -9,7 +9,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('SELECT email FROM email_sessions'))return v[0]===createHash('sha256').update('b'.repeat(64)).digest('hex')?[{email:'member@example.com'}]:[];
  if(q.startsWith('SELECT i.token_hash AS id'))return [{...state,id,recipient_name:member.recipient_name,recipient_email:member.recipient_email}];
  if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='firstResults'")){Object.assign(state,{prospect_name:v[0],prospect_photo:v[1],prospect_answers:JSON.parse(v[2]),status:'firstResults'});return []}
- if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='request'")){Object.assign(state,{prospect_name:v[0],prospect_phone:v[1],prospect_photo:v[2],status:'request'});return []}
+ if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='request'")){Object.assign(state,{prospect_name:v[0],prospect_phone:v[1],prospect_email:v[2],prospect_photo:v[3],status:'request'});return []}
  if(q.startsWith('UPDATE connection_state c SET status=')){assert.equal(v[1],id);assert.equal(v[2],'member@example.com');state.status=v[0];return [{status:v[0]}]}
  if(q.startsWith('UPDATE connection_state SET prospect_answers=')){state.prospect_answers=JSON.parse(v[0]);state.status='secondResults';return []}
  if(q.startsWith('UPDATE connection_state SET prospect_email=')){state.prospect_email=v[0];state.status='email';return []}
@@ -24,7 +24,8 @@ const get=async(query,cookie)=>{let r=await api.fetch(new Request('https://chemp
 assert.equal((await get('invite='+raw))[1].answers.length,0);
 assert.equal((await call({action:'first',token:raw,photo:member.sender_photo,answers:[1,1,2,0,0]}))[0],200);
 assert.equal((await get('inbox=1',true))[1].connections[0].status,'firstResults');
-assert.equal((await call({action:'request',token:raw,name:'Mike',phone:'5555550123',photo:member.sender_photo}))[0],200);
+assert.equal((await call({action:'request',token:raw,name:'Mike',contact:'mike@example.com',photo:member.sender_photo}))[0],200);
+assert.equal(state.prospect_email,'mike@example.com');assert.equal(state.prospect_phone,null);
 assert.equal((await call({action:'decision',id,decision:'accept'},true))[1].status,'chat');
 assert.equal((await get('invite='+raw))[1].answers.length,10);
 assert.equal((await call({action:'message',token:raw,text:'Hello!'}))[1].messages.length,1);

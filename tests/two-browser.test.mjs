@@ -13,7 +13,7 @@ async function mockFetch(url,opt={}){
  else if(u.searchParams.has('inbox'))data={connections:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
  else if(u.searchParams.has('invite'))data={...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
  else if(body.action==='first'){Object.assign(state,{prospect_name:'Mike',prospect_photo:body.photo,prospect_answers:body.answers,status:'firstResults'});data={ok:true,answers:inviter.answers.slice(0,5)}}
- else if(body.action==='request'){Object.assign(state,{prospect_name:body.name,prospect_phone:body.phone,prospect_photo:body.photo,status:'request'});data={ok:true}}
+ else if(body.action==='request'){Object.assign(state,{prospect_name:body.name,prospect_email:body.contact,prospect_photo:body.photo,status:'request'});data={ok:true}}
  else if(body.action==='decision'){state.status=body.decision==='accept'?'chat':'declined';data={ok:true}}
  else if(body.action==='message'){state.messages.push({by:body.token?'prospect':'member',text:body.text});data={messages:state.messages}}
  else if(body.action==='second'){state.prospect_answers=body.answers;state.status='secondResults';data={ok:true}}
@@ -35,9 +35,10 @@ for(let i=0;i<5;i++){prospect.window.eval('pick(0)');await prospect.window.eval(
 assert.equal(prospect.window.eval('s.view'),'revealPhoto');
 prospect.window.eval(`s.prospect.photo='${photo}'`);await prospect.window.eval('recordFirstFive()');prospect.window.eval("s.phase='firstResults';navigate('results','prospect')");
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');
-prospect.window.eval('showRequest()');prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectPhone').value='5555550123';await prospect.window.eval('sendRequest()');
+prospect.window.eval('showRequest()');prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
+assert.equal(prospect.window.eval('s.view'),'profile');assert.match(prospect.window.document.querySelector('.profileGrid').textContent,/Chempats/i);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');
-await member.window.eval('acceptRequest()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'conversation');
+await member.window.eval('acceptRequest()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'profile');prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
 prospect.window.document.getElementById('message').value='Hello';await prospect.window.eval('sendMessage()');await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.messages.length'),1);
 prospect.window.eval('startSecondFive()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.phase'),'secondFive');
 for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
