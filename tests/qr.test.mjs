@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {calls as opsCalls} from './ops-stub.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -22,9 +23,9 @@ async function sql(strings,...values){const query=strings.join('?').replace(/\s+
  throw Error('Unmocked QR SQL '+query);
 }
 globalThis.__qrSql=sql;process.env.DATABASE_URL='postgres://test';
-const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;');
+const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
 const qrApi=(await import('data:text/javascript;base64,'+Buffer.from(qrSource).toString('base64'))).default;
-const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;');
+const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
 const connection=(await import('data:text/javascript;base64,'+Buffer.from(connSource).toString('base64'))).default;
 const memberCookie=`chempat_member=${memberToken}`;
 const create=()=>qrApi.fetch(new Request('https://chempatible.com/api/qr',{method:'POST',headers:{cookie:memberCookie}}));

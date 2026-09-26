@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><meta name="theme-color" content="#173b4c"><title>Admin sign in · Chempatibility</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="site.css"></head>
+<body><div class="wrap"><header class="nav"><a class="logo" href="/" style="text-decoration:none">CHEM<span>PATIBILITY</span></a></header>
+<main><section class="box joinCard" style="margin-top:40px">
+<div class="eyebrow">ADMIN</div>
+<h2 id="title">Sign in</h2>
+<p id="lead">We’ll email a six digit code to the admin address.</p>
+<form id="emailStep"><input class="joinInput" id="email" type="email" autocomplete="email" aria-label="Admin email" placeholder="Admin email" required><button class="button nextButton" type="submit">SEND CODE →</button></form>
+<form id="codeStep" hidden><input class="joinInput" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-label="Six digit code" placeholder="000000" required><button class="button nextButton" type="submit">SIGN IN →</button></form>
+<p id="error" class="error" role="alert"></p>
+</section></main></div>
+<script src="admin-login.js"></script>
+</body></html>

@@ -46,3 +46,15 @@ CREATE TABLE IF NOT EXISTS connection_state (
   claim_hash text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+-- Moderation and activity (api/_ops.mjs also creates these on first use).
+CREATE TABLE IF NOT EXISTS activity (id bigserial PRIMARY KEY, at timestamptz NOT NULL DEFAULT now(), kind text NOT NULL, member_id uuid, connection_id text, detail jsonb NOT NULL DEFAULT '{}'::jsonb);
+CREATE INDEX IF NOT EXISTS activity_at_idx ON activity(at DESC);
+CREATE INDEX IF NOT EXISTS activity_member_idx ON activity(member_id, at DESC);
+CREATE TABLE IF NOT EXISTS reports (id uuid PRIMARY KEY, created_at timestamptz NOT NULL DEFAULT now(), connection_id text NOT NULL, reporter_side text NOT NULL, reporter_member_id uuid, reporter_name text, reported_member_id uuid, reported_name text, reported_contact text, reason text NOT NULL, note text, chat jsonb NOT NULL DEFAULT '[]'::jsonb, status text NOT NULL DEFAULT 'open', reviewed_at timestamptz, UNIQUE(connection_id, reporter_side));
+CREATE INDEX IF NOT EXISTS reports_reported_idx ON reports(reported_member_id);
+ALTER TABLE members ADD COLUMN IF NOT EXISTS suspended_until timestamptz;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS blocked_at timestamptz;
+ALTER TABLE members ADD COLUMN IF NOT EXISTS admin_notes jsonb NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS prospect_member_id uuid;
+ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS ended_at timestamptz;
+ALTER TABLE connection_state ADD COLUMN IF NOT EXISTS ended_by text;

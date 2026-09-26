@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {calls as opsCalls} from './ops-stub.mjs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 const raw='a'.repeat(64),id=createHash('sha256').update(raw).digest('hex');
@@ -17,7 +18,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(v[0]));return [{messages:state.messages}]}
  throw Error('Unmocked SQL '+q)
 }
-let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import {ensureConnectionSchema} from './connection-schema.mjs';",'const ensureConnectionSchema=async()=>{};').replace("import {ensureQrSchema} from './qr-schema.mjs';",'const ensureQrSchema=async()=>{};');globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
+let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;').replace("import {ensureConnectionSchema} from './connection-schema.mjs';",'const ensureConnectionSchema=async()=>{};').replace("import {ensureQrSchema} from './qr-schema.mjs';",'const ensureQrSchema=async()=>{};');globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
 const {default:api}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
 const call=async(body,cookie)=>{let r=await api.fetch(new Request('https://chempatible.com/api/connection',{method:'POST',headers:{'content-type':'application/json',...(cookie?{cookie:`chempat_session=${'b'.repeat(64)}`}:{})},body:JSON.stringify(body)}));return [r.status,await r.json()]};
 const get=async(query,cookie)=>{let r=await api.fetch(new Request('https://chempatible.com/api/connection?'+query,{headers:cookie?{cookie:`chempat_session=${'b'.repeat(64)}`}:{}}));return [r.status,await r.json()]};
@@ -33,4 +34,13 @@ assert.equal((await call({action:'message',id,text:'Hi Mike!'},true))[1].message
 assert.equal((await call({action:'second',token:raw,answers:[1,1,2,0,0,2,1,0,1,2]}))[0],200);
 assert.equal((await call({action:'email',token:raw,email:'mike@example.com'}))[0],200);
 assert.equal((await get('inbox=1',true))[1].connections[0].prospect_email,'mike@example.com');
+assert.ok(['first_five','request','accept','message','next_five','email_shared'].every(k=>opsCalls.some(c=>c.kind===k)),'every step is logged');
+assert.equal(opsCalls.filter(c=>c.kind==='link').length,2,'the invitee is linked to their member page');
+assert.equal((await call({action:'report',token:raw,reason:'harassment',note:'Rude'}))[0],200);
+let ended=opsCalls.filter(c=>c.kind==='end').at(-1);assert.equal(ended.side,'prospect');assert.equal(ended.id,id);assert.equal(ended.report.reason,'harassment');
+assert.equal((await call({action:'unmatch',id},true))[0],200);
+ended=opsCalls.filter(c=>c.kind==='end').at(-1);assert.equal(ended.side,'member');assert.equal(ended.report,null);
+assert.equal((await call({action:'unmatch',id})) [0],401,'members must be signed in to unmatch');
+state.status='ended';const closed=(await get('inbox=1',true))[1].connections[0];assert.equal(closed.prospect_email,null);assert.equal(closed.messages.length,0);
+assert.equal((await get('invite='+raw))[1].messages.length,0,'an ended chat is hidden from both sides');
 console.log('Cross-browser API transitions passed');

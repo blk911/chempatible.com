@@ -1,5 +1,6 @@
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
+import * as ops from './_ops.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const reply=(body,status=200,headers={})=>Response.json(body,{status,headers:{'cache-control':'no-store',...headers}});
@@ -41,20 +42,23 @@ async function handler(req){
    const name=String(body.name||'').trim(),contact=String(body.contact||'').trim().toLowerCase(),photo=body.photo,answers=body.answers||[];
    if(name.length<1||name.length>50||!validContact(contact)||!validPhoto(photo)||!validAnswers(answers))return reply({error:'Add your first name, contact, and picture.'},400);
    if(body.agreed!==true)return reply({error:'Confirm you’re 18 or older and agree to the Terms and Privacy Policy.'},400);
+   const paused=await ops.standingByContact(sql,contact);if(paused)return reply(paused,403);
    if(token){
     const existing=await sql`SELECT contact FROM members WHERE session_hash=${hash(token)}`;
     if(existing[0]&&existing[0].contact!==contact)return reply({error:'This device already has a different member page. Open this invitation in a private window.'},409);
     const rows=await sql`UPDATE members SET name=${name},contact=${contact},photo=${photo},answers=CASE WHEN jsonb_array_length(answers)>${answers.length} THEN answers ELSE ${JSON.stringify(answers)}::jsonb END,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers`;
-    if(rows[0])return reply({member:rows[0]});
+    if(rows[0]){await ops.log(sql,'profile_updated',{member:rows[0].id});return reply({member:rows[0]})}
    }
    const fresh=randomBytes(32).toString('hex');
    const rows=await sql`INSERT INTO members(id,session_hash,name,contact,photo,answers) VALUES(${randomUUID()},${hash(fresh)},${name},${contact},${photo},${JSON.stringify(answers)}::jsonb) RETURNING id,name,contact,photo,answers`;
+   await ops.log(sql,'signup',{member:rows[0].id,detail:{channel:answers.length?'invitation':'direct'}});
    return reply({member:rows[0]},200,{'set-cookie':`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`});
   }
   if(body.action==='answers'){
    if(!token)return reply({error:'Join the game first.'},401);
    if(!validAnswers(body.answers)||body.answers.length!==10)return reply({error:'Answer all ten to finish your page.'},400);
    const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers`;
+   if(rows[0])await ops.log(sql,'ten_answered',{member:rows[0].id});
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
   }
   return reply({error:'Unknown action.'},400);
