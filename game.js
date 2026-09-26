@@ -12,10 +12,10 @@ const QUESTIONS=[
   {topic:'KEEPING AGREEMENTS',q:'You made plans, then something better comes up. What do you do?',a:['Keep our plans.','Ask if changing plans would be okay.','Suggest another time.']}
 ];
 const TESTS=[['Love Language','How you show and receive affection','love-language'],['Attachment','How you respond to closeness and distance','attachment'],['Communication Style','How you start and repair conversations','communication-style'],['Emotional Expression','How you share feelings','emotional-expression'],['Personality','Patterns that shape how you relate','personality']];
-const KEY='chempatibility.walkthrough.v4';
+const KEY='chempatibility.walkthrough.v5';
 const invitationToken=new URLSearchParams(location.search).get('invite');
 // A new key starts everyone with a clean walkthrough after this deployment.
-try{sessionStorage.removeItem('chempatibility.walkthrough.v2');sessionStorage.removeItem('chempatibility.walkthrough.v3')}catch{}
+try{for(const old of ['v2','v3','v4'])sessionStorage.removeItem(`chempatibility.walkthrough.${old}`)}catch{}
 const blank=()=>({view:'landing',joinStep:1,actor:'member',member:{name:'',contact:'',photo:'',answers:[]},prospect:{name:'',phone:'',email:'',photo:'',answers:[]},connectionId:'',liveInvite:false,liveToken:'',liveMember:false,liveId:'',inbox:[],memberQuestionsOpen:false,prospectQuestionsOpen:false,phase:'registration',index:0,pick:null,modal:'',messages:[],notice:'',testRequest:''});
 let s;try{s={...blank(),...JSON.parse(sessionStorage.getItem(KEY)||'{}')}}catch{s=blank()}
 if(!['landing','dashboard','profile','questions','invitee','revealPhoto','results','request','conversation','email','tests'].includes(s.view))s.view='landing';
@@ -107,9 +107,9 @@ async function uploadPhoto(event,actor){
  }catch(e){$(target).textContent=e.message||'Could not open this picture.'}
 }
 function resetWalkthrough(){
- if(!confirm('Clear this walkthrough and start over in this browser tab?'))return;
+ if(!confirm('Clear this page in this browser tab? This does not clear sent invitations or the database.'))return;
  cameraStream?.getTracks().forEach(t=>t.stop());cameraStream=null;
- try{sessionStorage.removeItem(KEY);sessionStorage.removeItem('chempatibility.walkthrough.v2');sessionStorage.removeItem('chempatibility.walkthrough.v3')}catch{}
+ try{for(const version of ['v2','v3','v4','v5'])sessionStorage.removeItem(`chempatibility.walkthrough.${version}`)}catch{}
  s=blank();render();window.scrollTo(0,0);
 }
 function finishRegistration(){if(!s.member.name||!s.member.contact||!s.member.photo){$('joinError').textContent='Complete your details and picture to continue.';return}s.modal='welcome';renderModal();save()}
@@ -154,7 +154,7 @@ function continueAfterSecond(){s.phase='email';navigate('email',s.actor)}
 async function saveEmail(){let v=$('prospectEmail').value.trim();if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){$('emailError').textContent='Enter a valid email address.';return}try{if(s.liveInvite)await connectionApi({action:'email',token:s.liveToken,email:v});s.prospect.email=v;showTests()}catch(e){$('emailError').textContent=e.message}}
 function showTests(){s.phase='tests';navigate('tests',s.actor)}
 function switchView(){if(s.actor==='member'){if(s.phase==='ready'||s.phase==='invited')simulateScan();else if(s.phase==='awaitingPhoto')navigate('revealPhoto','prospect');else if(s.phase==='request'||s.phase==='declined')navigate('request','prospect');else if(s.phase==='firstResults')navigate(s.prospect.photo?'results':'revealPhoto','prospect');else if(s.phase==='secondFive')navigate('questions','prospect');else if(s.phase==='secondResults')navigate('results','prospect');else if(s.phase==='email')navigate('email','prospect');else navigate('conversation','prospect')}else{if(s.phase==='request'||s.phase==='awaitingPhoto')navigate('dashboard','member');else if(s.phase==='firstResults')navigate('results','member');else if(s.phase==='secondResults')navigate('results','member');else if(s.phase==='ready')navigate('dashboard','member');else navigate('conversation','member')}}
-function demoNav(){let current=$('navUser');if(!s.liveInvite&&!s.liveMember&&s.view!=='landing'&&s.member.answers.length===10)current.insertAdjacentHTML('beforeend',`<button class="link" type="button" onclick="switchView()">View as ${s.actor==='member'?esc(name('prospect')):esc(name('member'))}</button>`);current.insertAdjacentHTML('beforeend','<button class="link resetLink" type="button" onclick="resetWalkthrough()">RESET</button>')}
+function demoNav(){let current=$('navUser');if(!s.liveInvite&&!s.liveMember&&s.view!=='landing'&&s.member.answers.length===10)current.insertAdjacentHTML('beforeend',`<button class="link" type="button" onclick="switchView()">View as ${s.actor==='member'?esc(name('prospect')):esc(name('member'))}</button>`);current.insertAdjacentHTML('beforeend','<button class="link resetLink" type="button" onclick="resetWalkthrough()">RESET THIS TAB</button>')}
 const originalRender=render;render=function(){originalRender();demoNav()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&s.modal)closeInvite()});
 if(invitationToken)openEmailInvitation();else{render();if(s.liveMember||s.liveInvite)refreshLive()}
