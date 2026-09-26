@@ -8,7 +8,7 @@ const ops=await import('../api/_ops.mjs');
 
 // In-memory stand-in for the tables _ops.mjs touches.
 const members={},connections={},reports=[],activity=[],codes={};
-const bad={id:'22222222-2222-4222-8222-222222222222',contact:'bad@example.com',suspended_until:null,blocked_at:null,admin_notes:[]};
+const bad={id:'22222222-2222-4222-8222-222222222222',name:'Mike',contact:'bad@example.com',suspended_until:null,blocked_at:null,admin_notes:[]};
 members[bad.id]=bad;
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
  if(/^(CREATE|ALTER)/.test(q))return [];
@@ -29,8 +29,17 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('INSERT INTO email_codes')){codes[v[0]]={code_hash:v[1],last_sent_at:new Date(),attempts:0};return []}
  if(q.startsWith('UPDATE email_codes SET attempts'))return codes[v[0]]&&codes[v[0]].attempts++<5?[{code_hash:codes[v[0]].code_hash}]:[];
  if(q.startsWith('DELETE FROM email_codes')){delete codes[v[0]];return []}
+ if(q.startsWith('SELECT name,contact FROM members WHERE id='))return members[v[0]]?[members[v[0]]]:[];
+ if(q.startsWith('DELETE FROM reports WHERE reporter_member_id=')){for(let i=reports.length-1;i>=0;i--)if(reports[i].reported_member_id===v[1]||reports[i].reporter_member_id===v[0])reports.splice(i,1);return []}
+ if(q.startsWith('DELETE FROM activity WHERE member_id=')){for(let i=activity.length-1;i>=0;i--)if(activity[i].member_id===v[0])activity.splice(i,1);return []}
+ if(q.startsWith("UPDATE connection_state SET prospect_name='Deleted member'")){for(const c of Object.values(connections))if(c.prospect_member_id===v[0]||c.prospect_email===v[1]||c.prospect_phone===v[2])Object.assign(c,{prospect_name:'Deleted member',prospect_email:null,prospect_phone:null,prospect_member_id:null,messages:[],status:c.status==='invited'?'invited':'ended'});return []}
+ if(q.startsWith("UPDATE invitations SET recipient_name='Deleted member'"))return [];
+ if(q.startsWith('DELETE FROM invitations WHERE sender_member_id=')){for(const [k,c] of Object.entries(connections))if(c.sender_member_id===v[0]||c.sender_email===v[1])delete connections[k];return []}
+ if(q.startsWith('DELETE FROM email_sessions'))return [];
+ if(q.startsWith('DELETE FROM members WHERE id=')){delete members[v[0]];return []}
  throw Error('Unmocked SQL '+q);
 }
+sql.transaction=async queries=>Promise.all(queries);
 const connection=(n,extra={})=>{const id=String(n).repeat(64).slice(0,64);connections[id]={token_hash:id,sender_member_id:'11111111-1111-4111-8111-111111111111',sender_name:'Cindy',sender_email:'cindy@example.com',status:'chat',prospect_member_id:bad.id,prospect_name:'Mike',prospect_email:'bad@example.com',prospect_phone:null,messages:[{by:'prospect',text:'hey',at:'2026-09-26T20:00:00Z'}],...extra};return id};
 
 // Strike ladder: 1-2 flag, 3 suspends 30 days, 4+ blocks.
@@ -105,4 +114,15 @@ assert.equal((await view('view=me'))[0],401);
 assert.deepEqual(await view('view=me',session),[200,{email:'blk911@gmail.com'}]);
 assert.equal((await post({action:'block',id:bad.id}))[0],401,'admin actions need the cookie');
 assert.ok(activity.some(a=>a.kind==='admin_login'));
-console.log('Moderation strikes, admin sign-in, and page gate passed');
+// Delete member: admin only, removes the member and scrubs them from connections they joined.
+const joined=connection(7);connections[joined].prospect_phone=null;
+assert.equal((await post({action:'delete_member',id:bad.id}))[0],401);
+assert.equal((await post({action:'delete_member',id:'33333333-3333-4333-8333-333333333333'},session))[0],404);
+assert.equal((await post({action:'delete_member',id:bad.id},session))[0],200);
+assert.equal(members[bad.id],undefined);
+assert.equal(reports.some(r=>r.reported_member_id===bad.id),false);
+assert.equal(activity.some(a=>a.member_id===bad.id),false);
+assert.deepEqual([connections[joined].prospect_name,connections[joined].prospect_email,connections[joined].prospect_member_id,connections[joined].messages.length,connections[joined].status],['Deleted member',null,null,0,'ended']);
+assert.equal(activity.at(-1).kind,'admin_delete');assert.equal(activity.at(-1).detail.name,'Mike');
+assert.equal((await post({action:'delete_member',id:bad.id},session))[0],404,'already gone');
+console.log('Moderation strikes, admin sign-in, page gate, and member delete passed');
