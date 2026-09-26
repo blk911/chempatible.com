@@ -43,9 +43,9 @@ await prospect.window.eval('openCamera()');
 assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/No camera is available/);
 assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
 prospect.window.eval(`s.prospect.photo='${photo}';render()`);prospect.window.document.getElementById('newMemberName').value='Mike';prospect.window.document.getElementById('newMemberContact').value='mike@example.com';await prospect.window.eval('finishProspectRegistration()');assert.equal(prospect.window.eval('s.prospectId'),'member-id');assert.equal(prospect.window.eval('s.view'),'results');
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.dashboardLower').textContent,/FINISH MY TEN/);prospect.window.eval("navigate('results','prospect')");
+await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.dashboardLower').textContent,/ANSWER MY NEXT FIVE/);prospect.window.eval("navigate('results','prospect')");
 prospect.window.eval('showRequest()');assert.equal(prospect.window.document.querySelectorAll('.requestInviter img').length,1);assert.equal(prospect.window.document.querySelectorAll('.requestCard input[type=file]').length,0);prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
-assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/YOUR GAME IS ON/);assert.match(prospect.window.document.querySelector('.dashboardLower').textContent,/Chempats/i);assert.equal(prospect.window.document.querySelectorAll('.visitorStatus .profilePair img').length,2);
+assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/YOU MADE YOUR MOVE/i);assert.match(prospect.window.document.querySelector('.chempatsPanel').textContent,/Chempats/i);assert.equal(prospect.window.document.querySelectorAll('.memberDashHero img, .chempatsPanel img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');
 prospect.window.eval('startMyNextFive()');
 for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
@@ -56,11 +56,11 @@ prospect.window.eval('openInvite()');assert.match(prospect.window.document.query
 await prospect.window.eval("pendingInvite={name:'Sam',email:'sam@example.com'};s.modal='send';renderModal();sendInvitation()");
 assert.equal(prospect.window.eval('s.view'),'dashboard');
 assert.equal(prospect.window.eval('s.outgoing.length'),1);
-assert.match(prospect.window.document.querySelector('.outgoingCard').textContent,/Sam/);
-await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/PRIVATE CHAT IS OPEN/);prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
+assert.match(prospect.window.document.querySelector('.chempatsPanel').textContent,/Sam/);
+await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/Private Chat/i);prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
 assert.match(prospect.window.document.querySelector('.chatHeader h1').textContent,/Private Chat/);
 assert.equal(prospect.window.document.querySelectorAll('.chatPair img').length,2);
-prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/PRIVATE CHAT IS OPEN/);prospect.window.eval('openConversation()');
+prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.visitorIntro').textContent,/Private Chat/i);prospect.window.eval('openConversation()');
 prospect.window.document.getElementById('message').value='Hello';await prospect.window.eval('sendMessage()');await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.messages.length'),1);
 await prospect.window.eval('startSecondFive()');
 assert.equal(prospect.window.eval('s.view'),'results');assert.equal(prospect.window.eval('s.member.answers.length'),10);
