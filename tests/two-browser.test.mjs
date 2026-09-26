@@ -26,6 +26,7 @@ const member=page('https://chempatible.com/');
 member.window.eval(`s.member.name='Cindy';s.member.contact='cindy@example.com';s.member.photo='${photo}';s.member.answers=[0,1,2,0,1,2,0,1,2,0];s.phase='ready';navigate('dashboard','member')`);
 await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s.modal='send';renderModal();sendInvitation()");
 assert.equal(member.window.eval('s.liveMember'),true);
+assert.equal(member.window.eval('s.view'),'dashboard');
 const prospect=page('https://chempatible.com/?invite='+token);
 await new Promise(r=>setTimeout(r,20));
 assert.equal(prospect.window.eval('s.view'),'invitee');
@@ -33,12 +34,17 @@ assert.equal(prospect.window.eval('s.member.name'),'Cindy');
 prospect.window.eval('startProspect()');
 for(let i=0;i<5;i++){prospect.window.eval('pick(0)');await prospect.window.eval('answerQuestion()')}
 assert.equal(prospect.window.eval('s.view'),'revealPhoto');
+assert.equal(prospect.window.document.getElementById('revealCameraInput').getAttribute('capture'),'user');
+assert.equal(prospect.window.document.querySelector('.revealPhotoStep video'),null);
 prospect.window.eval(`s.prospect.photo='${photo}'`);await prospect.window.eval('recordFirstFive()');prospect.window.eval("s.phase='firstResults';navigate('results','prospect')");
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');
 prospect.window.eval('showRequest()');prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
 assert.equal(prospect.window.eval('s.view'),'profile');assert.match(prospect.window.document.querySelector('.profileGrid').textContent,/Chempats/i);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');
-await member.window.eval('acceptRequest()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'profile');prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
+await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'profile');prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
+assert.match(prospect.window.document.querySelector('.chatHeader h1').textContent,/Private Chat/);
+assert.equal(prospect.window.document.querySelectorAll('.chatPair img').length,2);
+prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'profile');prospect.window.eval('openConversation()');
 prospect.window.document.getElementById('message').value='Hello';await prospect.window.eval('sendMessage()');await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.messages.length'),1);
 prospect.window.eval('startSecondFive()');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.phase'),'secondFive');
 for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
