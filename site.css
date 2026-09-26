@@ -38,3 +38,10 @@
 .profilePair .face{width:100%;height:150px;border-radius:12px;font-size:2rem}
 .profilePair b{display:block;margin:5px 0 0;overflow-wrap:anywhere}
 @media(max-width:700px){.requestLayout{grid-template-columns:1fr;gap:11px;padding:12px}.requestInviter{order:-1;padding:10px;display:grid;grid-template-columns:105px minmax(0,1fr);align-items:start;gap:4px 11px}.requestInviter .eyebrow{grid-column:2}.requestInviter .face{grid-column:1;grid-row:1/4;width:105px;height:130px;font-size:2rem}.requestInviter b{grid-column:2;font-size:1rem}.requestInviter span:last-child{grid-column:2;font-size:.82rem}.requestLayout .requestForm{padding:5px}.profileIdentity .face{width:105px;height:125px}.profilePair .face{height:132px}.profileGrid{gap:10px}}
+.visitorIntro .visitorStatus{align-self:stretch}
+.visitorStatus .profilePair{max-width:none;margin:10px 0}
+.visitorStatus .profilePair .face{height:140px}
+.chempatRow{display:flex;align-items:center;gap:14px;margin:15px 0}
+.chempatRow .face{width:100px;height:112px;border-radius:12px;font-size:2rem}
+.chempatRow p{margin:3px 0}
+@media(max-width:700px){.visitorIntro .memberQuestion{padding:12px}.visitorStatus .profilePair .face{height:110px}.chempatRow .face{width:82px;height:96px}.visitorIntro .introPitch h2{font-size:1.35rem}}
