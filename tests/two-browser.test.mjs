@@ -9,7 +9,7 @@ const qrToken='e'.repeat(64),qrId='f'.repeat(64);
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
 const outgoingId='c'.repeat(64),outgoingState={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]};
 const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
-let registeredMember=null;
+let registeredMember=null,lastEnd=null;
 async function mockFetch(url,opt={},context){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
@@ -24,6 +24,7 @@ async function mockFetch(url,opt={},context){
  else if(body.action==='message'){const target=body.id===outgoingId?outgoingState:state;target.messages.push({by:body.token?'prospect':'member',text:body.text});data={messages:target.messages}}
  else if(body.action==='second'){state.prospect_answers=body.answers;state.status='secondResults';data={ok:true}}
  else if(body.action==='email'){state.prospect_email=body.email;state.status='email';data={ok:true}}
+ else if(body.action==='unmatch'||body.action==='report'){if(body.action==='report'&&!body.reason){status=400;data={error:'Choose a reason for your report.'}}else{Object.assign(state,{status:'ended',messages:[],prospect_email:null});lastEnd=body;data={ok:true,status:'ended'}}}
  else{status=400;data={error:'Unknown action'}}
  return {ok:status===200,status,json:async()=>data};
 }
@@ -128,5 +129,14 @@ assert.equal(existingMemberScan.window.eval('s.prospect.answers.length'),0);
 existingMemberScan.window.eval('startProspect()');assert.match(existingMemberScan.window.document.querySelector('#prospectQuestion').textContent,/CORE VALUES/);
 for(let i=0;i<5;i++){existingMemberScan.window.eval('pick(0)');await existingMemberScan.window.eval('answerQuestion()')}
 assert.equal(existingMemberScan.window.eval('s.view'),'revealPhoto');
+await member.window.eval('refreshLive()');member.window.eval(`selectChempat('${id}')`);
+{const d=member.window.document;assert.match(d.querySelector('.endControls').textContent,/Unmatch.*Report/);
+member.window.eval(`openEnd('${id}','report')`);assert.match(d.querySelector('.endModal h2').textContent,/Report Mike/);
+await member.window.eval('confirmEnd()');assert.match(d.getElementById('endError').textContent,/Choose what happened/);assert.equal(lastEnd,null);
+d.querySelector('input[name=reportReason][value=harassment]').checked=true;d.getElementById('reportNote').value='Kept messaging after I said stop';
+await member.window.eval('confirmEnd()');assert.equal(lastEnd.action,'report');assert.equal(lastEnd.id,id);assert.equal(lastEnd.reason,'harassment');assert.match(lastEnd.note,/said stop/);
+assert.equal(d.getElementById('modalHost').innerHTML,'');assert.match(d.querySelector('.notice').textContent,/review your report/);
+await member.window.eval('refreshLive()');member.window.eval(`selectChempat('${id}')`);
+assert.match(d.querySelector('.connectionFocus').textContent,/Connection ended/);assert.doesNotMatch(d.querySelector('.endControls').textContent,/Unmatch/);assert.equal(d.querySelector('.inlineChat'),null)}
 member.window.close();prospect.window.close();resumed.window.close();existingMemberScan.window.close();
 console.log('Two-browser UI path passed');

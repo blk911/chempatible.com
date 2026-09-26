@@ -1,5 +1,6 @@
 import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
+import * as ops from './_ops.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -52,6 +53,7 @@ async function handler(req){
    const memberRows=await sql`SELECT id,name,contact,photo,answers FROM members WHERE session_hash=${hash(memberToken)}`;
    const member=memberRows[0],name=String(member?.name||'').trim(),theirName=String(body.recipient?.name||'').trim(),theirEmail=String(body.recipient?.email||'').trim().toLowerCase();
    if(!member||member.contact!==sender)return json({error:'Verify the email on your member page.'},403);
+   const paused=await ops.standing(sql,member.id);if(paused)return json(paused,403);
    if(name.length<1||name.length>50||theirName.length<1||theirName.length>50||!email(theirEmail)||!photoData(member.photo)||!Array.isArray(member.answers)||member.answers.length!==10||!member.answers.every(x=>Number.isInteger(x)&&x>=0&&x<=2))return json({error:'Complete your ten answers and enter a valid recipient name and email.'},400);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
    const token=randomBytes(32).toString('hex');const link=new URL(`/?invite=${token}`,req.url).href;
@@ -61,6 +63,7 @@ async function handler(req){
    const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">CHEMPATIBILITY · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#c45b46;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">I’ll tell you five secrets about me.<br>Want to see if we vibe?</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Pick your answers to five quick ones. Then we’ll show each other ours.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">LET’S GO →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeName}</p></div>`;
    const text=`Hey ${recipientFirst},\n\nI’ll tell you five secrets about me. Want to see if we vibe?\n\nPick your answers to five quick ones. Then we'll show each other ours.\n\nLet's go: ${link}\n\n— ${senderFirst}`;
    try{await sendMail(theirEmail,`${senderFirst} has five secrets for you`,html,text,member.photo)}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
+   await ops.log(sql,'invite_emailed',{member:member.id,connection:hash(token)});
    return json({ok:true,id:hash(token)});
   }
   return json({error:'Unknown action.'},400);
