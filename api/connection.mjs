@@ -64,8 +64,8 @@ async function handler(req){
   if(body.action==='request'){
    const row=await ownInvitation(sql,body.token,req),name=String(body.name||'').trim(),contact=String(body.contact||body.phone||'').trim().toLowerCase();
    if(!row)return reply({error:'Invitation not found.'},404);
-   const isEmail=validEmail(contact),isCell=!isEmail&&contact.length<=30&&contact.replace(/\D/g,'').length>=10;
-   if(row.status!=='firstResults'||name.length<1||name.length>50||(!isEmail&&!isCell)||!validPhoto(body.photo))return reply({error:'Add your name, picture, and an email or ten-digit cell number.'},400);
+   const isEmail=validEmail(contact),isCell=ops.CELL_ENABLED&&!isEmail&&contact.length<=30&&contact.replace(/\D/g,'').length>=10;
+   if(row.status!=='firstResults'||name.length<1||name.length>50||(!isEmail&&!isCell)||!validPhoto(body.photo))return reply({error:ops.CELL_ENABLED?'Add your name, picture, and an email or ten-digit cell number.':'Add your name, picture, and email.'},400);
    await sql`UPDATE connection_state SET prospect_name=${name},prospect_phone=${isCell?contact:null},prospect_email=${isEmail?contact:null},prospect_photo=${body.photo},status='request',updated_at=now() WHERE invitation_hash=${row.token_hash}`;
    await ops.linkProspect(sql,row.token_hash,cookie(req).chempat_member);await ops.log(sql,'request',{member:actor,connection:row.token_hash});
    return reply({ok:true});

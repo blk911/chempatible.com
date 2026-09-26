@@ -9,11 +9,11 @@ const qrToken='e'.repeat(64),qrId='f'.repeat(64);
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
 const outgoingId='c'.repeat(64),outgoingState={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]};
 const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
-let registeredMember=null,lastEnd=null;
+let registeredMember=null,lastEnd=null;const memberCalls=[];
 async function mockFetch(url,opt={},context){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
- if(u.pathname==='/api/member'){if(opt.method==='POST'){if(body.action==='register')assert.equal(body.agreed,true,'registration must carry 18+ consent');registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
+ if(u.pathname==='/api/member'){if(opt.method==='POST'&&['logout','signin_start','signin_verify'].includes(body.action)){memberCalls.push(body.action);if(body.action==='logout')registeredMember=null;if(body.action==='signin_verify'){registeredMember={id:'member-id',name:'Cindy',contact:body.email,photo,answers:[0,1,2,0,1,2,0,1,2,0]};data={member:registeredMember}}else data={ok:true}}else if(opt.method==='POST'){if(body.action==='register')assert.equal(body.agreed,true,'registration must carry 18+ consent');registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
  else if(u.pathname==='/api/qr')data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,expiresAt:new Date(Date.now()+900000).toISOString()};
  else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id:body.member?.name==='Mike'?outgoingId:id};else data={email:'cindy@example.com'}}
  else if(u.searchParams.has('inbox'))data={connections:context?.eval('s.actor')==='prospect'?[{id:outgoingId,recipient_name:'Sam',recipient_email:'sam@example.com',...outgoingState}]:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
@@ -30,7 +30,8 @@ async function mockFetch(url,opt={},context){
 }
 function page(url){const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true});d.window.fetch=(url,opt)=>mockFetch(url,opt,d.window);d.window.eval(qrRenderer);d.window.scrollTo=()=>{};d.window.HTMLElement.prototype.scrollIntoView=()=>{};const script=d.window.document.createElement('script');script.textContent=source;d.window.document.body.append(script);return d}
 const joiner=page('https://chempatible.com/');
-{const d=joiner.window.document;d.getElementById('joinName').value='Cindy';d.getElementById('joinContact').value='asdf';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/ten-digit cell/);
+{const d=joiner.window.document;d.getElementById('joinName').value='Cindy';d.getElementById('joinContact').value='asdf';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/first name and email/);
+d.getElementById('joinContact').value='3035551234';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/first name and email/,'cell numbers are off for the email launch');assert.equal(d.getElementById('joinContact').type,'email');
 d.getElementById('joinContact').value='cindy@example.com';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/18 or older/);assert.equal(joiner.window.eval('s.joinStep'),1);
 d.getElementById('joinAgree').checked=true;joiner.window.eval('nextJoinStep()');assert.equal(joiner.window.eval('s.joinStep'),2);assert.equal(joiner.window.eval('s.member.agreed'),true);
 assert.equal(joiner.window.eval(`pic('x" onerror="alert(1)')`),'');assert.equal(joiner.window.eval(`pic('${photo}')`),photo);
@@ -138,5 +139,16 @@ await member.window.eval('confirmEnd()');assert.equal(lastEnd.action,'report');a
 assert.equal(d.getElementById('modalHost').innerHTML,'');assert.match(d.querySelector('.notice').textContent,/review your report/);
 await member.window.eval('refreshLive()');member.window.eval(`selectChempat('${id}')`);
 assert.match(d.querySelector('.connectionFocus').textContent,/Connection ended/);assert.doesNotMatch(d.querySelector('.endControls').textContent,/Unmatch/);assert.equal(d.querySelector('.inlineChat'),null)}
+// Log out from the member page, then sign back in with an emailed code.
+{const w=resumed.window,d=w.document;w.eval("navigate('dashboard','member')");
+ const out=[...d.querySelectorAll('#navUser button')].find(b=>/LOG OUT/.test(b.textContent));assert.ok(out,'LOG OUT is in the top bar on the member page');
+ out.click();assert.match(d.getElementById('logoutTitle').textContent,/Log out/);assert.match(d.getElementById('modalHost').textContent,/Sign in/);
+ await w.eval('logout()');assert.deepEqual(memberCalls,['logout']);assert.equal(w.eval('s.view'),'landing');assert.equal(w.eval('s.member.name'),'');assert.equal(w.eval("sessionStorage.getItem(KEY)")?.includes('Cindy')??false,false);
+ [...d.querySelectorAll('.joinCard .link')].find(b=>/Sign in/.test(b.textContent)).click();
+ d.getElementById('signinEmail').value='nope';await w.eval('signinStart()');assert.match(d.getElementById('joinError').textContent,/email on your page/);
+ d.getElementById('signinEmail').value='Cindy@Example.com';await w.eval('signinStart()');assert.equal(w.eval('s.joinStep'),'signinCode');assert.match(d.querySelector('.joinCard').textContent,/cindy@example.com/);
+ d.getElementById('signinCode').value='12';await w.eval('signinVerify()');assert.match(d.getElementById('joinError').textContent,/six digit code/);
+ d.getElementById('signinCode').value='123456';await w.eval('signinVerify()');
+ assert.deepEqual(memberCalls,['logout','signin_start','signin_verify']);assert.equal(w.eval('s.view'),'dashboard');assert.equal(w.eval('s.member.name'),'Cindy');assert.equal(w.eval('s.liveMember'),true)}
 member.window.close();prospect.window.close();resumed.window.close();existingMemberScan.window.close();
 console.log('Two-browser UI path passed');

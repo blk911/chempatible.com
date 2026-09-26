@@ -1,4 +1,4 @@
-import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {createHash,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
 
@@ -6,7 +6,11 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const reply=(body,status=200,headers={})=>Response.json(body,{status,headers:{'cache-control':'no-store',...headers}});
 const validPhoto=value=>typeof value==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value)&&value.length<250000;
 const validAnswers=value=>Array.isArray(value)&&[0,5,10].includes(value.length)&&value.every(answer=>Number.isInteger(answer)&&answer>=0&&answer<=2);
-const validContact=value=>value.length<=255&&(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)||(value.length<=30&&value.replace(/\D/g,'').length>=10));
+const validEmail=value=>value.length<=255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const cookieValue=(req,name)=>{const value=(req.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(`${name}=`))?.slice(name.length+1);return /^[a-f0-9]{64}$/.test(value||'')?value:null};
+function withCookies(body,cookies){const headers=new Headers({'cache-control':'no-store','content-type':'application/json'});for(const c of cookies)headers.append('set-cookie',c);return new Response(JSON.stringify(body),{status:200,headers})}
+// Email only: a cell number shows the owner's name on caller ID.
+const validContact=value=>value.length<=255&&(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)||(ops.CELL_ENABLED&&value.length<=30&&value.replace(/\D/g,'').length>=10));
 let schemaReady;
 function ensureSchema(sql){
  if(!schemaReady)schemaReady=sql`CREATE TABLE IF NOT EXISTS members (
@@ -40,7 +44,7 @@ async function handler(req){
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
   if(body.action==='register'){
    const name=String(body.name||'').trim(),contact=String(body.contact||'').trim().toLowerCase(),photo=body.photo,answers=body.answers||[];
-   if(name.length<1||name.length>50||!validContact(contact)||!validPhoto(photo)||!validAnswers(answers))return reply({error:'Add your first name, contact, and picture.'},400);
+   if(name.length<1||name.length>50||!validContact(contact)||!validPhoto(photo)||!validAnswers(answers))return reply({error:ops.CELL_ENABLED?'Add your first name, contact, and picture.':'Add your first name, email, and picture.'},400);
    if(body.agreed!==true)return reply({error:'Confirm you’re 18 or older and agree to the Terms and Privacy Policy.'},400);
    const paused=await ops.standingByContact(sql,contact);if(paused)return reply(paused,403);
    if(token){
@@ -60,6 +64,41 @@ async function handler(req){
    const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers`;
    if(rows[0])await ops.log(sql,'ten_answered',{member:rows[0].id});
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
+  }
+  if(body.action==='logout'){
+   const member=await ops.memberIdFromToken(sql,token);if(member)await ops.log(sql,'logout',{member});
+   const session=cookieValue(req,'chempat_session');if(session)await sql`DELETE FROM email_sessions WHERE token_hash=${hash(session)}`;
+   const names=new Set(['chempat_member','chempat_session',...((req.headers.get('cookie')||'').match(/chempat_pair_[a-f0-9]{16}/g)||[])]);
+   return withCookies({ok:true},[...names].map(n=>`${n}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`));
+  }
+  // Sign back in: a six digit code to the email on the member's page. The reply never says whether a page exists.
+  if(body.action==='signin_start'){
+   const email=String(body.email||'').trim().toLowerCase();if(!validEmail(email))return reply({error:'Enter the email on your page.'},400);
+   const key=`member:${email}`;
+   const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${key}`;
+   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before trying again.'},429);
+   const found=await sql`SELECT id FROM members WHERE contact=${email} LIMIT 1`;
+   if(found[0]){
+    const code=String(randomInt(100000,1000000));
+    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
+    await ops.sendMail(email,'Your Chempatibility sign-in code',`Your sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, you can ignore this email.`);
+   }
+   return reply({ok:true});
+  }
+  if(body.action==='signin_verify'){
+   const email=String(body.email||'').trim().toLowerCase(),code=String(body.code||''),key=`member:${email}`;
+   if(!validEmail(email)||!/^\d{6}$/.test(code))return reply({error:'Code expired or incorrect.'},400);
+   const codes=await sql`UPDATE email_codes SET attempts=attempts+1 WHERE email=${key} AND expires_at>now() AND attempts<5 RETURNING code_hash`;
+   if(!codes[0]||!timingSafeEqual(Buffer.from(hash(code)),Buffer.from(codes[0].code_hash)))return reply({error:'Code expired or incorrect.'},400);
+   await sql`DELETE FROM email_codes WHERE email=${key}`;
+   // A new sign-in replaces the old one, so a page is open on one phone at a time.
+   const fresh=randomBytes(32).toString('hex'),session=randomBytes(32).toString('hex');
+   const rows=await sql`UPDATE members SET session_hash=${hash(fresh)},updated_at=now() WHERE id=(SELECT id FROM members WHERE contact=${email} ORDER BY jsonb_array_length(answers) DESC,created_at ASC LIMIT 1) RETURNING id,name,contact,photo,answers`;
+   if(!rows[0])return reply({error:'Code expired or incorrect.'},400);
+   // The code also proves the email, so emailed invitations work without a second code.
+   await sql`INSERT INTO email_sessions(token_hash,email,expires_at) VALUES(${hash(session)},${email},now()+interval '30 days')`;
+   await ops.log(sql,'signin',{member:rows[0].id});
+   return withCookies({member:rows[0]},[`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`,`chempat_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`]);
   }
   return reply({error:'Unknown action.'},400);
  }catch(error){console.error('Member error:',error);return reply({error:'Could not save your page. Try again.'},500)}

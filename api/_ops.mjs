@@ -4,6 +4,8 @@ import {createHash,createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 export const ADMIN_EMAIL=(process.env.CHEMPAT_ADMIN_EMAIL||'blk911@gmail.com').trim().toLowerCase();
 export const REPORT_REASONS={harassment:'Harassment or threats',fake:'Fake profile or impersonation',inappropriate:'Inappropriate photo or messages',safety:'Made me feel unsafe',underage:'May be under 18',other:'Something else'};
 export const SUSPEND_DAYS=30;
+// Launching email only: a cell number shows the owner's name on caller ID. Set CHEMPAT_SMS=on once SMS codes exist.
+export const CELL_ENABLED=process.env.CHEMPAT_SMS==='on';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 
 let ready;
