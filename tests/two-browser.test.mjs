@@ -45,7 +45,7 @@ await prospect.window.eval('openCamera()');
 assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/No camera is available/);
 assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
 prospect.window.eval(`s.prospect.photo='${photo}';render()`);prospect.window.document.getElementById('newMemberName').value='Mike';prospect.window.document.getElementById('newMemberContact').value='mike@example.com';await prospect.window.eval('finishProspectRegistration()');assert.equal(prospect.window.eval('s.prospectId'),'member-id');assert.equal(prospect.window.eval('s.view'),'results');
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialMemberHeader').textContent,/UNLOCK MY NEXT FIVE/);assert.equal(prospect.window.document.querySelectorAll('.chempatContact').length,1);prospect.window.eval("navigate('results','prospect')");
+await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialMemberHeader').textContent,/UNLOCK MY NEXT FIVE/);assert.equal(prospect.window.document.querySelectorAll('.chempatContact').length,1);assert.equal(prospect.window.document.querySelectorAll('.secretsButton').length,1);assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,0);prospect.window.eval("selectChempat('first',true)");assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,5);prospect.window.eval("navigate('results','prospect')");
 prospect.window.eval('showRequest()');assert.equal(prospect.window.document.querySelectorAll('.requestInviter img').length,1);assert.equal(prospect.window.document.querySelectorAll('.requestCard input[type=file]').length,0);prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
 assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Chempats/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their reply/);assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');assert.match(member.window.document.querySelector('.connectionFocus').textContent,/wants to talk/i);
@@ -53,7 +53,11 @@ member.window.eval(`s.inbox.push({...s.inbox[0],id:'${'d'.repeat(64)}',recipient
 assert.equal(member.window.document.querySelectorAll('.chempatContact').length,2);
 member.window.eval(`selectChempat('${'d'.repeat(64)}')`);
 assert.match(member.window.document.querySelector('.connectionFocus').textContent,/Alex/);
+member.window.eval(`selectChempat('${'d'.repeat(64)}',true)`);
+assert.equal(member.window.document.querySelectorAll('.secretCompare').length,0);
+assert.match(member.window.document.querySelector('.focusStatus').textContent,/Invitation sent/);
 member.window.eval(`selectChempat('${id}')`);
+assert.equal(member.window.document.querySelectorAll('.secretCompare').length,0);
 prospect.window.eval('startMyNextFive()');
 for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
 assert.equal(prospect.window.eval('s.view'),'dashboard');
@@ -75,6 +79,8 @@ await prospect.window.eval("decideOutgoing('accept')");assert.equal(outgoingStat
 prospect.window.document.getElementById('outgoingMessage').value='Hey Sam';await prospect.window.eval('sendOutgoingMessage()');assert.equal(outgoingState.messages.length,1);
 prospect.window.eval('closeInvite()');
 assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hey Sam/);
+prospect.window.eval(`selectChempat('${outgoingId}',true)`);assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,5);assert.equal(prospect.window.document.querySelectorAll('.inlineChat').length,0);
+prospect.window.eval(`selectChempat('${outgoingId}')`);assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hey Sam/);
 prospect.window.document.getElementById('outgoingMessage').value='From my page';await prospect.window.eval('sendOutgoingMessage()');assert.equal(outgoingState.messages.length,2);
 await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'dashboard');prospect.window.eval("selectChempat('first')");assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Private Chat open/i);
 prospect.window.document.getElementById('message').value='Hello from the pane';await prospect.window.eval('sendMessage()');assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hello from the pane/);
