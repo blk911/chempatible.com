@@ -9,12 +9,12 @@ const qrToken='e'.repeat(64),qrId='f'.repeat(64);
 const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
 const outgoingId='c'.repeat(64),outgoingState={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]};
 const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
-let registeredMember=null,lastEnd=null,verifyOnce=true;const memberCalls=[];
+let registeredMember=null,lastEnd=null,verifyOnce=true,qrCreates=0;const memberCalls=[];
 async function mockFetch(url,opt={},context){
  const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
  let data={},status=200;
  if(u.pathname==='/api/member'){if(opt.method==='POST'&&['logout','code_start','code_verify'].includes(body.action)){memberCalls.push(body.action);if(body.action==='logout')registeredMember=null;if(body.action==='code_verify'){if(body.code!=='123456'){status=400;data={error:'Code expired or incorrect.'}}else if(body.email==='cindy@example.com'){registeredMember={id:'member-id',name:'Cindy',contact:body.email,photo,answers:[0,1,2,0,1,2,0,1,2,0],verified:true};data={existing:true,member:registeredMember}}else if(registeredMember&&registeredMember.contact===body.email){registeredMember.verified=true;data={existing:true,member:registeredMember}}else data={existing:false,email:body.email}}else data={ok:true}}else if(opt.method==='POST'){if(body.action==='register')assert.equal(body.agreed,true,'registration must carry 18+ consent');registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
- else if(u.pathname==='/api/qr')data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,expiresAt:new Date(Date.now()+900000).toISOString()};
+ else if(u.pathname==='/api/qr'){qrCreates++;data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,expiresAt:new Date(Date.now()+900000).toISOString()}}
  else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id:body.member?.name==='Mike'?outgoingId:id};else data={email:'cindy@example.com'}}
  else if(u.searchParams.has('inbox'))data={connections:context?.eval('s.actor')==='prospect'?[{id:outgoingId,recipient_name:'Sam',recipient_email:'sam@example.com',...outgoingState}]:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
  else if(u.searchParams.has('invite'))data=u.searchParams.get('invite')===qrToken?{...inviter,answers:[],recipientName:'',prospectName:null,prospectPhoto:null,prospectAnswers:[],status:'invited',messages:[]}:{...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
@@ -42,16 +42,26 @@ assert.equal(joiner.window.eval(`pic('x" onerror="alert(1)')`),'');assert.equal(
 joiner.window.eval(`s.member.photo='x" onerror="alert(1)';s.view='dashboard';render()`);assert.equal(d.querySelector('[onerror]'),null);joiner.window.close()}
 const member=page('https://chempatible.com/');
 member.window.eval(`s.member.name='Cindy';s.member.contact='cindy@example.com';s.member.photo='${photo}';s.member.answers=[0,1,2,0,1,2,0,1,2,0];s.phase='ready';navigate('dashboard','member')`);
-await new Promise(r=>setTimeout(r,30));assert.equal(member.window.eval('s.qrInvite.id'),qrId);
-member.window.eval('openInvite()');
+await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,0,'the dashboard must not create a code');
+member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,1,'the button creates the code');
 assert.equal(member.window.eval('s.qrInvite.id'),qrId);
 assert.match(member.window.document.querySelector('.liveQr').getAttribute('src'),/^data:image\/svg\+xml/);
 assert.match(member.window.document.querySelector('#qrTimer').textContent,/Ready for/);
 member.window.eval('closeInvite()');
+assert.equal(qrCreates,1,'closing the QR must not mint another code');
+member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,2,'a new button tap creates a fresh code');member.window.eval('closeInvite()');
+
 await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s.modal='send';renderModal();sendInvitation()");
 assert.equal(member.window.eval('s.liveMember'),true);
 assert.equal(member.window.eval('s.view'),'dashboard');
 assert.match(member.window.document.querySelector('.socialMemberHeader').textContent,/INSTANT VIBE/);
+member.window.eval(`s.inbox=[{id:'${qrId}',channel:'qr',claimed:false,status:'invited',recipient_name:'',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]}];render()`);
+assert.match(member.window.document.querySelector('.socialConnections h2').textContent,/Connections/);
+assert.equal(member.window.document.querySelectorAll('.chempatContact').length,0);
+assert.match(member.window.document.querySelector('.emptyFocus').textContent,/Catch a vibe, want to know more\?.*Send an Instant Vibe/);
+assert.match(member.window.document.querySelector('.connectionStatus').textContent,/Code ready · waiting for scan/);
+assert.doesNotMatch(member.window.document.querySelector('.socialWorkspace').textContent,/Someone/);
+member.window.eval('s.inbox=[];render()');
 assert.equal(member.window.document.querySelector('.resetLink'),null);
 assert.doesNotMatch(member.window.document.body.textContent,/View as|RESET THIS TAB/);
 const prospect=page('https://chempatible.com/?invite='+token);
@@ -74,7 +84,7 @@ assert.match(prospect.window.document.getElementById('verifyEmailTitle').textCon
 assert.equal(memberCalls.filter(c=>c==='code_start').length,1,'the code sent at the reveal is reused, not replaced');
 prospect.window.document.getElementById('verifyEmailCode').value='123456';await prospect.window.eval('confirmVerify()');await new Promise(r=>setTimeout(r,10));
 assert.equal(prospect.window.eval('s.prospectVerified'),true);assert.equal(prospect.window.document.getElementById('modalHost').innerHTML,'');memberCalls.length=0;
-assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Chempats/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their reply/);assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
+assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Connections/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their reply/);assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');assert.match(member.window.document.querySelector('.connectionFocus').textContent,/wants to talk/i);
 member.window.eval(`s.inbox.push({...s.inbox[0],id:'${'d'.repeat(64)}',recipient_name:'Alex',prospect_name:'Alex',status:'invited',prospect_photo:null});render()`);
 assert.equal(member.window.document.querySelectorAll('.chempatContact').length,2);
