@@ -52,6 +52,13 @@ await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s
 assert.equal(member.window.eval('s.liveMember'),true);
 assert.equal(member.window.eval('s.view'),'dashboard');
 assert.match(member.window.document.querySelector('.socialMemberHeader').textContent,/INSTANT VIBE/);
+member.window.eval(`s.inbox=[{id:'${qrId}',channel:'qr',claimed:false,status:'invited',recipient_name:'',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]}];render()`);
+assert.match(member.window.document.querySelector('.socialConnections h2').textContent,/Connections/);
+assert.equal(member.window.document.querySelectorAll('.chempatContact').length,0);
+assert.match(member.window.document.querySelector('.emptyFocus').textContent,/Catch a vibe, want to know more\?.*Send an Instant Vibe/);
+assert.match(member.window.document.querySelector('.connectionStatus').textContent,/Code ready · waiting for scan/);
+assert.doesNotMatch(member.window.document.querySelector('.socialWorkspace').textContent,/Someone/);
+member.window.eval('s.inbox=[];render()');
 assert.equal(member.window.document.querySelector('.resetLink'),null);
 assert.doesNotMatch(member.window.document.body.textContent,/View as|RESET THIS TAB/);
 const prospect=page('https://chempatible.com/?invite='+token);
@@ -74,7 +81,7 @@ assert.match(prospect.window.document.getElementById('verifyEmailTitle').textCon
 assert.equal(memberCalls.filter(c=>c==='code_start').length,1,'the code sent at the reveal is reused, not replaced');
 prospect.window.document.getElementById('verifyEmailCode').value='123456';await prospect.window.eval('confirmVerify()');await new Promise(r=>setTimeout(r,10));
 assert.equal(prospect.window.eval('s.prospectVerified'),true);assert.equal(prospect.window.document.getElementById('modalHost').innerHTML,'');memberCalls.length=0;
-assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Chempats/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their reply/);assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
+assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Connections/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their reply/);assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
 await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');assert.match(member.window.document.querySelector('.connectionFocus').textContent,/wants to talk/i);
 member.window.eval(`s.inbox.push({...s.inbox[0],id:'${'d'.repeat(64)}',recipient_name:'Alex',prospect_name:'Alex',status:'invited',prospect_photo:null});render()`);
 assert.equal(member.window.document.querySelectorAll('.chempatContact').length,2);
