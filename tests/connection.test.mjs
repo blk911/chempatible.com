@@ -15,6 +15,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE connection_state SET prospect_answers=')){state.prospect_answers=JSON.parse(v[0]);state.status='secondResults';return []}
  if(q.startsWith('UPDATE connection_state SET prospect_email=')){state.prospect_email=v[0];state.status='email';return []}
  if(q.startsWith('SELECT token_hash FROM invitations'))return [{token_hash:id}];
+ if(q.startsWith('UPDATE connection_state SET messages=jsonb_set')){const [path,index,,by,reaction]=v;assert.equal(Number(path),index);if(!state.messages[index])return [];state.messages[index].reactions={...state.messages[index].reactions,[by]:reaction};return [{messages:state.messages}]}
  if(q.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(v[0]));return [{messages:state.messages}]}
  throw Error('Unmocked SQL '+q)
 }
@@ -31,6 +32,10 @@ assert.equal((await call({action:'decision',id,decision:'accept'},true))[1].stat
 assert.equal((await get('invite='+raw))[1].answers.length,10);
 assert.equal((await call({action:'message',token:raw,text:'Hello!'}))[1].messages.length,1);
 assert.equal((await call({action:'message',id,text:'Hi Mike!'},true))[1].messages.length,2);
+assert.equal((await call({action:'message',id,photo:member.sender_photo},true))[1].messages[2].photo,member.sender_photo);
+assert.equal((await call({action:'react',id,index:0,reaction:'like'},true))[1].messages[0].reactions.member,'like');
+assert.equal((await call({action:'react',token:raw,index:0,reaction:'dislike'}))[1].messages[0].reactions.prospect,'dislike');
+assert.equal((await call({action:'react',id,index:99,reaction:'like'},true))[0],409);
 assert.equal((await call({action:'second',token:raw,answers:[1,1,2,0,0,2,1,0,1,2]}))[0],200);
 assert.equal((await call({action:'email',token:raw,email:'mike@example.com'}))[0],200);
 assert.equal((await get('inbox=1',true))[1].connections[0].prospect_email,'mike@example.com');

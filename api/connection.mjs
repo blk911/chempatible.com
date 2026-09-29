@@ -49,7 +49,7 @@ async function handler(req){
   const actor=await ops.memberIdFromToken(sql,cookie(req).chempat_member);
   if(!['unmatch','report'].includes(body.action)){const paused=await ops.standing(sql,actor);if(paused)return reply(paused,403)}
   // Scanners can reveal their first five before confirming their email; everything after needs it.
-  if(['request','decision','message','second','email'].includes(body.action)){const unproven=await ops.requireVerified(sql,actor);if(unproven)return reply(unproven,403)}
+  if(['request','decision','message','react','second','email'].includes(body.action)){const unproven=await ops.requireVerified(sql,actor);if(unproven)return reply(unproven,403)}
   if(body.action==='first'){
    const row=await ownInvitation(sql,body.token,req);
    if(!row)return reply({error:'Invitation not found.'},404);
@@ -97,14 +97,21 @@ async function handler(req){
    await ops.log(sql,'email_shared',{member:actor,connection:row.token_hash});
    return reply({ok:true});
   }
-  if(body.action==='message'){
-   const message=String(body.text||'').trim();if(!message||message.length>500)return reply({error:'Enter a message under 500 characters.'},400);
+  if(body.action==='message'||body.action==='react'){
    let id,by;
    if(body.token){const row=await ownInvitation(sql,body.token,req);if(!row)return reply({error:'Invitation not found.'},404);id=row.token_hash;by='prospect'}
    else{const sender=await senderEmail(req,sql),member=await senderMember(req,sql);if((!sender&&!member)||!validToken(body.id))return reply({error:'Member verification required.'},401);const rows=member?await sql`SELECT token_hash FROM invitations WHERE token_hash=${body.id} AND (sender_member_id=${member} OR (sender_member_id IS NULL AND sender_email=${sender||''}))`:await sql`SELECT token_hash FROM invitations WHERE token_hash=${body.id} AND sender_email=${sender}`;if(!rows[0])return reply({error:'Connection not found.'},404);id=body.id;by='member'}
-   const item={by,text:message,at:new Date().toISOString()};
+   if(body.action==='react'){
+    const index=body.index,reaction=body.reaction;
+    if(!Number.isInteger(index)||index<0||index>=1000||!['like','dislike',null].includes(reaction))return reply({error:'Choose a message reaction.'},400);
+    const rows=await sql`UPDATE connection_state SET messages=jsonb_set(messages,ARRAY[${String(index)}]::text[],(messages->${index}) || jsonb_build_object('reactions',coalesce(messages->${index}->'reactions','{}'::jsonb) || jsonb_build_object(${by},${reaction})),false),updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') AND jsonb_array_length(messages)>${index} RETURNING messages`;
+    return rows[0]?reply({messages:rows[0].messages}):reply({error:'Message no longer available.'},409);
+   }
+   const message=String(body.text||'').trim(),photo=body.photo||null;
+   if(message.length>500||photo&&!validPhoto(photo)||!message&&!photo)return reply({error:'Send a message under 500 characters or a photo.'},400);
+   const item={by,text:message,at:new Date().toISOString(),...(photo?{photo}:{})};
    const rows=await sql`UPDATE connection_state SET messages=messages || ${JSON.stringify([item])}::jsonb,updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') RETURNING messages`;
-   if(rows[0])await ops.log(sql,'message',{member:actor,connection:id,detail:{by,length:message.length}});
+   if(rows[0])await ops.log(sql,'message',{member:actor,connection:id,detail:{by,length:message.length,photo:!!photo}});
    return rows[0]?reply({messages:rows[0].messages}):reply({error:'Chat is not open yet.'},409);
   }
   if(body.action==='unmatch'||body.action==='report'){
