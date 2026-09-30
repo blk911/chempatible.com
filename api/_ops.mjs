@@ -35,7 +35,7 @@ export async function log(sql,kind,{member=null,connection=null,detail={}}={}){
 }
 
 const pausedMessage=until=>`Your account is paused until ${new Date(until).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}.`;
-const BLOCKED='This account can no longer play chem-PATIBLE.';
+const BLOCKED='This account can no longer play Chem-patible.';
 function verdict(row){
  if(!row)return null;
  if(row.blocked_at)return {error:BLOCKED};
@@ -86,7 +86,7 @@ export function strikeAction(strikes){return strikes>=4?'block':strikes===3?'sus
 export async function sendMail(to,subject,text){
  requireReviewRecipient(to);
  if(!process.env.SENDGRID_API_KEY)throw Error('Email is not configured.');
- const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'chem-PATIBLE'},subject,content:[{type:'text/plain',value:text}]})});
+ const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Chem-patible'},subject,content:[{type:'text/plain',value:text}]})});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
 }
 
@@ -124,7 +124,7 @@ async function applyStrikes(sql,filed,reporterName,connectionId){
   if(action==='suspend'){await sql`UPDATE members SET suspended_until=now()+${`${SUSPEND_DAYS} days`}::interval WHERE id=${filed.reportedId} AND blocked_at IS NULL`;await log(sql,'auto_suspend',{member:filed.reportedId,connection:connectionId,detail:{strikes,days:SUSPEND_DAYS}})}
   if(action==='block'){await sql`UPDATE members SET blocked_at=coalesce(blocked_at,now()) WHERE id=${filed.reportedId}`;await log(sql,'auto_block',{member:filed.reportedId,connection:connectionId,detail:{strikes}})}
  }
- try{await sendMail(ADMIN_EMAIL,`chem-PATIBLE report: ${filed.reportedName||'unknown member'}${strikes?` (strike ${strikes})`:''}`,
+ try{await sendMail(ADMIN_EMAIL,`Chem-patible report: ${filed.reportedName||'unknown member'}${strikes?` (strike ${strikes})`:''}`,
   `${reporterName||'A member'} reported ${filed.reportedName||'someone'} (${filed.reportedContact||'no contact on file'}).\n\nReason: ${REPORT_REASONS[filed.reason]}\n${filed.note?`Note: ${filed.note}\n`:''}\n${strikes?`Strikes: ${strikes}. Action: ${action==='suspend'?`suspended ${SUSPEND_DAYS} days`:action==='block'?'blocked':'flagged for review'}.`:'Not linked to a member page yet. Review it in admin.'}\n\nhttps://chempatible.com/admin#reports`)}
  catch(error){console.error('Report alert error:',error)}
 }

@@ -5,14 +5,16 @@ import {createHash} from 'node:crypto';
 import {calls as opsCalls} from './ops-stub.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const raw='a'.repeat(64),id=hash(raw),owner='b'.repeat(64),visitor='c'.repeat(64),stranger='d'.repeat(64),photo='data:image/jpeg;base64,AA==';
-const member={token_hash:id,sender_member_id:'owner',sender_email:'owner@example.com',sender_name:'Cindy',sender_photo:photo,sender_answers:[0,1,2,0,1,2,0,1,2,0],recipient_name:'Mike',recipient_email:'private-invite@example.com',channel:'email'};
+const member={token_hash:id,created_at:'2026-09-30T17:42:32.000Z',sender_member_id:'owner',sender_email:'owner@example.com',sender_name:'Cindy',sender_photo:photo,sender_answers:[0,1,2,0,1,2,0,1,2,0],recipient_name:'Mike',recipient_email:'private-invite@example.com',channel:'email'};
 const state={prospect_member_id:null,claim_hash:null,prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,status:'invited',messages:[]};
 const ids=new Map([[hash(owner),'owner'],[hash(visitor),'visitor'],[hash(stranger),'stranger']]);
 let race=false,failFinalize=false;
+const validEmailSession='f'.repeat(64);
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
+ if(q.startsWith('SELECT email FROM email_sessions'))return v[0]===hash(validEmailSession)?[{email:'owner@example.com'}]:[];
  if(q.startsWith('SELECT id FROM members'))return ids.has(v[0])?[{id:ids.get(v[0])}]:[];
  if(q.startsWith('SELECT name FROM members'))return v[0]===hash(visitor)?[{name:'Mike'}]:[];
- if(q.startsWith('SELECT i.token_hash,i.sender_name'))return v[0]===id?[{...member,...state}]:[];
+ if(q.startsWith('SELECT i.token_hash,i.created_at,i.sender_name'))return v[0]===id?[{...member,...state}]:[];
  if(q.startsWith('SELECT i.token_hash AS id'))return (v[0]===member.sender_member_id||v[1]===state.prospect_member_id)&&!(member.channel==='qr'&&!state.claim_hash&&member.expires_at<Date.now())?[{...member,...state,id,claimed:!!state.claim_hash}]:[];
  if(q.startsWith('UPDATE connection_state SET claim_hash=')){if(state.claim_hash||member.expires_at<Date.now())return [];state.claim_hash=v[0];return [{claim_hash:state.claim_hash}]}
  if(race){race=false;state.status='ended';return []}
@@ -145,3 +147,17 @@ assert.equal((await call(second,visitor))[0],200);assert.equal(state.status,'nex
 member.sender_member_id=null;member.channel='qr';member.expires_at=new Date(Date.now()+900000);state.prospect_member_id=null;state.claim_hash=null;state.status='invited';
 assert.equal((await get('invite='+raw))[0],200);assert(state.claim_hash);
 console.log('Connection privacy, staged mutual consent, account recovery, authorization, expiry and race tests passed');
+
+const staleInbox=await api.fetch(new Request('https://example.com/api/connection?inbox=1',{headers:{cookie:`chempat_member=${'9'.repeat(64)}; chempat_session=${validEmailSession}`}}));
+assert.equal(staleInbox.status,401,'valid email session cannot mask revoked member cookie');
+assert.equal((await staleInbox.json()).sessionExpired,true);
+const legacyInbox=await api.fetch(new Request('https://example.com/api/connection?inbox=1',{headers:{cookie:`chempat_session=${validEmailSession}`}}));
+assert.equal(legacyInbox.status,200,'legacy email-only session path is retained');
+
+state.status='chat';member.sender_member_id='owner';state.prospect_member_id='visitor';member.channel='email';
+assert.equal((await call({action:'message',id,photo:'data:text/html;base64,PHNjcmlwdD4='},owner))[0],400);
+assert.equal((await call({action:'message',id,photo:'data:image/jpeg;base64,'+'A'.repeat(250001)},owner))[0],400);
+assert.equal((await call({action:'message',id,photo},stranger))[0],404,'another account cannot attach to this pair');
+state.status='ended';assert.equal((await call({action:'message',id,photo},owner))[0],409,'ended chat cannot receive images');
+
+assert.equal((await inbox(owner))[0].invitedAt,'2026-09-30T17:42:32.000Z','real invitation timestamp is exposed');

@@ -35,3 +35,16 @@ There is no separate build or lint command configured in this repository. Vercel
 The later user correction removes the promotional opening and illustrations, changes visible branding to chem-PATIBLE, and uses a form-first flow followed by the member's own photo and five tap-to-advance choices. Tests cover stale repeated taps, Back/last-choice correction, no auto-minted QR, five-answer member/QR/email handling, both next-five completion orders, failed-finalization retry, immutable pair snapshots, legacy ten-answer accounts and both-person UI reveal/chat gating.
 
 Cloud DevTools was unavailable by organization policy; no attempt was made to bypass it. Narrow-window resizing did not change the available viewport, so actual mobile-size visual validation remains a limitation. Responsive CSS includes mobile rules and 48px/50px controls.
+
+
+## Real development flow verification, September 30
+
+The stable `chempatible-dev.vercel.app` deployment from `main` was enabled only after independently verifying the existing development Neon project and its empty main branch. The user entered the mail key directly into the development project's Production environment. An exact two-recipient allowlist restricts all review mail. No live database data or credentials were copied.
+
+Two clearly labeled synthetic test accounts and images completed the hosted flow against real PostgreSQL and SendGrid: email delivery and verification; photo upload; five tap-through choices; exactly five saved answers; zero invitation rows before the Instant Vibe tap; QR creation on tap; separate emailed invitation delivered with image; recipient first five reused at registration; first-five reveal; both Keep going decisions; sender later-five saved while hidden from the unfinished recipient; recipient later-five completion; both later-five revealed; recipient chat request and sender approval; messages delivered both ways. Sender logout/sign-in restored the sent connection. A fresh recipient tab with no invitation URL restored the received connection and conversation.
+
+The unused in-person QR expired naturally after fifteen minutes and disappeared from the sender's pending-code indicator. The expired row remained unclaimed; the email connection independently reached chat with ten real answers per participant. Tests used two verified aliases of the same development deployment to isolate cookie scopes. Physical camera capture and scanning a QR on a second mobile device were not exercised. Real simultaneous PostgreSQL completion races remain covered by code review and synthetic regression tests, not a stress test.
+
+The subsequent display-only correction uses `Chem-patible` with the supplied upright-Chem / italic-patible logo; data identifiers, domains, state logic, and question content remain unchanged.
+
+A later sign-in to the same synthetic recipient account rotated its single-device session and exposed a UI edge: the old member cookie plus a valid email cookie produced an empty inbox. The follow-up fix returns an explicit sign-in-required response and displays a prefilled sign-in form instead; it does not widen ownership or restore revoked sessions. Regression coverage includes valid email plus revoked member cookie, preserved legacy email-only access, and the client sign-in transition. The earlier received connection remained saved throughout.

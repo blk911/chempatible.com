@@ -13,7 +13,7 @@ async function sql(strings,...values){const query=strings.join('?').replace(/\s+
  if(query.startsWith('SELECT name FROM members'))return values[0]===hash(visitorToken)?[{name:'Mike'}]:[];
  if(query.startsWith('INSERT INTO invitations')){invitation={token_hash:values[0],sender_email:values[1],sender_name:values[2],sender_photo:values[3],sender_answers:JSON.parse(values[4]),recipient_name:values[5],recipient_email:values[6],sender_member_id:values[7],channel:values[8],expires_at:new Date(Date.now()+900000)};return []}
  if(query.startsWith('INSERT INTO connection_state')){state={token_hash:values[0],claim_hash:null,status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};return []}
- if(query.startsWith('SELECT i.token_hash,i.sender_name'))return invitation&&values[0]===invitation.token_hash?[{...invitation,...state}]:[];
+ if(query.startsWith('SELECT i.token_hash,i.created_at,i.sender_name'))return invitation&&values[0]===invitation.token_hash?[{...invitation,...state}]:[];
  if(query.startsWith('UPDATE connection_state SET claim_hash=')){if(state.claim_hash||invitation.expires_at<Date.now())return [];state.claim_hash=values[0];return [{claim_hash:state.claim_hash}]}
  if(query.startsWith('SELECT i.token_hash AS id'))return [{...invitation,id:invitation.token_hash,recipient_name:'',recipient_email:'',channel:'qr',claimed:!!state.claim_hash,...state}];
  if(query.startsWith('UPDATE connection_state SET prospect_name=')&&query.includes("status='firstResults'")){Object.assign(state,{prospect_name:values[0],prospect_photo:values[1],prospect_answers:JSON.parse(values[2]),prospect_member_id:values[3],status:'firstResults'});return [{status:state.status}]}

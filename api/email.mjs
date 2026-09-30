@@ -12,7 +12,7 @@ const cookie=req=>Object.fromEntries((req.headers.get('cookie')||'').split(';').
 const photoData=s=>typeof s==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(s)&&s.length<250000;
 async function sendMail(to,subject,html,text,photo){
  requireReviewRecipient(to);
- const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'chem-PATIBLE'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
+ const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Chem-patible'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
  if(photo)body.attachments=[{content:photo.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}];
  const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
@@ -39,7 +39,7 @@ async function handler(req){
    if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return json({error:'A code was just sent. Wait a minute before trying again.'},429);
    const code=String(randomInt(100000,1000000));
    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${address},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
-   await sendMail(address,`${code} is your chem-PATIBLE code`,`<p>Your code is <strong>${code}</strong>. It expires in ten minutes.</p>`,`Your chem-PATIBLE code is ${code}. It expires in ten minutes.`);
+   await sendMail(address,`${code} is your Chem-patible code`,`<p>Your code is <strong>${code}</strong>. It expires in ten minutes.</p>`,`Your Chem-patible code is ${code}. It expires in ten minutes.`);
    return json({ok:true});
   }
   if(body.action==='verify'){
@@ -66,7 +66,7 @@ async function handler(req){
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail},${member.id})`;
    try{await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
    const senderFirst=first(name),recipientFirst=first(theirName),safeName=escape(senderFirst),safeRecipient=escape(recipientFirst);
-   const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">chem-PATIBLE · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#c45b46;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">I’ll tell you five secrets about me.<br>Want to see if we vibe?</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Pick your answers to five quick ones. Then we’ll show each other ours.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">LET’S GO →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeName}</p></div>`;
+   const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">Chem-<em>patible</em> · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#c45b46;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">I’ll tell you five secrets about me.<br>Want to see if we vibe?</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Pick your answers to five quick ones. Then we’ll show each other ours.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">LET’S GO →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeName}</p></div>`;
    const text=`Hey ${recipientFirst},\n\nI’ll tell you five secrets about me. Want to see if we vibe?\n\nPick your answers to five quick ones. Then we'll show each other ours.\n\nLet's go: ${link}\n\n— ${senderFirst}`;
    try{await sendMail(theirEmail,`${senderFirst} has five secrets for you`,html,text,member.photo)}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
    await ops.log(sql,'invite_emailed',{member:member.id,connection:hash(token)});

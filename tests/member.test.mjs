@@ -48,7 +48,7 @@ assert.equal((await post({action:'logout'})).status,200,'logging out twice is ha
 assert.equal((await post({action:'code_start',email:'not-an-email'})).status,400);
 assert.equal((await post({action:'code_start',email:'Newbie@Example.com'})).status,200);
 assert.equal(mail.at(-1).personalizations[0].to[0].email,'newbie@example.com');
-const newbieCode=mail.at(-1).subject.match(/^(\d{6}) is your chem-PATIBLE code$/)?.[1];assert.ok(newbieCode,'the code leads the subject line');
+const newbieCode=mail.at(-1).subject.match(/^(\d{6}) is your Chem-patible code$/)?.[1];assert.ok(newbieCode,'the code leads the subject line');
 assert.equal((await post({action:'code_start',email:'newbie@example.com'})).status,429,'one code a minute');
 // A new email: the code proves it, and there's no page to open yet.
 const fresh=await post({action:'code_verify',email:'newbie@example.com',code:newbieCode});
