@@ -1,3 +1,4 @@
+import {reviewGate} from './_review.mjs';
 import {createHash,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -17,7 +18,7 @@ async function login(sql,body){
   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before trying again.'},429);
   const code=String(randomInt(100000,1000000));
   await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${codeKey},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
-  await ops.sendMail(ops.ADMIN_EMAIL,`${code} is your Chempatibility admin code`,`Your admin sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, someone may be trying to reach the admin page.`);
+  await ops.sendMail(ops.ADMIN_EMAIL,`${code} is your chem-PATIBLE admin code`,`Your admin sign-in code is ${code}. It expires in ten minutes.\n\nIf you didn't try to sign in, someone may be trying to reach the admin page.`);
   return reply({ok:true});
  }
  if(body.action==='verify'){
@@ -160,6 +161,7 @@ async function act(sql,body){
 }
 
 async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  if(!process.env.DATABASE_URL)return reply({error:'Admin storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{

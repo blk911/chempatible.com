@@ -1,3 +1,4 @@
+import {reviewGate} from './_review.mjs';
 import {createHash,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -30,6 +31,7 @@ function tokenFrom(req){
  return match?.[1]||null;
 }
 async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  if(!process.env.DATABASE_URL)return reply({error:'Member storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{
@@ -66,7 +68,7 @@ async function handler(req){
   }
   if(body.action==='answers'){
    if(!token)return reply({error:'Join the game first.'},401);
-   if(!validAnswers(body.answers)||body.answers.length!==10)return reply({error:'Answer all ten to finish your page.'},400);
+   if(!validAnswers(body.answers)||![5,10].includes(body.answers.length))return reply({error:'Complete your five secrets.'},400);
    const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
    if(rows[0])await ops.log(sql,'ten_answered',{member:rows[0].id});
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
@@ -87,7 +89,7 @@ async function handler(req){
    const code=String(randomInt(100000,1000000));
    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
    // The code leads the subject so it shows in the phone's notification.
-   await ops.sendMail(email,`${code} is your Chempatibility code`,`Your Chempatibility code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
+   await ops.sendMail(email,`${code} is your chem-PATIBLE code`,`Your chem-PATIBLE code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
    return reply({ok:true});
   }
   if(body.action==='code_verify'||body.action==='signin_verify'){

@@ -1,3 +1,4 @@
+process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -21,10 +22,13 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE email_codes SET attempts'))return codes[v[0]]&&codes[v[0]].attempts++<5?[{code_hash:codes[v[0]].code_hash}]:[];
  if(q.startsWith('DELETE FROM email_codes')){delete codes[v[0]];return []}
  if(q.startsWith('UPDATE members SET session_hash=')){if(v[1]!==cindy.contact)return [];cindy.session_hash=v[0];const {session_hash,...m}=cindy;return [{...m,verified:true}]}
+ if(q.startsWith('UPDATE members SET answers=')){if(v[1]!==cindy.session_hash)return [];cindy.answers=JSON.parse(v[0]);return [{...cindy,verified:true}]}
+ if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE id='))return [];
+ if(q.startsWith('SELECT email_verified_at FROM members'))return [{email_verified_at:new Date()}];
  if(q.startsWith('INSERT INTO email_sessions')){sessions.set(v[0],v[1]);return []}
  throw Error('Unmocked SQL '+q);
 }
-const src=fs.readFileSync(new URL('../api/member.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__memberSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
+const src=fs.readFileSync(new URL('../api/member.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__memberSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
 globalThis.__memberSql=sql;
 const api=(await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'))).default;
 const post=async(body,cookie='')=>{const r=await api.fetch(new Request('https://chempatible.com/api/member',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify(body)}));return {status:r.status,body:await r.json(),cookies:r.headers.getSetCookie()}};
@@ -43,7 +47,7 @@ assert.equal((await post({action:'logout'})).status,200,'logging out twice is ha
 assert.equal((await post({action:'code_start',email:'not-an-email'})).status,400);
 assert.equal((await post({action:'code_start',email:'Newbie@Example.com'})).status,200);
 assert.equal(mail.at(-1).personalizations[0].to[0].email,'newbie@example.com');
-const newbieCode=mail.at(-1).subject.match(/^(\d{6}) is your Chempatibility code$/)?.[1];assert.ok(newbieCode,'the code leads the subject line');
+const newbieCode=mail.at(-1).subject.match(/^(\d{6}) is your chem-PATIBLE code$/)?.[1];assert.ok(newbieCode,'the code leads the subject line');
 assert.equal((await post({action:'code_start',email:'newbie@example.com'})).status,429,'one code a minute');
 // A new email: the code proves it, and there's no page to open yet.
 const fresh=await post({action:'code_verify',email:'newbie@example.com',code:newbieCode});
@@ -72,3 +76,5 @@ assert.equal((await post({action:'code_verify',email:'cindy@example.com',code}))
 // The old sign-in action names still work.
 assert.equal((await post({action:'signin_start',email:'late@example.com'})).status,200);
 console.log('Member log out, email codes, confirmed sign-up, one page per email, and email-only contact passed');
+
+assert.equal((await post({action:'answers',answers:[0,1,2,0,1]},`chempat_member=${opened}`)).status,200);assert.equal(cindy.answers.length,5);assert.equal((await post({action:'answers',answers:[0,1,2,0]},`chempat_member=${opened}`)).status,400);

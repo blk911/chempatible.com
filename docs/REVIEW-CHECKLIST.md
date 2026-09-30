@@ -1,0 +1,16 @@
+# Updated review: form, photo, five secrets
+
+Latest user correction supersedes the earlier promotional opening.
+
+- Brand: chem-PATIBLE
+- Immediate name/email form and Continue, with concise adult/terms consent; no extra opening CTA, illustrative portraits, decorative QR or explanatory sections
+- Own photo capture, then five tap-to-advance choices with Back/correction and stale-tap protection
+- After five: own photo and Instant Vibe ready to share; QR creation remains tap-only
+- Five-answer invitations are valid without invented/padded answers
+- After mutual Keep going, both participants complete their later five before either set is revealed; mutual chat consent follows
+- Existing ten-answer accounts remain usable; stored answers are reused
+- Pair reveals use immutable pair snapshots rather than later profile edits
+
+The original question wording/categories/choices are retained. Email verification, legal consent, moderation, contact privacy, recovery and review isolation remain in place. No schema changes or production promotion.
+
+Review the mobile form and quick flow first. Full gameplay needs the isolated test setup described in REVIEW-ROLLBACK.md. Code rollback cannot undo data changes.
