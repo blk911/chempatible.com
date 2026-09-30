@@ -55,11 +55,16 @@ public configuration, and middleware. Request hosts, cookies, request headers,
 URL parameters, and browser storage cannot enable live mode.
 
 `GET /api/config` returns only `{ "reviewOnly": true }` or
-`{ "reviewOnly": false }`, with `Cache-Control: no-store`. It reads no database
-and returns no project ID, admin address, recipient list, key, or credential.
-`deployment.js` removes the default review banner only after a successful JSON
-response with boolean `reviewOnly: false`. Offline, invalid, or failed responses
-leave the notice visible. APIs enforce the mode independently of this UI.
+`{ "reviewOnly": false }`, with `Cache-Control: no-store`. Blocked configuration
+returns HTTP 503 with `reviewOnly: true`; only confirmed review or live mode
+returns HTTP 200. It reads no database and returns no project ID, admin address,
+recipient list, key, or credential. `HEAD` uses the same status with no body.
+The notice is hidden in the initial HTML and remains hidden while config loads.
+`deployment.js` shows “Review version” only after a successful JSON response with
+boolean `reviewOnly: true`, and leaves it hidden for boolean `reviewOnly: false`.
+Offline, invalid, or failed responses show “Service temporarily unavailable.
+Please try again.” without asserting either mode. APIs enforce the mode
+independently of this UI.
 
 Routing middleware runs for all routes, using the supported
 `next({ headers })` helper from pinned `@vercel/functions`. Every non-live response
