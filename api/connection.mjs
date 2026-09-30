@@ -27,14 +27,14 @@ async function ownInvitation(sql,body,req){
  return row;
 }
 const closed=row=>['ended','declined'].includes(row.status);
-const allRevealed=row=>!closed(row)&&['nextResults','secondResults','chatRequested','chat','email','tests'].includes(row.status)&&(row.prospect_answers||[]).length===10;
+const allRevealed=row=>!closed(row)&&['nextResults','secondResults','chatRequested','chat','email','tests'].includes(row.status)&&(row.prospect_answers||[]).length===10&&(row.sender_answers||[]).length===10;
 const shared=row=>!closed(row)&&['email','tests'].includes(row.status);
 const canChat=row=>['chat','secondResults','email','tests'].includes(row.status);
 // The old secondResults state already enabled chat. New rounds use an internal
 // marker so upgrading preserves access to existing conversations.
 const publicStatus=row=>row.status==='nextResults'?'secondResults':row.status==='secondResults'?'chat':row.status;
-function prospectView(row){const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),messages:canChat(row)?row.messages:[]}}
-function inboxView(row,side){const view=prospectView(row),full=allRevealed(row);return {id:row.id||row.token_hash,side,recipient_name:row.recipient_name,recipient_email:null,channel:row.channel,claimed:!!row.claimed,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:closed(row)?[]:(row.prospect_answers||[]).slice(0,full?10:5),prospect_phone:null,prospect_email:shared(row)?row.prospect_email:null,status:publicStatus(row),messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:view.answers}: {})}}
+function prospectView(row){const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:row.sender_answers.length===10,prospectSecondDone:row.prospect_answers.length===10,messages:canChat(row)?row.messages:[]}}
+function inboxView(row,side){const view=prospectView(row),full=allRevealed(row);return {id:row.id||row.token_hash,side,recipient_name:row.recipient_name,recipient_email:null,channel:row.channel,claimed:!!row.claimed,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:closed(row)?[]:(row.prospect_answers||[]).slice(0,full?10:5),prospect_phone:null,prospect_email:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:view.memberSecondDone,prospectSecondDone:view.prospectSecondDone,own_answers:closed(row)?[]:side==='prospect'?row.prospect_answers:row.sender_answers,messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:view.answers}: {})}}
 async function participant(sql,body,req){
  if(body.token){const row=await ownInvitation(sql,body,req);return row?{row,id:row.token_hash,side:'prospect'}:null}
  if(!validToken(body.id))return null;
@@ -122,25 +122,32 @@ async function handler(req){
   }
   if(body.action==='chat'){
    const row=await ownInvitation(sql,body,req);if(!row)return reply({error:'Connection not found.'},404);
-   if(row.status!=='nextResults'||row.prospect_answers.length!==10)return reply({error:'Finish both rounds before choosing chat.'},409);
+   if(row.status!=='nextResults'||(row.prospect_answers.length!==10||row.sender_answers.length!==10))return reply({error:'Finish both rounds before choosing chat.'},409);
    const rows=await sql`UPDATE connection_state SET status='chatRequested',updated_at=now() WHERE invitation_hash=${row.token_hash} AND status='nextResults' RETURNING status`;
    return rows[0]?reply({ok:true,status:'chatRequested'}):reply({error:'This connection has moved on.'},409);
   }
 
   if(body.action==='second'){
-   const row=await ownInvitation(sql,body,req);
-   if(!row)return reply({error:'Invitation not found.'},404);
-   if(!['secondFive','chat'].includes(row.status)||row.prospect_answers.length!==5||!validAnswers(body.answers,10)||body.answers.slice(0,5).some((a,i)=>a!==row.prospect_answers[i]))return reply({error:'Complete the next five in order.'},400);
-   const next=row.status==='chat'?'chat':'nextResults';
-   const updated=await sql`UPDATE connection_state SET prospect_answers=${JSON.stringify(body.answers)}::jsonb,status=${next},updated_at=now() WHERE invitation_hash=${row.token_hash} AND status=${row.status} RETURNING status`;
-   if(!updated[0])return reply({error:'This connection has moved on.'},409);
-   await ops.log(sql,'next_five',{member:actor,connection:row.token_hash});
-   return reply({ok:true,answers:row.sender_answers});
+   const who=await participant(sql,body,req);if(!who)return reply({error:'Invitation not found.'},404);
+   const {row,id,side}=who,previous=side==='member'?row.sender_answers:row.prospect_answers;
+   const repeated=previous.length===10&&validAnswers(body.answers,10)&&body.answers.every((a,i)=>a===previous[i]);
+   if(!validAnswers(body.answers,10)||body.answers.slice(0,5).some((a,i)=>a!==previous[i])||(!repeated&&(!['secondFive','chat'].includes(row.status)||previous.length!==5))||!['secondFive','nextResults','chatRequested','chat','secondResults','email','tests'].includes(row.status))return reply({error:'Complete the next five in order.'},400);
+   // Both writers serialize through the connection row. The separate finalization
+   // statement gets a fresh snapshot, so concurrent completions cannot strand it.
+   const saved=repeated?[{alreadySaved:true}]:side==='member'
+    ?await sql`WITH locked AS (SELECT invitation_hash FROM connection_state WHERE invitation_hash=${id} AND status IN ('secondFive','chat') FOR UPDATE) UPDATE invitations i SET sender_answers=${JSON.stringify(body.answers)}::jsonb FROM locked c WHERE i.token_hash=c.invitation_hash AND jsonb_array_length(i.sender_answers)=5 RETURNING i.token_hash`
+    :await sql`UPDATE connection_state SET prospect_answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE invitation_hash=${id} AND status IN ('secondFive','chat') AND jsonb_array_length(prospect_answers)=5 RETURNING invitation_hash`;
+   if(!saved[0])return reply({error:'This connection has moved on.'},409);
+   await sql`UPDATE connection_state c SET status=CASE WHEN c.status='chat' THEN 'chat' ELSE 'nextResults' END,updated_at=now() FROM invitations i WHERE c.invitation_hash=i.token_hash AND c.invitation_hash=${id} AND c.status IN ('secondFive','chat') AND jsonb_array_length(i.sender_answers)=10 AND jsonb_array_length(c.prospect_answers)=10 RETURNING c.status`;
+   const latest=await connectionRow(sql,id);if(!latest||closed(latest))return reply({error:'This connection has ended.'},409);
+   await ops.log(sql,'next_five',{member:actor,connection:id,detail:{side}});
+   const other=side==='member'?latest.prospect_answers:latest.sender_answers;
+   return reply({ok:true,status:publicStatus(latest),answers:other.slice(0,allRevealed(latest)?10:5),memberSecondDone:latest.sender_answers.length===10,prospectSecondDone:latest.prospect_answers.length===10});
   }
   if(body.action==='email'){
    const row=await ownInvitation(sql,body,req),address=String(body.email||'').trim().toLowerCase();
    if(!row)return reply({error:'Invitation not found.'},404);
-   if(!['chat','secondResults','email','tests'].includes(row.status)||row.prospect_answers.length!==10||!validEmail(address))return reply({error:'Choose chat together before sharing your email.'},400);
+   if(!['chat','secondResults','email','tests'].includes(row.status)||row.prospect_answers.length!==10||row.sender_answers.length!==10||!validEmail(address))return reply({error:'Choose chat together before sharing your email.'},400);
    const updated=await sql`UPDATE connection_state SET prospect_email=${address},status='email',updated_at=now() WHERE invitation_hash=${row.token_hash} AND status=${row.status} RETURNING status`;
    if(!updated[0])return reply({error:'This connection has moved on.'},409);
    await ops.log(sql,'email_shared',{member:actor,connection:row.token_hash});

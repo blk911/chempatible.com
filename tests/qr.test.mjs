@@ -55,3 +55,5 @@ invitation.expires_at=new Date(Date.now()-1000);
 const expired=await connection.fetch(new Request(next.url));assert.equal(expired.status,410);
 const devCode=await qrApi.fetch(new Request('https://chempatible-dev.vercel.app/api/qr',{method:'POST',headers:{cookie:memberCookie}}));assert.match((await devCode.json()).url,/^https:\/\/chempatible-dev\.vercel\.app\/\?invite=[a-f0-9]{64}$/);
 console.log('QR creation, first-phone claim, pair ownership, expiration, and chat passed');
+
+member.answers=member.answers.slice(0,5);assert.equal((await create()).status,200);assert.equal(invitation.sender_answers.length,5,"five-answer inviter creates QR without padding");

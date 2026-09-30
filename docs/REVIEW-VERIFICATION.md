@@ -29,3 +29,9 @@ Vercel reported both review builds ready for commit `8ff1e3b7e3329eaa60b24aed4c8
 - Local browser QA was blocked at port 4173 (`ERR_BLOCKED_BY_CLIENT`). The hosted opening/signup entry were inspected as described above; this is not full browser flow coverage
 
 There is no separate build or lint command configured in this repository. Vercel serves static files and API functions. A hosted build result, if available in the PR, is distinct from the local tests above. This remains a draft proposal, not a production-ready promotion.
+
+## Form/photo/five-secret correction
+
+The later user correction removes the promotional opening and illustrations, changes visible branding to chem-PATIBLE, and uses a form-first flow followed by the member's own photo and five tap-to-advance choices. Tests cover stale repeated taps, Back/last-choice correction, no auto-minted QR, five-answer member/QR/email handling, both next-five completion orders, failed-finalization retry, immutable pair snapshots, legacy ten-answer accounts and both-person UI reveal/chat gating.
+
+Cloud DevTools was unavailable by organization policy; no attempt was made to bypass it. Narrow-window resizing did not change the available viewport, so actual mobile-size visual validation remains a limitation. Responsive CSS includes mobile rules and 48px/50px controls.

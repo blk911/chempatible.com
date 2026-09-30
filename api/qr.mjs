@@ -15,7 +15,7 @@ export default {async fetch(req){
   const sql=neon(process.env.DATABASE_URL);
   const rows=await sql`SELECT id,name,contact,photo,answers FROM members WHERE session_hash=${hash(memberToken)}`;
   const member=rows[0];
-  if(!member||!Array.isArray(member.answers)||member.answers.length!==10)return reply({error:'Finish your ten secrets before showing a code.'},403);
+  if(!member||!Array.isArray(member.answers)||![5,10].includes(member.answers.length))return reply({error:'Finish your first five secrets before showing a code.'},403);
   const paused=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);if(paused)return reply(paused,403);
   const token=randomBytes(32).toString('hex'),id=hash(token),url=new URL(`/?invite=${token}`,req.url).href;
   await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) VALUES(${id},${member.contact},${member.name},${member.photo},${JSON.stringify(member.answers)},${''},${''},${member.id},${'qr'},now()+interval '15 minutes')`;

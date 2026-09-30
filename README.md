@@ -1,16 +1,18 @@
-# Chempatibility walkthrough
+# chem-PATIBLE review walkthrough
 
 A mobile-first two-person game with live QR and email invitations. The static page can be served locally with `python3 -m http.server 4173`; invitations require Vercel and the database below.
 
 ## Walkthrough
 
-1. On a phone, enter a name and email or cell, then tap **Next Step**. Choose a picture or use the camera. A welcome modal shows the photo; **Step 3 — Open My Page** opens the member profile and its ten-question prompt.
-2. On the member page, tap **Let's Play My Ten**. The ten default, three-choice situations appear one at a time in the right side of the top card. **My 10** appears below after the first saved answer and fills in with each question and choice. The invitation unlocks when all ten have answers.
-3. Open **Instant Vibe**. A fresh QR code is stored for this pair and remains available for fifteen minutes. The first other phone to scan claims it and opens the inviter’s first-five page. The inviter can instead choose **Can’t scan? Send it instead**; that path verifies their email and sends a private link. Every new code or email invitation has a separate pair ID. The first-five page shows the inviter’s photo and name beside **Five to Vibe**.
-4. Tap **Play My Five** to load one question at a time in that right panel. The inviter's selected answers stay hidden until the five-question reveal. After five, the prospect adds a picture and compares answers. Matching choices are green; different choices are grey. The request screen keeps the inviter's card visible and lets the prospect change or retake their own picture before entering a first name and cell.
-5. After the five and a picture, the visitor becomes a member and the inviter sees their name and picture in **Chempats**. The visitor can request a connection; the inviter can Accept/Pass. Accept opens a shared chat, and the next five sync between both browsers.
+This branch is an isolated review proposal; data APIs are disabled by default. See `docs/REVIEW-ROLLBACK.md` before configuring an isolated test database and mail setup.
 
-QR and email invitations create the same shared connection record. Both browsers poll for changes every five seconds while open. A scanned QR is bound to the first browser that opens it. The current page state lives in `sessionStorage`; the QR claim also has a device cookie so a reload on that phone can continue.
+1. The mobile-first landing page immediately shows name/email, adult/terms consent, and Continue. Email verification remains part of the signup safety flow.
+2. Take or choose your own photo. Then create five secrets with one short situation at a time. Tap a choice to advance; Back lets you correct accidental choices. The question meanings and choices are unchanged.
+3. After five, your own photo and Instant Vibe action are ready. A QR is minted only when you tap the action, never while rendering a page. The in-person code lasts fifteen minutes; the email path sends a separate invitation.
+4. The other person creates their first five and both sets reveal. Existing account details and answers are reused.
+5. Both choose Keep going before the next round. Each completes five more; neither person's next-five answers are revealed until both are complete. Then both decide whether to open chat.
+
+Both accounts can recover sent and received connections after signing in. QR claims and expiry, email verification, report/unmatch, contact privacy, and existing chat access remain supported. No database schema changes are introduced. A code rollback cannot roll back new data or staged sessions.
 
 ## Prototype limits
 

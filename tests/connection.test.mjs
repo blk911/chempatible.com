@@ -8,7 +8,7 @@ const raw='a'.repeat(64),id=hash(raw),owner='b'.repeat(64),visitor='c'.repeat(64
 const member={token_hash:id,sender_member_id:'owner',sender_email:'owner@example.com',sender_name:'Cindy',sender_photo:photo,sender_answers:[0,1,2,0,1,2,0,1,2,0],recipient_name:'Mike',recipient_email:'private-invite@example.com',channel:'email'};
 const state={prospect_member_id:null,claim_hash:null,prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,status:'invited',messages:[]};
 const ids=new Map([[hash(owner),'owner'],[hash(visitor),'visitor'],[hash(stranger),'stranger']]);
-let race=false;
+let race=false,failFinalize=false;
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
  if(q.startsWith('SELECT id FROM members'))return ids.has(v[0])?[{id:ids.get(v[0])}]:[];
  if(q.startsWith('SELECT name FROM members'))return v[0]===hash(visitor)?[{name:'Mike'}]:[];
@@ -20,7 +20,9 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='request'")){if(state.status!==v[5])return [];Object.assign(state,{prospect_name:v[0],prospect_phone:v[1],prospect_email:v[2],prospect_photo:v[3],status:'request'});return [{status:state.status}]}
  if(q.startsWith('UPDATE connection_state SET status=?')){if(state.status!==v[2])return [];state.status=v[0];return [{status:state.status}]}
  if(q.startsWith("UPDATE connection_state SET status='chatRequested'")){if(state.status!=='nextResults')return [];state.status='chatRequested';return [{status:state.status}]}
- if(q.startsWith('UPDATE connection_state SET prospect_answers=')){if(state.status!==v[3])return [];state.prospect_answers=JSON.parse(v[0]);state.status=v[1];return [{status:state.status}]}
+ if(q.startsWith('WITH locked AS')){if(!['secondFive','chat'].includes(state.status)||member.sender_answers.length!==5)return [];member.sender_answers=JSON.parse(v[1]);return [{token_hash:id}]}
+ if(q.startsWith('UPDATE connection_state SET prospect_answers=')){if(!['secondFive','chat'].includes(state.status)||state.prospect_answers.length!==5)return [];state.prospect_answers=JSON.parse(v[0]);return [{invitation_hash:id}]}
+ if(q.startsWith('UPDATE connection_state c SET status=CASE')){if(failFinalize){failFinalize=false;throw Error('Synthetic finalize interruption')}if(['secondFive','chat'].includes(state.status)&&member.sender_answers.length===10&&state.prospect_answers.length===10){state.status=state.status==='chat'?'chat':'nextResults';return [{status:state.status}]}return []}
  if(q.startsWith('UPDATE connection_state SET prospect_email=')){if(state.status!==v[2])return [];state.prospect_email=v[0];state.status='email';return [{status:state.status}]}
  if(q.startsWith('UPDATE connection_state SET messages=jsonb_set')){const [path,index,,by,reaction]=v;assert.equal(Number(path),index);if(!state.messages[index])return [];state.messages[index].reactions={...state.messages[index].reactions,[by]:reaction};return [{messages:state.messages}]}
  if(q.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(v[0]));return [{messages:state.messages}]}
@@ -62,7 +64,7 @@ assert.equal((await call(second,stranger))[0],404);
 assert.equal((await call(second,visitor))[1].answers.length,10);assert.equal(state.status,'nextResults');assert.equal((await inbox(visitor))[0].status,'secondResults');
 assert.equal((await get('invite='+raw,visitor))[1].answers.length,10);
 hidden((await inbox())[0]);
-assert.equal((await call(second,visitor))[0],400,'revealed next five cannot change');
+assert.equal((await call(second,visitor))[0],200,'identical completion retry is safe');assert.equal((await call({...second,answers:[...second.answers.slice(0,9),0]},visitor))[0],400,'revealed next five cannot change');
 assert.equal((await call({action:'email',id,email:'shared@example.com'},visitor))[0],400);
 assert.equal((await call({action:'message',id,text:'Too early'},visitor))[0],409);
 assert.equal((await call({action:'chat',id},visitor))[1].status,'chatRequested');
@@ -96,7 +98,7 @@ assert.equal((await inbox(renewed))[0].side,'prospect');assert.equal((await call
 ids.delete(hash(renewed));ids.set(hash(visitor),'visitor');
 // Legacy chat survives; it still cannot reveal answers that were never mutually completed.
 state.status='chat';state.prospect_answers=first.answers;assert.equal((await get('invite='+raw,visitor))[1].answers.length,5);assert.equal((await call({action:'message',id,text:'Legacy'},visitor))[0],200);
-assert.equal((await call(second,visitor))[0],200);assert.equal(state.status,'chat','completing a legacy chat keeps the already-open chat');assert.equal((await call(second,visitor))[0],400,'chat cannot rewrite revealed answers');
+assert.equal((await call(second,visitor))[0],200);assert.equal(state.status,'chat','completing a legacy chat keeps the already-open chat');assert.equal((await call(second,visitor))[0],200,'identical chat retry is safe');
 // Claimed pairs survive QR expiry and login re-entry; unclaimed codes cannot be used.
 member.channel='qr';member.expires_at=new Date(Date.now()-1000);state.claim_hash=hash('claim');assert.equal((await inbox(visitor)).length,1);assert.equal((await get('invite='+raw,visitor))[0],200);
 state.claim_hash=null;state.prospect_member_id=null;state.status='invited';assert.equal((await get('invite='+raw,visitor))[0],410);assert.equal((await call(first,visitor))[0],404);assert.equal((await inbox(owner)).length,0);
@@ -126,6 +128,19 @@ assert.equal((await call({action:'message',id,text:'Legacy second results'},visi
 assert.equal((await call({action:'react',id,index:0,reaction:'like'},visitor))[0],200);
 assert.equal((await call({action:'chat',id},visitor))[0],409,'legacy chat does not need another consent request');
 assert.equal((await call({action:'email',id,email:'legacy@example.com'},visitor))[0],200);
+// Five-answer inviter: either completion order stays private until BOTH have ten.
+const originalMemberAnswers=[...member.sender_answers];
+for(const order of [[visitor,owner],[owner,visitor]]){
+ member.sender_answers=originalMemberAnswers.slice(0,5);state.prospect_answers=[...first.answers];state.status='secondFive';state.prospect_member_id='visitor';member.channel='email';
+ const mine={action:'second',id,answers:originalMemberAnswers};
+ const firstResult=await call(order[0]===owner?mine:second,order[0]);assert.equal(firstResult[0],200);assert.equal(state.status,'secondFive');assert.equal(firstResult[1].answers.length,5);
+ assert.equal((await get('invite='+raw,visitor))[1].answers.length,5);assert.equal((await inbox(owner))[0].prospect_answers.length,5);assert.equal((await call({action:'chat',id},visitor))[0],409);
+ const finalResult=await call(order[1]===owner?mine:second,order[1]);assert.equal(finalResult[0],200);assert.equal(state.status,'nextResults');assert.equal(finalResult[1].answers.length,10);
+}
+// Recover a save that committed before finalization failed; don't strand the pair.
+member.sender_answers=originalMemberAnswers;state.prospect_answers=[...first.answers];state.status='secondFive';failFinalize=true;
+const oldError=console.error;console.error=()=>{};try{assert.equal((await call(second,visitor))[0],500)}finally{console.error=oldError}assert.equal(state.prospect_answers.length,10);assert.equal(state.status,'secondFive');
+assert.equal((await call(second,visitor))[0],200);assert.equal(state.status,'nextResults');
 // Null IDs are not identities: a legacy QR with no linked sender can still be claimed.
 member.sender_member_id=null;member.channel='qr';member.expires_at=new Date(Date.now()+900000);state.prospect_member_id=null;state.claim_hash=null;state.status='invited';
 assert.equal((await get('invite='+raw))[0],200);assert(state.claim_hash);
