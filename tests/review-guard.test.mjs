@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {reviewGate} from '../api/_review.mjs';
+import {reviewGate,reviewRecipientAllowed,requireReviewRecipient} from '../api/_review.mjs';
 delete process.env.CHEMPAT_REVIEW_DATA;
 assert.equal(reviewGate().status,503);
 process.env.CHEMPAT_REVIEW_DATA='true';
@@ -24,3 +24,16 @@ for(const name of ['admin','connection','email','member','qr']){
 }
 assert.equal(networkCalls,0);
 console.log('All review APIs fail closed before database/mail access');
+
+// An absent allowlist never enables mail, even when review data is enabled.
+process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
+delete process.env.CHEMPAT_REVIEW_EMAILS;
+assert.equal(reviewRecipientAllowed('approved@example.com'),false);
+process.env.CHEMPAT_REVIEW_EMAILS='Approved@Example.com, second@example.com';
+assert.equal(reviewRecipientAllowed(' approved@example.com '),true);
+for(const recipient of ['other@example.com','approved+tag@example.com','approved@example.com.evil','approved@example.com,other@example.com','approved@example.com\r\nBcc: other@example.com','',null])assert.equal(reviewRecipientAllowed(recipient),false);
+assert.throws(()=>requireReviewRecipient('other@example.com'),/approved test recipients/);
+const ops=await import('../api/_ops.mjs');
+await assert.rejects(ops.sendMail('other@example.com','test','test'),/approved test recipients/);
+assert.equal(networkCalls,0,'unapproved codes and report alerts never reach mail provider');
+console.log('Review mail requires exact approved recipients before provider access');

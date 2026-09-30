@@ -1,4 +1,4 @@
-import {reviewGate} from './_review.mjs';
+import {reviewGate,reviewRecipientAllowed} from './_review.mjs';
 import {createHash,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -13,7 +13,7 @@ async function login(sql,body){
  if(body.action==='start'){
   const address=String(body.email||'').trim().toLowerCase();
   // Same answer for every address, so the page never confirms who the admin is.
-  if(address!==ops.ADMIN_EMAIL)return reply({ok:true});
+  if(address!==ops.ADMIN_EMAIL||!reviewRecipientAllowed(address))return reply({ok:true});
   const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${codeKey}`;
   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before trying again.'},429);
   const code=String(randomInt(100000,1000000));

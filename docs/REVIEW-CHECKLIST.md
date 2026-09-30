@@ -14,3 +14,8 @@ Latest user correction supersedes the earlier promotional opening.
 The original question wording/categories/choices are retained. Email verification, legal consent, moderation, contact privacy, recovery and review isolation remain in place. No schema changes or production promotion.
 
 Review the mobile form and quick flow first. Full gameplay needs the isolated test setup described in REVIEW-ROLLBACK.md. Code rollback cannot undo data changes.
+
+
+### Playable preview email configuration
+
+The review branch now fails closed for every mail recipient unless the exact address is listed in `CHEMPAT_REVIEW_EMAILS` (comma-separated, no wildcards). This covers signup/sign-in codes, invitations, and report alerts. Put only the explicitly approved test inboxes in that variable. Configure a dedicated SendGrid test key directly in Vercel, scoped to Preview and `review/instant-vibe-20260930` on `chempatible-dev`; do not copy the production key. The current mail sender is `hello@chempatible.com`, which must be verified in the selected SendGrid account. `CHEMPAT_FROM_EMAIL` is not used by the current mail implementation. Keep `CHEMPAT_REVIEW_DATA` unset until both database isolation and this mail setup are verified.

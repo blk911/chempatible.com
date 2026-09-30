@@ -1,3 +1,4 @@
+import {requireReviewRecipient} from './_review.mjs';
 // Shared moderation and activity helpers. Files starting with "_" are not deployed as their own routes.
 import {createHash,createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 
@@ -83,6 +84,7 @@ export async function linkProspect(sql,connectionId,memberToken){
 export function strikeAction(strikes){return strikes>=4?'block':strikes===3?'suspend':'flag'}
 
 export async function sendMail(to,subject,text){
+ requireReviewRecipient(to);
  if(!process.env.SENDGRID_API_KEY)throw Error('Email is not configured.');
  const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'chem-PATIBLE'},subject,content:[{type:'text/plain',value:text}]})});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);

@@ -1,4 +1,4 @@
-import {reviewGate} from './_review.mjs';
+import {reviewGate,reviewRecipientAllowed} from './_review.mjs';
 import {createHash,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -83,6 +83,7 @@ async function handler(req){
   // Any valid address can get a code, so the reply never says whether a page exists.
   if(body.action==='code_start'||body.action==='signin_start'){
    const email=String(body.email||'').trim().toLowerCase();if(!validEmail(email))return reply({error:'Enter a valid email.'},400);
+   if(!reviewRecipientAllowed(email))return reply({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    const key=`member:${email}`;
    const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${key}`;
    if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before asking for another.'},429);

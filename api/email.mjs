@@ -1,7 +1,7 @@
 import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
-import {reviewGate} from './_review.mjs';
+import {reviewGate,reviewRecipientAllowed,requireReviewRecipient} from './_review.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -11,6 +11,7 @@ const json=(data,status=200,headers={})=>new Response(JSON.stringify(data),{stat
 const cookie=req=>Object.fromEntries((req.headers.get('cookie')||'').split(';').map(x=>x.trim().split('=')));
 const photoData=s=>typeof s==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(s)&&s.length<250000;
 async function sendMail(to,subject,html,text,photo){
+ requireReviewRecipient(to);
  const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'chem-PATIBLE'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
  if(photo)body.attachments=[{content:photo.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}];
  const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
@@ -33,6 +34,7 @@ async function handler(req){
   let body;try{body=await req.json()}catch{return json({error:'Invalid request.'},400)}
   if(body.action==='start'){
    const address=String(body.email||'').trim().toLowerCase();if(!email(address))return json({error:'Enter a valid email address.'},400);
+   if(!reviewRecipientAllowed(address))return json({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${address}`;
    if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return json({error:'A code was just sent. Wait a minute before trying again.'},429);
    const code=String(randomInt(100000,1000000));
@@ -58,6 +60,7 @@ async function handler(req){
    if(!member||member.contact!==sender)return json({error:'Verify the email on your member page.'},403);
    const paused=await ops.standing(sql,member.id);if(paused)return json(paused,403);
    if(name.length<1||name.length>50||theirName.length<1||theirName.length>50||!email(theirEmail)||!photoData(member.photo)||!Array.isArray(member.answers)||![5,10].includes(member.answers.length)||!member.answers.every(x=>Number.isInteger(x)&&x>=0&&x<=2))return json({error:'Complete your first five and enter a valid recipient name and email.'},400);
+   if(!reviewRecipientAllowed(theirEmail))return json({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
    const token=randomBytes(32).toString('hex');const link=new URL(`/?invite=${token}`,req.url).href;
    await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail},${member.id})`;

@@ -1,3 +1,4 @@
+process.env.CHEMPAT_REVIEW_EMAILS='blk911@gmail.com';
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -101,11 +102,16 @@ assert.equal((await middleware(new Request('https://chempatible.com/admin-ops.js
 assert.equal((await middleware(req(`chempat_admin=${good.slice(0,-1)}0`))).status,307);
 
 // Admin API: only the admin address gets a code, codes sign in once, and data needs the cookie.
-const src=fs.readFileSync(new URL('../api/admin.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__adminSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
+const src=fs.readFileSync(new URL('../api/admin.mjs',import.meta.url),'utf8').replace("'./_review.mjs'",`'${new URL('../api/_review.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__adminSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
 globalThis.__adminSql=sql;
 const admin=(await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'))).default;
 const post=async(body,cookie='')=>{const r=await admin.fetch(new Request('https://chempatible.com/api/admin',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify(body)}));return [r.status,await r.json(),r.headers.get('set-cookie')]};
 mail.length=0;
+const codesBeforeAdmin=JSON.stringify(codes);
+delete process.env.CHEMPAT_REVIEW_EMAILS;
+assert.equal((await post({action:'start',email:'blk911@gmail.com'}))[0],200);
+assert.equal(mail.length,0);assert.equal(JSON.stringify(codes),codesBeforeAdmin,'unapproved admin does not write or replace a code');
+process.env.CHEMPAT_REVIEW_EMAILS='blk911@gmail.com';
 assert.equal((await post({action:'start',email:'intruder@example.com'}))[0],200);assert.equal(mail.length,0,'no code for other addresses');
 assert.equal((await post({action:'start',email:'BLK911@gmail.com'}))[0],200);assert.equal(mail.length,1);assert.equal(mail[0].personalizations[0].to[0].email,'blk911@gmail.com');
 assert.equal((await post({action:'start',email:'blk911@gmail.com'}))[0],429,'one code a minute');
