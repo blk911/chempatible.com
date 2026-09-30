@@ -148,3 +148,23 @@
 .inlineComposer .chatUpload:focus-within{outline:3px solid #246d7d;outline-offset:3px}
 .inlineComposer button:disabled{opacity:.55;cursor:wait}
 .reviewBanner[hidden]{display:none!important}
+
+/* Friend invitations sit beside Vibes, while keeping their conversations separate. */
+.socialMemberAction{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;max-width:430px}
+.socialMemberAction .ctaPrompt{flex-basis:100%}
+.socialMemberAction .friendShareButton{font-size:.83rem}
+.socialWorkspace .friendSectionTitle{padding-top:17px;border-top:1px solid #e6eeea;margin-top:10px}
+.friendRail .chempatContact.selected{background:#eaf3f1;box-shadow:inset 3px 0 #327b74}
+.friendRail .privateChatButton.on{background:#327b74;border-color:#327b74}
+.friendInvitation{max-width:480px;margin:22px auto;text-align:center}
+.friendInvitation>.button{display:block;width:100%;margin:18px 0 8px}
+.friendIntro{padding:0 0 15px;margin-bottom:15px;border-bottom:1px solid #e1e9e5}
+.friendIntro .face{width:68px;height:68px;margin-top:14px;border-radius:14px}
+.friendIntro h2{font-size:1.5rem;margin:12px 0 8px}
+.friendIntro p{font-size:.86rem;margin-bottom:0}
+.friendShareModal .field{text-align:left;margin:20px 0 8px;font-size:.83rem}
+.friendShareModal .field input{font-size:16px;font-weight:400}
+.friendShareModal .error:empty,.friendInvitation .error:empty{display:none}
+.friendShareModal #friendShareStatus{color:#327b74}
+.vibeReady .friendShareButton{margin-top:8px;font-size:.88rem}
+@media(max-width:700px){.socialMemberAction .button{flex:1 1 155px;width:auto;white-space:normal}.socialMemberAction .friendShareButton{font-size:.72rem}.friendInvitation{padding:18px;margin-top:16px}.friendRail .chempatContact.selected{box-shadow:none;border-color:#327b74}}

@@ -14,6 +14,12 @@ A mobile-first two-person game with live QR and email invitations. The static pa
 
 Both accounts can recover sent and received connections after signing in. QR claims and expiry, email verification, report/unmatch, contact privacy, and existing chat access remain supported. No database schema changes are introduced. A code rollback cannot roll back new data or staged sessions.
 
+## Friends
+
+Share with a friend creates a separate, single-use link lasting seven days. Share it directly with the intended friend. Opening it shows the inviter; it does not connect accounts. The recipient signs in or registers with verified email, adult consent, and a photo, then explicitly chooses Connect as friends. This opens a private friends chat without answering or revealing romantic questions. Friends and Vibe connections remain separate, and either person can unmatch or report. A friend-only profile can create its first five later to send a Vibe invitation.
+
+Friend links use the existing invitation and connection tables with server-owned `channel='friend'`; no schema migration is required. They send no automatic invitation email and expose no answers or contact details. See `docs/FRIENDS-RELEASE.md` for release and rollback details.
+
 ## Prototype limits
 
 QR scanning and email invitations are live on the deployed domain. There is no text delivery or phone verification. Deeper discoveries are briefs, not completed games. The admin Questions and Templates pages are drafts saved only in the browser; they are separate from the public game.

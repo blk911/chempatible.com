@@ -14,12 +14,15 @@ async function senderEmail(req,sql){const token=cookie(req).chempat_session;if(!
 async function senderMember(req,sql){const token=cookie(req).chempat_member;if(!validToken(token))return null;const rows=await sql`SELECT id FROM members WHERE session_hash=${hash(token)}`;return rows[0]?.id||null}
 const claimCookie=id=>`chempat_pair_${id.slice(0,16)}`;
 async function connectionRow(sql,id){const rows=await sql`SELECT i.token_hash,i.created_at,i.sender_name,i.sender_photo,i.sender_answers,i.recipient_name,i.recipient_email,i.sender_member_id,i.sender_email,i.channel,i.expires_at,c.claim_hash,c.prospect_member_id,c.prospect_name,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.status,c.messages FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE i.token_hash=${id}`;return rows[0]||null}
-const expired=row=>row.channel==='qr'&&!row.claim_hash&&new Date(row.expires_at).getTime()<=Date.now();
+const friend=row=>row.channel==='friend';
+const expired=row=>((row.channel==='qr'&&!row.claim_hash)||(friend(row)&&!row.prospect_member_id))&&new Date(row.expires_at).getTime()<=Date.now();
 async function ownInvitation(sql,body,req){
  const token=typeof body==='string'?body:body.token,id=validToken(token)?hash(token):body.id;
  if(!validToken(id))return null;
  const row=await connectionRow(sql,id);if(!row||expired(row))return null;
  const member=await senderMember(req,sql);
+ // Friend links are previews only. Account binding after explicit acceptance is the sole chat authority.
+ if(friend(row))return member&&row.prospect_member_id===member?row:null;
  // A linked account is the recovery authority; neither a forwarded token nor an old claim cookie can take it over.
  if(row.prospect_member_id)return member===row.prospect_member_id?row:null;
  if(!validToken(token))return null;
@@ -33,13 +36,14 @@ const canChat=row=>['chat','secondResults','email','tests'].includes(row.status)
 // The old secondResults state already enabled chat. New rounds use an internal
 // marker so upgrading preserves access to existing conversations.
 const publicStatus=row=>row.status==='nextResults'?'secondResults':row.status==='secondResults'?'chat':row.status;
-function prospectView(row){const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:row.sender_answers.length===10,prospectSecondDone:row.prospect_answers.length===10,messages:canChat(row)?row.messages:[]}}
-function inboxView(row,side){const view=prospectView(row),full=allRevealed(row);return {id:row.id||row.token_hash,invitedAt:row.created_at||null,side,recipient_name:row.recipient_name,recipient_email:null,channel:row.channel,claimed:!!row.claimed,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:closed(row)?[]:(row.prospect_answers||[]).slice(0,full?10:5),prospect_phone:null,prospect_email:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:view.memberSecondDone,prospectSecondDone:view.prospectSecondDone,own_answers:closed(row)?[]:side==='prospect'?row.prospect_answers:row.sender_answers,messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:view.answers}: {})}}
+function prospectView(row){if(friend(row))return {id:row.token_hash,kind:'friend',invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers:[],recipientName:'',prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:[],prospectPhone:null,prospectEmail:null,status:publicStatus(row),memberSecondDone:false,prospectSecondDone:false,messages:canChat(row)?row.messages:[]};const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:row.sender_answers.length===10,prospectSecondDone:row.prospect_answers.length===10,messages:canChat(row)?row.messages:[]}}
+function inboxView(row,side){if(friend(row)){const view=prospectView(row);return {id:row.id||row.token_hash,kind:'friend',channel:'friend',invitedAt:row.created_at||null,side,recipient_name:'',recipient_email:null,claimed:!!row.prospect_member_id,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:[],prospect_phone:null,prospect_email:null,status:publicStatus(row),memberSecondDone:false,prospectSecondDone:false,own_answers:[],messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:[]}: {})}}const view=prospectView(row),full=allRevealed(row);return {id:row.id||row.token_hash,invitedAt:row.created_at||null,side,recipient_name:row.recipient_name,recipient_email:null,channel:row.channel,claimed:!!row.claimed,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:closed(row)?[]:(row.prospect_answers||[]).slice(0,full?10:5),prospect_phone:null,prospect_email:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:view.memberSecondDone,prospectSecondDone:view.prospectSecondDone,own_answers:closed(row)?[]:side==='prospect'?row.prospect_answers:row.sender_answers,messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:view.answers}: {})}}
 async function participant(sql,body,req){
  if(body.token){const row=await ownInvitation(sql,body,req);return row?{row,id:row.token_hash,invitedAt:row.created_at||null,side:'prospect'}:null}
  if(!validToken(body.id))return null;
  const row=await connectionRow(sql,body.id);if(!row||expired(row))return null;
  const member=await senderMember(req,sql),email=await senderEmail(req,sql);
+ if(friend(row)){if(!member)return null;if(member===row.prospect_member_id)return {row,id:body.id,side:'prospect'};return member===row.sender_member_id?{row,id:body.id,side:'member'}:null}
  if(member&&row.prospect_member_id===member)return {row,id:body.id,side:'prospect'};
  if(member&&row.sender_member_id===member||!row.sender_member_id&&email&&row.sender_email===email)return {row,id:body.id,side:'member'};
  return null;
@@ -56,6 +60,7 @@ async function handler(req){
     if(!validToken(token))return reply({error:'Invitation not found.'},404);
     const id=hash(token);
     let row=await connectionRow(sql,id);if(!row)return reply({error:'Invitation not found.'},404);
+    if(friend(row)){const own=await ownInvitation(sql,token,req);return own?reply(prospectView(own)):reply({error:'Open your linked member page to see this friend connection.'},403)}
     if(row.prospect_member_id){const own=await ownInvitation(sql,token,req);return own?reply(prospectView(own)):reply({error:'Sign in to the member page linked to this connection.'},403)}
     if(row.channel!=='qr')return reply(prospectView(row));
     const guest=cookie(req)[claimCookie(id)];
@@ -73,7 +78,7 @@ async function handler(req){
     const sender=await senderEmail(req,sql),member=await senderMember(req,sql);
     if(cookie(req).chempat_member&&!member)return reply({error:'Your sign-in expired. Sign in again to see your connections.',sessionExpired:true},401);
     if(!sender&&!member)return reply({error:'Open your member page to see connections.'},401);
-    const rows=await sql`SELECT i.token_hash AS id,i.token_hash,i.created_at,i.sender_name,i.sender_photo,i.sender_answers,i.sender_email,i.sender_member_id,i.recipient_name,i.recipient_email,i.channel,(c.claim_hash IS NOT NULL) AS claimed,c.prospect_member_id,c.prospect_name,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.status,c.messages FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE (i.sender_member_id=${member} OR c.prospect_member_id=${member} OR (i.sender_member_id IS NULL AND i.sender_email=${sender||''})) AND (i.channel<>'qr' OR c.claim_hash IS NOT NULL OR i.expires_at>now()) ORDER BY i.created_at DESC LIMIT 50`;
+    const rows=await sql`SELECT i.token_hash AS id,i.token_hash,i.created_at,i.sender_name,i.sender_photo,i.sender_answers,i.sender_email,i.sender_member_id,i.recipient_name,i.recipient_email,i.channel,(c.claim_hash IS NOT NULL) AS claimed,c.prospect_member_id,c.prospect_name,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.status,c.messages FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE (i.sender_member_id=${member} OR c.prospect_member_id=${member} OR (i.sender_member_id IS NULL AND i.sender_email=${sender||''})) AND (i.channel<>'qr' OR c.claim_hash IS NOT NULL OR i.expires_at>now()) AND (i.channel<>'friend' OR c.prospect_member_id IS NOT NULL OR i.expires_at>now()) AND (i.channel<>'friend' OR c.status<>'declined' OR c.claim_hash IS NULL) ORDER BY i.created_at DESC LIMIT 50`;
     return reply({connections:rows.map(r=>inboxView(r,member&&r.prospect_member_id===member?'prospect':'member'))});
    }
    return reply({error:'Missing connection.'},400);
@@ -86,6 +91,12 @@ async function handler(req){
   if(!['unmatch','report'].includes(body.action)){const paused=await ops.standing(sql,actor);if(paused)return reply(paused,403)}
   // Scanners can reveal their first five before confirming their email; everything after needs it.
   if(['request','decision','message','react','second','email','chat'].includes(body.action)){const unproven=await ops.requireVerified(sql,actor);if(unproven)return reply(unproven,403)}
+  // Derive connection kind from storage so client fields cannot unlock romantic actions for friends.
+  if(['first','request','decision','second','chat','email'].includes(body.action)){
+   const target=validToken(body.token)?hash(body.token):body.id;
+   const row=validToken(target)?await connectionRow(sql,target):null;
+   if(row&&friend(row))return reply({error:'Friends connect through their friend invitation. Romantic sharing is unavailable here.'},409);
+  }
   if(body.action==='first'){
    const row=await ownInvitation(sql,body,req);
    if(!row)return reply({error:'Invitation not found.'},404);
@@ -161,7 +172,7 @@ async function handler(req){
    if(body.action==='react'){
     const index=body.index,reaction=body.reaction;
     if(!Number.isInteger(index)||index<0||index>=1000||!['like','dislike',null].includes(reaction))return reply({error:'Choose a message reaction.'},400);
-    const rows=await sql`UPDATE connection_state SET messages=jsonb_set(messages,ARRAY[${String(index)}]::text[],(messages->${index}) || jsonb_build_object('reactions',coalesce(messages->${index}->'reactions','{}'::jsonb) || jsonb_build_object(${by},${reaction})),false),updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') AND jsonb_array_length(messages)>${index} RETURNING messages`;
+    const rows=await sql`UPDATE connection_state SET messages=jsonb_set(messages,ARRAY[${String(index)}]::text[],(messages->${index}::int) || jsonb_build_object('reactions',coalesce(messages->${index}::int->'reactions','{}'::jsonb) || jsonb_build_object(${by}::text,${reaction}::text)),false),updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') AND jsonb_array_length(messages)>${index} RETURNING messages`;
     return rows[0]?reply({messages:rows[0].messages}):reply({error:'Message no longer available.'},409);
    }
    const message=String(body.text||'').trim(),photo=body.photo||null;

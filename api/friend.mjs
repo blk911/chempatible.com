@@ -1,0 +1,95 @@
+import {createHash,randomBytes} from 'node:crypto';
+import {neon} from '@neondatabase/serverless';
+import * as ops from './_ops.mjs';
+import {reviewGate} from './_review.mjs';
+
+const hash=value=>createHash('sha256').update(value).digest('hex');
+const reply=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
+const validToken=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
+const validPhoto=value=>typeof value==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value)&&value.length<250000;
+const validName=value=>typeof value==='string'&&value.trim().length>0&&value.length<=50;
+const tokenFrom=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_member=([a-f0-9]{64})(?:;|$)/)?.[1]||null;
+const available=row=>!!row.sender_exists&&!!row.sender_verified&&!row.sender_blocked&&(!row.sender_suspended||new Date(row.sender_suspended).getTime()<=Date.now());
+const elapsed=row=>!row.prospect_member_id&&!(new Date(row.expires_at).getTime()>Date.now());
+async function friendRow(sql,id){
+ const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
+ return rows[0]||null;
+}
+function publicInvite(row){
+ const status=row.status==='chat'||row.status==='declined'&&validToken(row.claim_hash)?'used':['ended','declined'].includes(row.status)?'closed':elapsed(row)?'expired':!available(row)?'unavailable':'invited';
+ return {kind:'friend',status,expiresAt:row.expires_at,...(status==='invited'?{name:row.sender_name,photo:row.sender_photo}:{})};
+}
+async function accepted(sql,row,member){
+ if(row.prospect_member_id!==member)return reply({error:'This friend invitation is already in use.'},409);
+ if(row.status==='chat')return reply({ok:true,id:row.token_hash,kind:'friend',status:'chat'});
+ // A declined duplicate stores only its canonical friend ID in claim_hash. It is
+ // a spent link, never a browser claim, and only its bound member can recover it.
+ if(row.status==='declined'&&validToken(row.claim_hash)){
+  const existing=await friendRow(sql,row.claim_hash);
+  if(existing?.status==='chat'&&((existing.sender_member_id===row.sender_member_id&&existing.prospect_member_id===member)||(existing.sender_member_id===member&&existing.prospect_member_id===row.sender_member_id)))return reply({ok:true,id:existing.token_hash,kind:'friend',status:'chat',alreadyConnected:true});
+ }
+ return reply({error:'This friend invitation is closed.'},410);
+}
+async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
+ if(!['GET','POST'].includes(req.method))return reply({error:'Method not allowed.'},405);
+ if(!process.env.DATABASE_URL)return reply({error:'Friend invitations are unavailable.'},503);
+ const sql=neon(process.env.DATABASE_URL);
+ try{
+  if(req.method==='GET'){
+   const token=new URL(req.url).searchParams.get('invite');
+   if(!validToken(token))return reply({error:'Friend invitation not found.'},404);
+   const row=await friendRow(sql,hash(token));
+   return row?reply(publicInvite(row)):reply({error:'Friend invitation not found.'},404);
+  }
+  let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
+  if(!body||typeof body!=='object'||Array.isArray(body))return reply({error:'Invalid request.'},400);
+  if(!['create','accept'].includes(body.action))return reply({error:'Unknown action.'},400);
+  const session=tokenFrom(req);
+  if(!session)return reply({error:'Open your member page to connect with friends.'},401);
+  const members=await sql`SELECT id,name,photo FROM members WHERE session_hash=${hash(session)}`;
+  const member=members[0];
+  if(!member)return reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
+  const denied=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);
+  if(denied)return reply(denied,403);
+  if(!validName(member.name)||!validPhoto(member.photo))return reply({error:'Add your name and picture before connecting with friends.'},400);
+  if(body.action==='create'){
+   const token=randomBytes(32).toString('hex'),id=hash(token);
+   // Both rows commit together. Friend invitations never snapshot answers or contact.
+   const rows=await sql`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) VALUES(${id},${''},${member.name},${member.photo},'[]'::jsonb,${''},${''},${member.id},'friend',now()+interval '7 days') RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`;
+   await ops.log(sql,'friend_invited',{member:member.id,connection:id});
+   // The client resolves this path against its own origin, preserving its login
+   // cookies on custom domains without trusting a supplied Host header.
+   return reply({id,token,url:`/friend?friend=${token}`,expiresAt:rows[0].expires_at,kind:'friend'});
+  }
+  if(!validToken(body.token))return reply({error:'Friend invitation not found.'},404);
+  const id=hash(body.token),row=await friendRow(sql,id);
+  if(!row)return reply({error:'Friend invitation not found.'},404);
+  if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
+  if(row.prospect_member_id)return accepted(sql,row,member.id);
+  if(row.status!=='invited')return reply({error:'This friend invitation is closed.'},410);
+  if(elapsed(row))return reply({error:'This friend invitation expired. Ask for a new one.'},410);
+  if(!available(row))return reply({error:'This friend invitation is unavailable.'},403);
+  // All acceptances for a pair lock the same two members in the same order.
+  // READ COMMITTED gives the following statement a fresh snapshot after waiting,
+  // so simultaneous links cannot create duplicate chats in either direction.
+  const results=await sql.transaction(tx=>[
+   tx`SELECT id FROM members WHERE id IN (${member.id},${row.sender_member_id}) ORDER BY id FOR UPDATE`,
+   tx`WITH existing_friend AS (SELECT i.token_hash FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE i.channel='friend' AND c.status='chat' AND ((i.sender_member_id=${member.id} AND c.prospect_member_id=${row.sender_member_id}) OR (i.sender_member_id=${row.sender_member_id} AND c.prospect_member_id=${member.id})) ORDER BY i.created_at LIMIT 1)
+   UPDATE connection_state c SET prospect_member_id=recipient.id,prospect_name=recipient.name,prospect_photo=recipient.photo,prospect_answers='[]'::jsonb,prospect_phone=NULL,prospect_email=NULL,claim_hash=(SELECT token_hash FROM existing_friend),status=CASE WHEN EXISTS(SELECT 1 FROM existing_friend) THEN 'declined' ELSE 'chat' END,updated_at=now()
+   FROM invitations i,members sender,members recipient WHERE c.invitation_hash=${id} AND i.token_hash=c.invitation_hash AND i.channel='friend' AND i.sender_member_id=sender.id AND sender.id=${row.sender_member_id} AND recipient.id=${member.id} AND recipient.session_hash=${hash(session)} AND c.prospect_member_id IS NULL AND c.status='invited' AND i.expires_at>now()
+   AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
+   AND NOT EXISTS(SELECT 1 FROM invitations ended_i JOIN connection_state ended_c ON ended_c.invitation_hash=ended_i.token_hash WHERE ended_c.status IN ('ended','declined') AND (ended_i.channel<>'friend' OR ended_c.claim_hash IS NULL) AND ((ended_i.sender_member_id=sender.id AND ended_c.prospect_member_id=recipient.id) OR (ended_i.sender_member_id=recipient.id AND ended_c.prospect_member_id=sender.id)))
+   RETURNING c.invitation_hash,c.status,c.claim_hash`
+  ],{isolationLevel:'ReadCommitted'});
+  if(!results[1][0]){
+   const latest=await friendRow(sql,id);
+   if(latest?.prospect_member_id)return accepted(sql,latest,member.id);
+   return reply({error:'This friend invitation is no longer available.'},409);
+  }
+  const result=results[1][0],existing=result.claim_hash;
+  await ops.log(sql,existing?'friend_duplicate':'friend_accepted',{member:member.id,connection:id});
+  return reply({ok:true,id:existing||id,kind:'friend',status:'chat',...(existing?{alreadyConnected:true}:{})});
+ }catch(error){console.error('Friend invitation error:',error);return reply({error:'Could not update this friend invitation. Try again.'},500)}
+}
+export default {fetch:handler};

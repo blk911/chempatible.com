@@ -60,7 +60,7 @@ for(const values of modes){
   assert.equal(response.headers.get('x-middleware-next'),'1');
   assert.equal(response.headers.get('x-robots-tag'),trusted?null:'noindex, nofollow, noarchive');
  }
- for(const path of ['/api/member','/api/config','/admin-login','/?invite=private-token','/?token=private-token','/?invite=']){
+ for(const path of ['/friend','/friend.html','/api/friend','/api/member','/api/config','/admin-login','/friend?friend=private-token','/?friend=private-token','/?invite=private-token','/?token=private-token','/?invite=']){
   assert.equal((await middleware(request(path))).headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
  }
  // Existing admin auth is enforced in every mode, regardless of release flag.
@@ -72,7 +72,7 @@ for(const values of modes){
  assert.equal(authenticated.headers.get('x-middleware-next'),'1');
  assert.equal(authenticated.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
  if(deploymentMode()==='blocked'){
-  for(const name of ['admin','connection','email','member','qr']){
+  for(const name of ['admin','connection','email','friend','member','qr']){
    const api=(await import(`../api/${name}.mjs`)).default;
    for(const method of ['GET','POST']){
     const response=await api.fetch(request(`/api/${name}?live=true`,{method,...(method==='POST'?{headers:{'content-type':'application/json'},body:JSON.stringify({action:'register',releaseMode:'live'})}:{})}));
@@ -120,7 +120,7 @@ const cases=[
  ['invalid JSON',{ok:true,json:async()=>{throw Error('Invalid JSON')}},false,unavailable],
  ['offline',null,false,unavailable]
 ];
-for(const path of ['/','/?invite=private-token','/?token=private-token','/?live=true']){
+for(const path of ['/','/friend?friend=private-token','/?friend=private-token','/?invite=private-token','/?token=private-token','/?live=true']){
  for(const [name,response,hidden,label] of cases){
   const dom=new JSDOM(html,{url:'https://chempatible.com'+path,runScripts:'outside-only'});
   const {document}=dom.window,banner=document.getElementById('reviewBanner');
@@ -164,5 +164,12 @@ for(const page of ['privacy.html','terms.html','admin-login.html','admin/index.h
 const vercel=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
 assert.equal(vercel.headers.flatMap(rule=>rule.headers).some(header=>header.key.toLowerCase()==='x-robots-tag'),false);
 const allowlist=fs.readFileSync(new URL('../.vercelignore',import.meta.url),'utf8').split('\n');
-for(const path of ['api/_deployment.mjs','api/config.mjs','deployment.js'])assert.ok(allowlist.includes('!/'+path));
+for(const path of ['api/_deployment.mjs','api/config.mjs','api/friend.mjs','friend.html','deployment.js'])assert.ok(allowlist.includes('!/'+path));
 console.log(`Deployment mode: ${combinations} combinations; fail-closed APIs, exact dev mail, live mail, robots, cold/delayed notice states, neutral failures, config privacy, and admin auth passed`);
+
+const friendPage=fs.readFileSync(new URL('../friend.html',import.meta.url),'utf8');
+assert.match(friendPage,/Come try Chem-patible with me\./);
+assert.match(friendPage,/<meta name="robots" content="noindex, nofollow, noarchive">/);
+assert.match(friendPage,/<aside[^>]+id="reviewBanner"[^>]+hidden>/);
+assert.doesNotMatch(friendPage,/five secrets|Five to Vibe|Chemistry and compatibility|og-image\.png/i);
+assert.match(friendPage,/<script src="game\.js"><\/script>/);
