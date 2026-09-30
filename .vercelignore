@@ -11,6 +11,7 @@
 !/api/connection.mjs
 !/api/config.mjs
 !/api/email.mjs
+!/api/friend.mjs
 !/api/member.mjs
 !/api/qr-schema.mjs
 !/api/qr.mjs
@@ -31,6 +32,7 @@
 !/game.js
 !/deployment.js
 !/index.html
+!/friend.html
 !/middleware.js
 !/og-image.png
 !/package-lock.json

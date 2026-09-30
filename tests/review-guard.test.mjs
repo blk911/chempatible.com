@@ -12,7 +12,7 @@ process.env.DATABASE_URL='postgres://must-not-connect';
 process.env.SENDGRID_API_KEY='must-not-send';
 let networkCalls=0;globalThis.fetch=async()=>{networkCalls++;throw Error('Review gate attempted network access')};
 // Every callable endpoint must fail closed before connecting to data services.
-for(const name of ['admin','connection','email','member','qr']){
+for(const name of ['admin','connection','email','member','qr','friend']){
  const api=(await import(`../api/${name}.mjs`)).default;
  for(const method of ['GET','POST']){const response=await api.fetch(new Request(`https://review.example/api/${name}`,{method,...(method==='POST'?{headers:{'content-type':'application/json'},body:JSON.stringify({action:'register'})}:{})}));assert.equal(response.status,503,`${name} ${method}: blocked`);assert.equal((await response.json()).reviewOnly,true)}
  const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8');

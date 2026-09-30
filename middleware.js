@@ -24,7 +24,7 @@ export default async function middleware(request){
  const url=new URL(request.url);
  const path=url.pathname;
  const admin=path==='/admin'||path.startsWith('/admin/')||path==='/admin.js'||path==='/admin-ops.js';
- const privatePage=admin||path.startsWith('/api/')||path==='/api'||path.startsWith('/admin-login')||url.searchParams.has('invite')||url.searchParams.has('token');
+ const privatePage=path==='/friend'||path==='/friend.html'||admin||path.startsWith('/api/')||path==='/api'||path.startsWith('/admin-login')||url.searchParams.has('invite')||url.searchParams.has('token')||url.searchParams.has('friend');
  const headers=!isTrustedLive()||privatePage?{'x-robots-tag':'noindex, nofollow, noarchive'}:{};
  if(admin&&!(await signedIn(request))){
   if(path.endsWith('.js'))return new Response('Sign in required.',{status:401,headers:{...headers,'cache-control':'no-store'}});
