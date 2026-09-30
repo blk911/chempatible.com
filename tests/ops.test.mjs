@@ -1,4 +1,5 @@
-process.env.CHEMPAT_REVIEW_EMAILS='blk911@gmail.com';
+process.env.CHEMPAT_ADMIN_EMAIL='admin@example.com';
+process.env.CHEMPAT_REVIEW_EMAILS='admin@example.com';
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -72,7 +73,7 @@ for(const [n,expect] of [[1,null],[2,null],[3,'suspended'],[4,'blocked']]){
  if(expect==='suspended'){assert.match(verdict.error,/paused until/);assert.ok(bad.suspended_until>new Date(Date.now()+29*86400000));assert.ok(activity.some(a=>a.kind==='auto_suspend'))}
  if(expect==='blocked'){assert.match(verdict.error,/can no longer play/);assert.ok(activity.some(a=>a.kind==='auto_block'))}
 }
-assert.equal(mail.length,4);assert.equal(mail[0].personalizations[0].to[0].email,'blk911@gmail.com');assert.match(mail[2].content[0].value,/suspended 30 days/);
+assert.equal(mail.length,4);assert.equal(mail[0].personalizations[0].to[0].email,'admin@example.com');assert.match(mail[2].content[0].value,/suspended 30 days/);
 assert.equal(reports[0].chat.length,1,'the chat is kept with the report');
 
 // The same side can't report one connection twice; the other side can.
@@ -88,7 +89,7 @@ assert.equal(await ops.standing(sql,null),null);
 // Admin cookie: valid for the admin until it expires; tampering or expiry fails.
 const req=cookie=>new Request('https://chempatible.com/admin',{headers:{cookie}});
 const good=ops.signAdmin(ops.ADMIN_EMAIL,Date.now()+60000);
-assert.equal(ops.readAdmin(req(`chempat_admin=${good}`)),'blk911@gmail.com');
+assert.equal(ops.readAdmin(req(`chempat_admin=${good}`)),'admin@example.com');
 assert.equal(ops.readAdmin(req(`chempat_admin=${good.slice(0,-1)}0`)),null);
 assert.equal(ops.readAdmin(req(`chempat_admin=${ops.signAdmin(ops.ADMIN_EMAIL,Date.now()-1000)}`)),null);
 assert.equal(ops.readAdmin(req(`chempat_admin=${ops.signAdmin('someone@example.com',Date.now()+60000)}`)),null);
@@ -96,7 +97,7 @@ assert.equal(ops.readAdmin(req('')),null);
 
 // The page gate accepts exactly the cookies the admin API accepts.
 const middleware=(await import('../middleware.js')).default;
-assert.equal(await middleware(req(`chempat_admin=${good}`)),undefined);
+assert.equal((await middleware(req(`chempat_admin=${good}`))).headers.get('x-middleware-next'),'1');
 const bounced=await middleware(req(''));assert.equal(bounced.status,307);assert.equal(new URL(bounced.headers.get('location')).pathname,'/admin-login');
 assert.equal((await middleware(new Request('https://chempatible.com/admin-ops.js'))).status,401);
 assert.equal((await middleware(req(`chempat_admin=${good.slice(0,-1)}0`))).status,307);
@@ -109,21 +110,21 @@ const post=async(body,cookie='')=>{const r=await admin.fetch(new Request('https:
 mail.length=0;
 const codesBeforeAdmin=JSON.stringify(codes);
 delete process.env.CHEMPAT_REVIEW_EMAILS;
-assert.equal((await post({action:'start',email:'blk911@gmail.com'}))[0],200);
+assert.equal((await post({action:'start',email:'admin@example.com'}))[0],200);
 assert.equal(mail.length,0);assert.equal(JSON.stringify(codes),codesBeforeAdmin,'unapproved admin does not write or replace a code');
-process.env.CHEMPAT_REVIEW_EMAILS='blk911@gmail.com';
+process.env.CHEMPAT_REVIEW_EMAILS='admin@example.com';
 assert.equal((await post({action:'start',email:'intruder@example.com'}))[0],200);assert.equal(mail.length,0,'no code for other addresses');
-assert.equal((await post({action:'start',email:'BLK911@gmail.com'}))[0],200);assert.equal(mail.length,1);assert.equal(mail[0].personalizations[0].to[0].email,'blk911@gmail.com');
-assert.equal((await post({action:'start',email:'blk911@gmail.com'}))[0],429,'one code a minute');
+assert.equal((await post({action:'start',email:'ADMIN@EXAMPLE.COM'}))[0],200);assert.equal(mail.length,1);assert.equal(mail[0].personalizations[0].to[0].email,'admin@example.com');
+assert.equal((await post({action:'start',email:'admin@example.com'}))[0],429,'one code a minute');
 const code=mail[0].content[0].value.match(/\d{6}/)[0];
-assert.equal((await post({action:'verify',email:'blk911@gmail.com',code:code==='000000'?'111111':'000000'}))[0],400);
-const [ok,,setCookie]=await post({action:'verify',email:'blk911@gmail.com',code});
+assert.equal((await post({action:'verify',email:'admin@example.com',code:code==='000000'?'111111':'000000'}))[0],400);
+const [ok,,setCookie]=await post({action:'verify',email:'admin@example.com',code});
 assert.equal(ok,200);assert.match(setCookie,/chempat_admin=\d+\.[a-f0-9]{64}; HttpOnly; Secure; SameSite=Strict/);
-assert.equal((await post({action:'verify',email:'blk911@gmail.com',code}))[0],400,'codes work once');
+assert.equal((await post({action:'verify',email:'admin@example.com',code}))[0],400,'codes work once');
 const session=setCookie.split(';')[0];
 const view=async(q,cookie='')=>{const r=await admin.fetch(new Request('https://chempatible.com/api/admin?'+q,{headers:{cookie}}));return [r.status,await r.json()]};
 assert.equal((await view('view=me'))[0],401);
-assert.deepEqual(await view('view=me',session),[200,{email:'blk911@gmail.com'}]);
+assert.deepEqual(await view('view=me',session),[200,{email:'admin@example.com'}]);
 assert.equal((await post({action:'block',id:bad.id}))[0],401,'admin actions need the cookie');
 assert.ok(activity.some(a=>a.kind==='admin_login'));
 // Delete member: admin only, removes the member and scrubs them from connections they joined.

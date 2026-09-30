@@ -112,5 +112,14 @@ try{
  assert.equal(expired.eval('s.view'),'landing');assert.equal(expired.eval('s.joinStep'),'signin');assert.equal(expired.eval('s.liveMember'),false);
  assert.equal(expired.document.getElementById('signinEmail').value,sender.contact);assert.match(expired.document.getElementById('joinError').textContent,/Sign in again/);assert.equal(expired.document.querySelector('.emptyFocus'),null);
 
- console.log('Two-browser UI passed: direct mobile entry, signup, mutual stages, verified reentry, existing-answer reuse, chat, safety, and cancellation');
+ // Stale local walkthrough state cannot manufacture a demo account or reveal.
+ const stale=make().window;await tick();
+ stale.eval(`s={...blank(),view:'revealPhoto',actor:'prospect',phase:'awaitingPhoto',prospect:{name:'Example',email:'example@example.com',phone:'',photo:'${photo}',answers:[0,0,0,0,0],agreed:true}};render()`);
+ const callsBeforeStale=calls.length;
+ await stale.eval('finishProspectRegistration()');
+ assert.equal(stale.eval('s.prospectId'),'');assert.equal(stale.eval('s.view'),'revealPhoto');
+ assert.match(stale.document.getElementById('revealPhotoError').textContent,/Open a current invitation/);
+ assert.equal(calls.length,callsBeforeStale,'no synthetic account or connection is written');
+
+ console.log('Two-browser UI passed: direct mobile entry, signup, mutual stages, verified reentry, existing-answer reuse, chat, safety, cancellation, and stale demo-state rejection');
 }finally{for(const p of pages)p.window.close()}

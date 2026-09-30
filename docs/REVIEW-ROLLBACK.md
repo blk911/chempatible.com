@@ -23,7 +23,7 @@ Close/discard this review branch or its draft PR. The live ref and current publi
 
 ## If this proposal is later approved and promoted
 
-Promotion requires separate approval and a deployment/data-readiness review. Record the then-current deployment and source SHA again. Preserve this baseline as an immutable rollback reference. Removing the review gate and review-only noindex response header is a deliberate production-readiness change, not a step performed automatically here.
+Promotion requires separate approval and a deployment/data-readiness review. Record the then-current deployment and source SHA again. Preserve this baseline as an immutable rollback reference. Trusted live mode controls the review gate and review-only noindex response header without deleting the development safeguards. Its configuration is a deliberate production-readiness change requiring the separate approval and checks in `RELEASE-MODE.md`; it is not enabled automatically here.
 
 If a later approved release needs rollback, use Vercel's deployment rollback/promote flow to restore the saved production deployment above, after confirming its identity and domain. If deployment retention makes that unavailable, redeploy exact source commit `984b618b6c31b2a27d8a9db7f07944cc06aa2ed0` with the original production configuration under explicit deployment authorization. Do not force-push `live` or reset the database as a substitute.
 

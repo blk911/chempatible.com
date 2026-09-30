@@ -1,10 +1,10 @@
-# chem-PATIBLE review walkthrough
+# Chem-patible development
 
 A mobile-first two-person game with live QR and email invitations. The static page can be served locally with `python3 -m http.server 4173`; invitations require Vercel and the database below.
 
 ## Walkthrough
 
-This branch is an isolated review proposal; data APIs are disabled by default. See `docs/REVIEW-ROLLBACK.md` before configuring an isolated test database and mail setup.
+`main` is the development branch; `live` is the separate public release branch. Data APIs remain disabled by default. Development gameplay requires a verified isolated database and approved test inboxes; see `docs/REVIEW-ROLLBACK.md`. Preparing source for release does not enable public mail or promote the live site.
 
 1. The mobile-first landing page immediately shows name/email, adult/terms consent, and Continue. Email verification remains part of the signup safety flow.
 2. Take or choose your own photo. Then create five secrets with one short situation at a time. Tap a choice to advance; Back lets you correct accidental choices. The question meanings and choices are unchanged.
@@ -22,25 +22,35 @@ QR scanning and email invitations are live on the deployed domain. There is no t
 
 Either person can **Unmatch** or **Report** a connection at any stage after the first five. Both end the connection for both people, close the chat, and hide contact details. A report also records a reason, an optional note, and a copy of the chat, adds a private admin-only note to the reported member's page, and emails the admin. Reports count as strikes against the reported member: the 3rd pauses them for 30 days, the 4th blocks them from playing. Paused or blocked members can still unmatch and report, but cannot make codes, send invitations, answer invitations, or message, and a blocked email or cell cannot sign up again. Dismissing a report in admin removes its strike but does not lift a pause or block; use Reinstate for that.
 
-`/admin` requires signing in with a six digit code emailed to the admin address (`blk911@gmail.com`, or `CHEMPAT_ADMIN_EMAIL`). `middleware.js` keeps the admin page and scripts behind that sign-in and `/api/admin` checks it on every request. Sessions last 12 hours and are signed with `ADMIN_SESSION_SECRET` if set, otherwise with `DATABASE_URL`. Dash, Members, Reports and Activity read live data; every game step is written to the `activity` table by `api/_ops.mjs`, which also creates the moderation tables and columns on first use.
+`/admin` requires signing in with a six digit code emailed to the address in `CHEMPAT_ADMIN_EMAIL`. The server and middleware have no hardcoded personal-address fallback: missing or malformed configuration disables admin access. Set this variable to the existing authorized admin address in **chempatible-dev / Production** before deploying this cleanup, and verify it separately in the live project before any future public promotion. This preserves the current admin identity; it does not add another administrator. In development, the address must also be in `CHEMPAT_REVIEW_EMAILS` for codes and report alerts to be delivered.
+
+`middleware.js` keeps the admin page and scripts behind sign-in and `/api/admin` checks it on every request. Sessions last 12 hours and are signed with `ADMIN_SESSION_SECRET` if set, otherwise with `DATABASE_URL`. Dash, Members, Reports and Activity read live data; every game step is written to the `activity` table by `api/_ops.mjs`, which also creates the moderation tables and columns on first use. Reports are still stored and strikes applied if admin email is unconfigured; the failed notification is logged without sending to an unknown address.
 
 ## Deployment
 
 Vercel can deploy the repository with the `Other` framework preset and no build command. The QR drawing code is bundled in the static `qr-client.js`; the server creates the invitation record and returns its URL.
 
-To enable live email:
+`.vercelignore` explicitly allows only the runtime pages, styles, scripts, brand assets, API modules, middleware, and package/deployment manifests. Tests, review documents, schema SQL, local settings, screenshots, recordings, and exports stay out of the deployed application. Add each new runtime asset to this allowlist deliberately. Keep the regression tests in development and run `npm test` before preparing changes for review.
 
-1. Create a dedicated Neon Postgres database for Chempatibility and run `schema.sql` in its SQL editor, one statement at a time if required. Existing databases need the four QR columns in `api/qr-schema.mjs` before deploying this version.
-2. Authenticate `chempatible.com` in SendGrid, adding its required DNS records in GoDaddy, and create a restricted Mail Send API key.
-3. In the Chempatibility Vercel project, set Production environment variables `DATABASE_URL` (Neon connection string) and `SENDGRID_API_KEY`. Authenticate `chempatible.com` as a sender domain in SendGrid for `hello@chempatible.com`. Redeploy after adding the variables. Never commit keys.
-4. Register a member using their own email, answer ten, open **Connect Now → Can’t scan? Send it instead**, and send to a second email in a separate browser. The sender gets a six digit email code before the first send. A successful SendGrid API response means accepted for delivery, not proof of inbox arrival.
+For development email and gameplay:
+
+1. Verify the development project's `DATABASE_URL` points to its own isolated Neon database. `schema.sql` and the existing API schema helpers describe the required tables and columns; review initialization separately before using a new database.
+2. Verify `SENDGRID_API_KEY` and the authenticated sender `hello@chempatible.com` belong to the approved development mail setup. Never commit keys.
+3. In **chempatible-dev / Production** (Vercel's name for the stable development target), use `CHEMPAT_REVIEW_EMAILS` for the exact approved test inboxes. Only after database and mail isolation are verified, set `CHEMPAT_REVIEW_DATA=isolated-confirmed`. Review-branch Preview variables do not configure the stable development URL.
+4. Use approved test inboxes in separate browsers to verify email codes, photos, first-five answers, tap-created QR invitations, separate email invitations, both Keep going choices, next-five reveal, and mutual chat. A successful SendGrid API response means accepted for delivery, not proof of inbox arrival.
 
 QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and an authenticated `chempatible.com` sender domain.
 
 ## Development and live
 
-`main` is the development branch. `live` is the public release branch. Set the existing Vercel project to continue using `main` on its Vercel URL; create a second Vercel project from this same repository using `live` as its production branch. Give each project its **own Neon database** and `DATABASE_URL`. Give the live project `SENDGRID_API_KEY`, authenticate `chempatible.com` in SendGrid, and assign `chempatible.com` to the live Vercel project after removing it from the development project. The outgoing From address is `hello@chempatible.com` with display name `Chempatibility`. Keep the development deployment on its Vercel URL. Verify the live URL before moving the domain.
+`main` serves the `chempatible-dev` project's development URL. `live` serves the separate `chempatible` public project. Each project must retain its **own Neon database** and `DATABASE_URL`. The outgoing From address is `hello@chempatible.com` with display name `Chem-patible`.
 
-Run `ops/clear-test-data.sql` in the old test database before a fresh test. It removes all members, pair records, messages, QR and email invitations, email codes, and sessions. Browser tabs will start a fresh walkthrough with this release; older server cookies no longer match a member or session after the reset. Never run this reset against a database containing public member data.
+The obsolete whole-database reset script has been removed. Source cleanup does not delete stored members, contacts, invitations, messages, or browser sessions. Any future data cleanup requires identifying the specific database and records, checking a recovery plan, and obtaining separate authorization. Never reset a database to roll back code.
 
-Promote tested changes by merging or fast-forwarding `main` into `live`, then confirm the live deployment. Do not point both Vercel projects at the same database.
+Public promotion requires separate approval and a configuration/compatibility review. Source is now capable of both deployment modes; preparing this code does not enable live behavior. See `docs/RELEASE-MODE.md` for exact configuration, verification, and rollback requirements.
+
+Development defaults to review mode. Keep `CHEMPAT_RELEASE_MODE` unset (or `review`), `CHEMPAT_REVIEW_DATA=isolated-confirmed` only after isolation is verified, and the exact `CHEMPAT_REVIEW_EMAILS` allowlist. The review banner and noindex response header remain on development and previews. Invalid release settings fail closed.
+
+Only `CHEMPAT_RELEASE_MODE=live` together with Vercel's server-supplied public-project ID, Production environment, `live` Git ref, and `VERCEL=1` enables public recipients and data APIs. The live project cannot use the review-isolation flag as a substitute. Missing or mismatched identity disables operations. This check uses no request headers, hostname, query parameter, or browser storage. Admin authentication, email verification, member consent, and moderation remain required in live mode.
+
+`/api/config` exposes only a no-store `reviewOnly` boolean, used to remove the default review banner after trusted live mode is confirmed. Failures leave the notice visible. Routing middleware applies noindex to every non-live response and always to admin/API routes; `vercel.json` retains the other security headers. No build-time rewrite of deployment configuration is used. Follow `docs/REVIEW-ROLLBACK.md` for staged-session compatibility before an authorized promotion.

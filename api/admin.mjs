@@ -162,6 +162,7 @@ async function act(sql,body){
 
 async function handler(req){
  const blocked=reviewGate();if(blocked)return blocked;
+ if(!ops.ADMIN_EMAIL)return reply({error:'Admin sign-in is not configured.'},503);
  if(!process.env.DATABASE_URL)return reply({error:'Admin storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{

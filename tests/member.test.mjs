@@ -35,7 +35,7 @@ const api=(await import('data:text/javascript;base64,'+Buffer.from(src).toString
 const post=async(body,cookie='')=>{const r=await api.fetch(new Request('https://chempatible.com/api/member',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify(body)}));return {status:r.status,body:await r.json(),cookies:r.headers.getSetCookie()}};
 
 // Email only at launch: a cell number is refused until CHEMPAT_SMS=on.
-assert.equal((await post({action:'register',name:'Mike',contact:'303-555-1234',photo:cindy.photo,answers:[],agreed:true})).status,400);
+assert.equal((await post({action:'register',name:'Mike',contact:'202-555-0100',photo:cindy.photo,answers:[],agreed:true})).status,400);
 
 // Log out clears the member, email and scanned-code cookies, and ends the email session.
 const out=await post({action:'logout'},`chempat_member=${memberToken}; chempat_session=${sessionToken}; chempat_pair_${'a'.repeat(16)}=${'e'.repeat(64)}`);
