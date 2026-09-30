@@ -16,12 +16,16 @@ No question/answer spoilers in opening DOM; synthetic signup consent/email code 
 
 The review guard was invoked for GET and POST on every account/invitation/connection/admin API with fake service configuration. Every call returned 503 and no network operation occurred.
 
+## Hosted preview check
+
+Vercel reported both review builds ready for commit `8ff1e3b7e3329eaa60b24aed4c810fa9a151ce17`. The public preview opened in the cloud browser, showing the review banner, mystery opening, both illustrative portraits, decorative QR and five locks. The Create my Instant Vibe button opened the signup form. No personal information was entered and no registration or invitation was submitted. A portrait-caption overlap and signup-logo return issue found in this visual pass were corrected afterward. Direct navigation to the preview API was blocked by the browser client, so its HTTP response was not independently verified.
+
 ## Not established
 
 - Real Postgres execution and production-like database integration
 - Real SendGrid delivery or inbox arrival
 - Hosted preview database/mail isolation (the API gate remains closed by default)
-- Real-device camera and mobile/desktop visual rendering
-- Browser visual QA: the cloud browser could not open local port 4173 (`ERR_BLOCKED_BY_CLIENT`); no workaround was used
+- Real-device camera, mobile layout and full interactive gameplay in a real browser
+- Local browser QA was blocked at port 4173 (`ERR_BLOCKED_BY_CLIENT`). The hosted opening/signup entry were inspected as described above; this is not full browser flow coverage
 
 There is no separate build or lint command configured in this repository. Vercel serves static files and API functions. A hosted build result, if available in the PR, is distinct from the local tests above. This remains a draft proposal, not a production-ready promotion.
