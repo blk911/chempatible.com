@@ -34,6 +34,7 @@ for(const isolated of [undefined,'true','isolated-confirmed']){
 }
 
 // The browser gets a single presentation boolean, never any configuration data.
+// A blocked deployment returns 503 instead of confirming review availability.
 process.env.DATABASE_URL='postgres://must-not-connect';
 process.env.SENDGRID_API_KEY='must-not-send';
 process.env.CHEMPAT_ADMIN_EMAIL='admin@example.com';
@@ -49,7 +50,11 @@ for(const values of modes){
  const trusted=isTrustedLive();
  const config=await publicConfig.fetch(request('/api/config?live=true'));
  assert.equal(config.headers.get('cache-control'),'no-store');
+ assert.equal(config.status,deploymentMode()==='blocked'?503:200);
  assert.deepEqual(await config.json(),{reviewOnly:!trusted});
+ const head=await publicConfig.fetch(request('/api/config',{method:'HEAD'}));
+ assert.equal(head.status,config.status);
+ assert.equal(await head.text(),'');
  for(const path of ['/','/privacy','/terms','/game.js','/robots.txt']){
   const response=await middleware(request(path,{headers:{'x-vercel-project-id':live.VERCEL_PROJECT_ID,'x-chempat-release-mode':'live'}}));
   assert.equal(response.headers.get('x-middleware-next'),'1');
@@ -96,20 +101,63 @@ configure({...live,VERCEL_PROJECT_ID:'prj_development',CHEMPAT_REVIEW_DATA:'isol
 await assert.rejects(ops.sendMail('public@example.net','test','test'),/approved test recipients/);
 assert.equal(sent.length,1,'copied live config on dev cannot contact provider');
 
-// A failed, malformed, stale-review, or missing config response keeps the notice.
+// Cold loads stay unlabelled until the response and its JSON body have resolved.
+// Only confirmed review displays that label; failures get a neutral notice.
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
 const client=fs.readFileSync(new URL('../deployment.js',import.meta.url),'utf8');
+const css=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');
 assert.match(html,/<script src="deployment\.js"><\/script>/);
-for(const [response,hide] of [[{ok:true,json:async()=>({reviewOnly:false})},true],[{ok:true,json:async()=>({reviewOnly:true})},false],[{ok:true,json:async()=>({})},false],[{ok:true,json:async()=>({reviewOnly:'false'})},false],[{ok:false,json:async()=>({reviewOnly:false})},false],[{ok:true,json:async()=>{throw Error('Invalid JSON')}},false],[null,false]]){
- const dom=new JSDOM(html,{url:'https://chempatible.com/?live=true',runScripts:'outside-only'});
- let fetched;
- dom.window.fetch=async(path,options)=>{fetched={path,options};if(!response)throw Error('Offline');return response};
- await dom.window.eval(client);
- assert.equal(fetched.path,'/api/config');
- assert.equal(fetched.options.cache,'no-store');
- assert.equal(fetched.options.credentials,'omit');
- assert.equal(dom.window.document.getElementById('reviewBanner')===null,hide);
- dom.window.close();
+assert.match(css,/\.reviewBanner\[hidden\]\{display:none!important\}/,'hidden cannot be overridden by a banner display rule');
+const unavailable='Service temporarily unavailable. Please try again.';
+const cases=[
+ ['live',{ok:true,json:async()=>({reviewOnly:false})},true,'Review version'],
+ ['review',{ok:true,json:async()=>({reviewOnly:true})},false,'Review version'],
+ ['missing boolean',{ok:true,json:async()=>({})},false,unavailable],
+ ['string boolean',{ok:true,json:async()=>({reviewOnly:'false'})},false,unavailable],
+ ['null body',{ok:true,json:async()=>null},false,unavailable],
+ ['failed live response',{ok:false,json:async()=>({reviewOnly:false})},false,unavailable],
+ ['blocked response',{ok:false,status:503,json:async()=>({reviewOnly:true})},false,unavailable],
+ ['invalid JSON',{ok:true,json:async()=>{throw Error('Invalid JSON')}},false,unavailable],
+ ['offline',null,false,unavailable]
+];
+for(const path of ['/','/?invite=private-token','/?token=private-token','/?live=true']){
+ for(const [name,response,hidden,label] of cases){
+  const dom=new JSDOM(html,{url:'https://chempatible.com'+path,runScripts:'outside-only'});
+  const {document}=dom.window,banner=document.getElementById('reviewBanner');
+  const style=document.createElement('style');style.textContent=css;document.head.append(style);
+  const assertHidden=()=>{
+   assert.equal(banner.hidden,true,`${path} ${name}: hidden before mode confirmation`);
+   assert.equal(dom.window.getComputedStyle(banner).display,'none',`${path} ${name}: no painted banner`);
+  };
+  assertHidden();
+  let fetched,resolveFetch;
+  dom.window.fetch=(path,options)=>{fetched={path,options};return new Promise(resolve=>{resolveFetch=resolve})};
+  const complete=dom.window.eval(client);
+  assertHidden();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assertHidden();
+  assert.equal(fetched.path,'/api/config');
+  assert.equal(fetched.options.cache,'no-store');
+  assert.equal(fetched.options.credentials,'omit');
+  if(response?.ok){
+   let resolveBody,bodyRequested;
+   const parsing=new Promise(resolve=>{bodyRequested=resolve});
+   resolveFetch({...response,json:()=>new Promise(resolve=>{resolveBody=resolve;bodyRequested()})});
+   await parsing;
+   assertHidden();
+   resolveBody(Promise.resolve().then(()=>response.json()));
+  }else resolveFetch(response||Promise.reject(Error('Offline')));
+  await complete;
+  assert.equal(banner.hidden,hidden,`${path} ${name}: final visibility`);
+  assert.equal(banner.textContent,label,`${path} ${name}: truthful final label`);
+  assert.equal(dom.window.getComputedStyle(banner).display==='none',hidden);
+  dom.window.close();
+ }
+}
+// Legal and admin pages do not load or render this notice.
+for(const page of ['privacy.html','terms.html','admin-login.html','admin/index.html']){
+ const source=fs.readFileSync(new URL('../'+page,import.meta.url),'utf8');
+ assert.doesNotMatch(source,/reviewBanner|deployment\.js|Review version/,page);
 }
 
 // Keep headers dynamic and ensure the runtime packaging includes every addition.
@@ -117,4 +165,4 @@ const vercel=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url
 assert.equal(vercel.headers.flatMap(rule=>rule.headers).some(header=>header.key.toLowerCase()==='x-robots-tag'),false);
 const allowlist=fs.readFileSync(new URL('../.vercelignore',import.meta.url),'utf8').split('\n');
 for(const path of ['api/_deployment.mjs','api/config.mjs','deployment.js'])assert.ok(allowlist.includes('!/'+path));
-console.log(`Deployment mode: ${combinations} combinations; fail-closed APIs, exact dev mail, live mail, robots, banner fallback, config privacy, and admin auth passed`);
+console.log(`Deployment mode: ${combinations} combinations; fail-closed APIs, exact dev mail, live mail, robots, cold/delayed notice states, neutral failures, config privacy, and admin auth passed`);
