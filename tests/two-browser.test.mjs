@@ -4,170 +4,100 @@ import assert from 'node:assert/strict';
 const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').replace('<script src="game.js"></script>','');
 const source=fs.readFileSync(new URL('../game.js',import.meta.url),'utf8');
 const qrRenderer=fs.readFileSync(new URL('../qr-client.js',import.meta.url),'utf8');
-const token='a'.repeat(64),id='b'.repeat(64),photo='data:image/jpeg;base64,AA==';
-const qrToken='e'.repeat(64),qrId='f'.repeat(64);
-const state={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],prospect_phone:null,prospect_email:null,messages:[]};
-const outgoingId='c'.repeat(64),outgoingState={status:'invited',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]};
-const inviter={name:'Cindy',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
-let registeredMember=null,lastEnd=null,verifyOnce=true,qrCreates=0;const memberCalls=[];
-async function mockFetch(url,opt={},context){
- const u=new URL(url,'https://chempatible.com'),body=opt.body?JSON.parse(opt.body):{};
- let data={},status=200;
- if(u.pathname==='/api/member'){if(opt.method==='POST'&&['logout','code_start','code_verify'].includes(body.action)){memberCalls.push(body.action);if(body.action==='logout')registeredMember=null;if(body.action==='code_verify'){if(body.code!=='123456'){status=400;data={error:'Code expired or incorrect.'}}else if(body.email==='cindy@example.com'){registeredMember={id:'member-id',name:'Cindy',contact:body.email,photo,answers:[0,1,2,0,1,2,0,1,2,0],verified:true};data={existing:true,member:registeredMember}}else if(registeredMember&&registeredMember.contact===body.email){registeredMember.verified=true;data={existing:true,member:registeredMember}}else data={existing:false,email:body.email}}else data={ok:true}}else if(opt.method==='POST'){if(body.action==='register')assert.equal(body.agreed,true,'registration must carry 18+ consent');registeredMember={id:'member-id',name:body.name||'Mike',contact:body.contact||'mike@example.com',photo:body.photo||photo,answers:body.answers||[]};data={member:registeredMember}}else if(registeredMember)data={member:registeredMember};else{status=401;data={error:'No member on this device.'}}}
- else if(u.pathname==='/api/qr'){qrCreates++;data={id:qrId,url:`https://chempatible.com/?invite=${qrToken}`,expiresAt:new Date(Date.now()+900000).toISOString()}}
- else if(u.pathname==='/api/email'){if(opt.method==='POST'&&body.action==='send')data={ok:true,id:body.member?.name==='Mike'?outgoingId:id};else data={email:'cindy@example.com'}}
- else if(u.searchParams.has('inbox'))data={connections:context?.eval('s.actor')==='prospect'?[{id:outgoingId,recipient_name:'Sam',recipient_email:'sam@example.com',...outgoingState}]:[{id,recipient_name:'Mike',recipient_email:'mike@example.com',...state}]};
- else if(u.searchParams.has('invite'))data=u.searchParams.get('invite')===qrToken?{...inviter,answers:[],recipientName:'',prospectName:null,prospectPhoto:null,prospectAnswers:[],status:'invited',messages:[]}:{...inviter,answers:state.status==='invited'?[]:['chat','secondResults','email','tests'].includes(state.status)?inviter.answers:inviter.answers.slice(0,5),recipientName:'Mike',prospectName:state.prospect_name,prospectPhoto:state.prospect_photo,prospectAnswers:state.prospect_answers,prospectPhone:state.prospect_phone,prospectEmail:state.prospect_email,status:state.status,messages:state.messages};
- else if(body.action==='first'){Object.assign(state,{prospect_name:'Mike',prospect_photo:body.photo,prospect_answers:body.answers,status:'firstResults'});data={ok:true,answers:inviter.answers.slice(0,5)}}
- else if(body.action==='request'&&verifyOnce){verifyOnce=false;status=403;data={error:'Confirm your email first. We sent you a code.',needsVerify:true}}
- else if(body.action==='request'){Object.assign(state,{prospect_name:body.name,prospect_email:body.contact,prospect_photo:body.photo,status:'request'});data={ok:true}}
- else if(body.action==='decision'){(body.id===outgoingId?outgoingState:state).status=body.decision==='accept'?'chat':'declined';data={ok:true}}
- else if(body.action==='react'){const target=body.id===outgoingId?outgoingState:state;target.messages[body.index].reactions={...target.messages[body.index].reactions,[body.token?'prospect':'member']:body.reaction};data={messages:target.messages}}
- else if(body.action==='message'){const target=body.id===outgoingId?outgoingState:state;target.messages.push({by:body.token?'prospect':'member',text:body.text});data={messages:target.messages}}
- else if(body.action==='second'){state.prospect_answers=body.answers;state.status='secondResults';data={ok:true}}
- else if(body.action==='email'){state.prospect_email=body.email;state.status='email';data={ok:true}}
- else if(body.action==='unmatch'||body.action==='report'){if(body.action==='report'&&!body.reason){status=400;data={error:'Choose a reason for your report.'}}else{Object.assign(state,{status:'ended',messages:[],prospect_email:null});lastEnd=body;data={ok:true,status:'ended'}}}
- else{status=400;data={error:'Unknown action'}}
- return {ok:status===200,status,json:async()=>data};
+const photo='data:image/jpeg;base64,AA==',token='a'.repeat(64),id='b'.repeat(64);
+const sender={id:'sender',name:'Cindy',contact:'cindy@example.com',photo,answers:[0,1,2,0,1,2,0,1,2,0],verified:true};
+let receiver=null,qrCreates=0,lastAction=null,failUiFinalize=false;
+const outgoingId='e'.repeat(64),outgoing={status:'invited',prospect_name:'Sam',prospect_photo:photo,prospect_answers:[],messages:[]};let outgoingCreated=false;
+const calls=[],state={status:'invited',sender_answers:[...sender.answers],prospect_answers:[],messages:[],prospect_name:'Mike',prospect_photo:photo};
+const tick=()=>new Promise(r=>setTimeout(r,15));
+function page(role=null,url='https://chempatible.com/'){
+ const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true}),w=d.window;
+ let session=role;
+ w.fetch=async(url,opt={})=>{
+  const u=new URL(url,w.location.href),b=opt.body?JSON.parse(opt.body):{};calls.push({role:session,path:u.pathname,...b});lastAction=b;
+  const connection=b.id===outgoingId?outgoing:state;
+  let data={},status=200,own=session==='sender'?sender:session==='receiver'?receiver:null;
+  if(u.pathname==='/api/member'){
+   if(!opt.method){if(own)data={member:own};else status=401;}
+   else if(b.action==='code_start')data={ok:true};
+   else if(b.action==='code_verify'){if(b.code!=='123456'){status=400;data={error:'Code expired or incorrect.'}}else{const m=b.email===sender.contact?sender:receiver?.contact===b.email?receiver:null;if(m){m.verified=true;session=m===sender?'sender':'receiver'}data={existing:!!m,member:m}}}
+   else if(b.action==='register'){assert.equal(b.agreed,true);receiver={id:'receiver',name:b.name,contact:b.contact,photo:b.photo,answers:b.answers||[],verified:b.verified===true};session='receiver';data={member:receiver};}
+   else if(b.action==='answers'){own.answers=[...b.answers];data={member:own}}
+   else if(b.action==='logout'){session=null;data={ok:true}}
+  }else if(u.pathname==='/api/qr'){qrCreates++;data={id:'c'.repeat(64),url:'https://chempatible.com/?invite='+'d'.repeat(64),expiresAt:new Date(Date.now()+900000).toISOString()}}
+  else if(u.pathname==='/api/email'){if(b.action==='send')outgoingCreated=true;data=b.action==='send'?{id:outgoingId,ok:true}:{email:own?.contact}}
+  else if(u.searchParams.has('inbox')){
+   data={connections:state.status==='invited'?[]:[{id,side:session==='receiver'?'prospect':'member',...state,prospect_answers:session==='receiver'||['secondResults','chatRequested','chat','email','tests'].includes(state.status)?state.prospect_answers:state.prospect_answers.slice(0,5),sender_name:sender.name,sender_photo:photo,memberSecondDone:state.sender_answers.length===10,prospectSecondDone:state.prospect_answers.length===10,own_answers:session==='sender'?state.sender_answers:state.prospect_answers,sender_answers:['secondResults','chatRequested','chat','email','tests'].includes(state.status)?state.sender_answers:state.sender_answers.slice(0,5)},...(session==='receiver'&&outgoingCreated?[{id:outgoingId,side:'member',...outgoing}]:[])]};
+  }else if(u.searchParams.has('invite'))data={name:sender.name,photo,memberSecondDone:state.sender_answers.length===10,prospectSecondDone:state.prospect_answers.length===10,answers:state.status==='invited'?[]:['secondResults','chatRequested','chat','email','tests'].includes(state.status)?state.sender_answers:state.sender_answers.slice(0,5),prospectName:state.prospect_name,prospectPhoto:state.status==='invited'?'':photo,prospectAnswers:state.prospect_answers,status:state.status,messages:state.messages};
+  else if(b.action==='first'){assert.ok(own,'first needs account');Object.assign(state,{status:'firstResults',prospect_answers:b.answers,prospect_photo:b.photo});data={answers:sender.answers.slice(0,5)}}
+  else if(b.action==='request'){if(!own?.verified){status=403;data={needsVerify:true,error:'Confirm your email.'}}else{assert.equal(b.name,receiver.name);assert.equal(b.contact,receiver.contact);state.status='request'}}
+  else if(b.action==='decision'){connection.status=b.decision==='decline'?'declined':connection.status==='request'?'secondFive':'chat'}
+  else if(b.action==='second'){assert.equal(connection.status,'secondFive');if(session==='sender')connection.sender_answers=[...b.answers];else connection.prospect_answers=[...b.answers];connection.status=connection.sender_answers.length===10&&connection.prospect_answers.length===10?'secondResults':'secondFive';const other=session==='sender'?connection.prospect_answers:connection.sender_answers;data={status:connection.status,answers:other.slice(0,connection.status==='secondResults'?10:5),memberSecondDone:connection.sender_answers.length===10,prospectSecondDone:connection.prospect_answers.length===10};if(failUiFinalize&&connection.status==='secondResults'){failUiFinalize=false;connection.status='secondFive';status=500;data={error:'Temporary reveal interruption'}}}
+  else if(b.action==='chat'){assert.equal(connection.status,'secondResults');connection.status='chatRequested'}
+  else if(b.action==='message'){assert.equal(connection.status,'chat');connection.messages.push({by:session==='sender'||b.id===outgoingId?'member':'prospect',text:b.text,photo:b.photo});data={messages:connection.messages}}
+  else if(b.action==='react'){connection.messages[b.index].reactions={[b.id===outgoingId?'member':'prospect']:b.reaction};data={messages:connection.messages}}
+  else if(b.action==='report'||b.action==='unmatch'){connection.status='ended';connection.messages=[];data={ok:true}}
+  else if(b.action==='email'){assert.equal(connection.status,'chat');connection.status='email';data={ok:true}}
+  return {ok:status===200,status,json:async()=>JSON.parse(JSON.stringify(data))};
+ };
+ w.eval(qrRenderer);w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
+ const script=w.document.createElement('script');script.textContent=source;w.document.body.append(script);return d;
 }
-function page(url){const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true});d.window.fetch=(url,opt)=>mockFetch(url,opt,d.window);d.window.eval(qrRenderer);d.window.scrollTo=()=>{};d.window.HTMLElement.prototype.scrollIntoView=()=>{};const script=d.window.document.createElement('script');script.textContent=source;d.window.document.body.append(script);return d}
-const joiner=page('https://chempatible.com/');
-{const d=joiner.window.document;d.getElementById('joinName').value='Cindy';d.getElementById('joinContact').value='asdf';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/first name and email/);
-d.getElementById('joinContact').value='3035551234';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/first name and email/,'cell numbers are off for the email launch');assert.equal(d.getElementById('joinContact').type,'email');
-d.getElementById('joinContact').value='cindy@example.com';joiner.window.eval('nextJoinStep()');assert.match(d.getElementById('joinError').textContent,/18 or older/);assert.equal(joiner.window.eval('s.joinStep'),1);
-d.getElementById('joinAgree').checked=true;joiner.window.eval('nextJoinStep()');await new Promise(r=>setTimeout(r,10));assert.equal(joiner.window.eval('s.joinStep'),'joinCode');assert.ok(memberCalls.includes('code_start'));assert.match(d.querySelector('.joinCard').textContent,/cindy@example.com.*subject line/);
-d.getElementById('signinCode').value='999999';await joiner.window.eval('signinVerify()');assert.match(d.getElementById('joinError').textContent,/incorrect/);
-d.getElementById('signinCode').value='123456';await joiner.window.eval('signinVerify()');assert.equal(joiner.window.eval('s.view'),'dashboard','an email that already has a page opens it');
-joiner.window.eval("s=blank();render()");d.getElementById('joinName').value='Newbie';d.getElementById('joinContact').value='newbie@example.com';d.getElementById('joinAgree').checked=true;joiner.window.eval('nextJoinStep()');await new Promise(r=>setTimeout(r,10));d.getElementById('signinCode').value='123456';await joiner.window.eval('signinVerify()');assert.equal(joiner.window.eval('s.joinStep'),2,'a new email carries on to the picture');assert.equal(joiner.window.eval('s.member.verified'),true);memberCalls.length=0;registeredMember=null;assert.equal(joiner.window.eval('s.member.agreed'),true);
-assert.equal(joiner.window.eval(`pic('x" onerror="alert(1)')`),'');assert.equal(joiner.window.eval(`pic('${photo}')`),photo);
-joiner.window.eval(`s.member.photo='x" onerror="alert(1)';s.view='dashboard';render()`);assert.equal(d.querySelector('[onerror]'),null);joiner.window.close()}
-const member=page('https://chempatible.com/');
-member.window.eval(`s.member.name='Cindy';s.member.contact='cindy@example.com';s.member.photo='${photo}';s.member.answers=[0,1,2,0,1,2,0,1,2,0];s.phase='ready';navigate('dashboard','member')`);
-await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,0,'the dashboard must not create a code');
-member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,1,'the button creates the code');
-assert.equal(member.window.eval('s.qrInvite.id'),qrId);
-assert.match(member.window.document.querySelector('.liveQr').getAttribute('src'),/^data:image\/svg\+xml/);
-assert.match(member.window.document.querySelector('#qrTimer').textContent,/Ready for/);
-member.window.eval('closeInvite()');
-assert.equal(qrCreates,1,'closing the QR must not mint another code');
-member.window.eval('openInvite()');await new Promise(r=>setTimeout(r,30));assert.equal(qrCreates,2,'a new button tap creates a fresh code');member.window.eval('closeInvite()');
+const pages=[];const make=(...args)=>{const p=page(...args);pages.push(p);return p};
+try{
+ const publicPage=make(),p=publicPage.window,doc=p.document;await tick();
+ assert.ok(doc.getElementById('joinName'),'name is immediately visible');assert.ok(doc.getElementById('joinContact'),'email is immediately visible');assert.equal(doc.querySelectorAll('#root img,#root svg,.publicHero,.publicJourney,.decorativeQr').length,0,'no pre-capture portrait or promotional sections');assert.match(doc.querySelector('.instantEntry').textContent,/Caught a vibe.*Make an introduction/s);
+ for(const q of p.eval('QUESTIONS')){assert.ok(!doc.querySelector('#root').textContent.includes(q.q));for(const a of q.a)assert.ok(!doc.querySelector('#root').textContent.includes(a))}
+ assert.match(doc.querySelector('.nextButton').textContent,/CONTINUE/);assert.match(doc.body.textContent,/email stays private/);assert.equal(doc.querySelectorAll('.instantEntry .nextButton').length,1);assert.doesNotMatch(doc.querySelector('#root').textContent,/CREATE MY INSTANT VIBE/);
+ p.eval('startFresh()');p.eval('goHome()');assert.ok(doc.getElementById('joinName'),'logo returns to the direct entry form');p.eval('startFresh()');doc.getElementById('joinName').value='New';doc.getElementById('joinContact').value='bad';p.eval('nextJoinStep()');assert.match(doc.getElementById('joinError').textContent,/first name and email/);
+ doc.getElementById('joinContact').value='new@example.com';p.eval('nextJoinStep()');assert.match(doc.getElementById('joinError').textContent,/18 or older/);doc.getElementById('joinAgree').checked=true;p.eval('nextJoinStep()');await tick();assert.equal(p.eval('s.joinStep'),'joinCode');doc.getElementById('signinCode').value='000000';await p.eval('signinVerify()');assert.match(doc.getElementById('joinError').textContent,/incorrect/);doc.getElementById('signinCode').value='123456';await p.eval('signinVerify()');assert.equal(p.eval('s.joinStep'),2);await p.eval('openCamera()');assert.match(doc.getElementById('joinError').textContent,/No camera/);p.eval('backToDetails()');assert.equal(doc.getElementById('joinName').value,'New');
+ assert.equal(p.eval(`pic('x" onerror="alert(1)')`),'');
+ // Captured own picture goes straight into five tap-through choices, then readiness.
+ p.eval(`s.member.photo='${photo}';s.member.verified=true;s.joinStep=2;render()`);await p.eval('finishRegistration()');assert.equal(p.eval('s.modal'),'');assert.equal(p.document.querySelectorAll('.quickChoices .option').length,3);assert.equal(p.eval('s.member.answers.length'),0);const onboardingQrCount=qrCreates;
+ await p.eval('chooseQuick(0,0)');await p.eval('chooseQuick(2,0)');assert.equal(p.eval('s.member.answers.length'),1,'stale repeated tap cannot answer next prompt');p.eval('backQuick()');assert.equal(p.eval('s.member.answers.length'),0);
+ for(let i=0;i<5;i++){p.eval('quickLockUntil=0');await p.eval(`chooseQuick(1,${i})`)}
+ assert.equal(p.eval('s.member.answers.length'),5);assert.ok(p.document.querySelector('.vibeReady img'));assert.ok(p.document.querySelector('.vibeReady .button'));assert.equal(qrCreates,onboardingQrCount,'page readiness does not mint a QR');p.eval('reviseLastChoice()');assert.equal(p.eval('s.member.answers.length'),4);p.eval('quickLockUntil=0');await p.eval('chooseQuick(2,4)');assert.equal(p.eval('s.member.answers[4]'),2);assert.equal(p.eval('s.member.answers.length'),5);receiver=null;
 
-await member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};s.modal='send';renderModal();sendInvitation()");
-assert.equal(member.window.eval('s.liveMember'),true);
-assert.equal(member.window.eval('s.view'),'dashboard');
-assert.match(member.window.document.querySelector('.socialMemberHeader').textContent,/INSTANT VIBE/);
-member.window.eval(`s.inbox=[{id:'${qrId}',channel:'qr',claimed:false,status:'invited',recipient_name:'',prospect_name:null,prospect_photo:null,prospect_answers:[],messages:[]}];render()`);
-assert.match(member.window.document.querySelector('.socialConnections h2').textContent,/Connections/);
-assert.equal(member.window.document.querySelectorAll('.chempatContact').length,0);
-assert.match(member.window.document.querySelector('.emptyFocus').textContent,/Catch a vibe, want to know more\?.*Send an Instant Vibe/);
-assert.match(member.window.document.querySelector('.connectionStatus').textContent,/Code ready · waiting for scan/);
-assert.doesNotMatch(member.window.document.querySelector('.socialWorkspace').textContent,/Someone/);
-member.window.eval('s.inbox=[];render()');
-assert.equal(member.window.document.querySelector('.resetLink'),null);
-assert.doesNotMatch(member.window.document.body.textContent,/View as|RESET THIS TAB/);
-const prospect=page('https://chempatible.com/?invite='+token);
-await new Promise(r=>setTimeout(r,20));
-assert.equal(prospect.window.eval('s.view'),'invitee');
-assert.match(prospect.window.document.querySelector('.introPitch h2').textContent,/five secrets about me/);
-assert.equal(prospect.window.eval('s.member.name'),'Cindy');
-prospect.window.eval('startProspect()');
-for(let i=0;i<5;i++){prospect.window.eval('pick(0)');await prospect.window.eval('answerQuestion()')}
-assert.equal(prospect.window.eval('s.view'),'revealPhoto');
-assert.match(prospect.window.document.querySelector('.revealPhotoStep').textContent,/CAMERA.*CHOOSE FILE PHOTO/);
-assert.equal(prospect.window.document.getElementById('cameraPreview').hidden,true);
-await prospect.window.eval('openCamera()');
-assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/No camera is available/);
-assert.equal(prospect.window.document.getElementById('captureBtn').hidden,true);
-prospect.window.eval(`s.prospect.photo='${photo}';render()`);prospect.window.document.getElementById('newMemberName').value='Mike';prospect.window.document.getElementById('newMemberContact').value='mike@example.com';await prospect.window.eval('finishProspectRegistration()');assert.match(prospect.window.document.getElementById('revealPhotoError').textContent,/18 or older/);assert.equal(prospect.window.eval('s.view'),'revealPhoto');prospect.window.document.getElementById('newMemberAgree').checked=true;await prospect.window.eval('finishProspectRegistration()');assert.equal(prospect.window.eval('s.prospectId'),'member-id');assert.equal(prospect.window.eval('s.view'),'results');
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'firstResults');prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialMemberHeader').textContent,/UNLOCK MY NEXT FIVE/);assert.equal(prospect.window.document.querySelectorAll('.chempatContact').length,1);assert.equal(prospect.window.document.querySelectorAll('.secretsButton').length,1);assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,0);prospect.window.eval("selectChempat('first',true)");assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,5);assert.match(prospect.window.document.querySelector('.secretAnswerHeads').textContent,/MY ANSWER.*THEIR ANSWER/);assert.equal(prospect.window.document.querySelectorAll('.secretAnswers span').length,10);prospect.window.eval("navigate('results','prospect')");
-prospect.window.eval('showRequest()');assert.equal(prospect.window.document.querySelectorAll('.requestInviter img').length,1);assert.equal(prospect.window.document.querySelectorAll('.requestCard input[type=file]').length,0);prospect.window.document.getElementById('prospectName').value='Mike';prospect.window.document.getElementById('prospectContact').value='mike@example.com';await prospect.window.eval('sendRequest()');
-assert.match(prospect.window.document.getElementById('verifyEmailTitle').textContent,/Confirm your email/);assert.match(prospect.window.document.getElementById('modalHost').textContent,/mike@example.com/);
-assert.equal(memberCalls.filter(c=>c==='code_start').length,1,'the code sent at the reveal is reused, not replaced');
-prospect.window.document.getElementById('verifyEmailCode').value='123456';await prospect.window.eval('confirmVerify()');await new Promise(r=>setTimeout(r,10));
-assert.equal(prospect.window.eval('s.prospectVerified'),true);assert.equal(prospect.window.document.getElementById('modalHost').innerHTML,'');memberCalls.length=0;
-assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.socialConnections').textContent,/Connections/i);assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Waiting for their answer/);assert.match(prospect.window.document.querySelector('.chempatRail').textContent,/Waiting for their answer/);assert.equal(prospect.window.document.querySelectorAll('.chempatContact i').length,0,'waiting is not an action');assert.equal(prospect.window.document.querySelectorAll('.focusPhotos img').length,2);
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.phase'),'request');assert.match(member.window.document.querySelector('.chempatRail').textContent,/Your move · Accept or pass/);assert.equal(member.window.document.querySelectorAll('.chempatContact i').length,1);assert.match(member.window.document.querySelector('.connectionFocus').textContent,/Your move · Accept or pass/i);
-member.window.eval(`s.inbox.push({...s.inbox[0],id:'${'d'.repeat(64)}',recipient_name:'Alex',prospect_name:'Alex',status:'invited',prospect_photo:null});render()`);
-assert.equal(member.window.document.querySelectorAll('.chempatContact').length,2);
-member.window.eval(`selectChempat('${'d'.repeat(64)}')`);
-assert.match(member.window.document.querySelector('.connectionFocus').textContent,/Alex/);
-member.window.eval(`selectChempat('${'d'.repeat(64)}',true)`);
-assert.equal(member.window.document.querySelectorAll('.secretCompare').length,0);
-assert.match(member.window.document.querySelector('.focusStatus').textContent,/Invitation sent/);
-member.window.eval(`selectChempat('${id}')`);
-assert.equal(member.window.document.querySelectorAll('.secretCompare').length,0);
-prospect.window.eval('startMyNextFive()');
-for(let i=0;i<5;i++){prospect.window.eval('pick(1)');await prospect.window.eval('answerQuestion()')}
-assert.equal(prospect.window.eval('s.view'),'dashboard');
-assert.equal(prospect.window.eval('s.prospect.answers.length'),10);
-assert.equal(prospect.window.eval('s.phase'),'request');
-prospect.window.eval('openInvite()');assert.match(prospect.window.document.querySelector('#inviteTitle').textContent,/five secrets/);
-await prospect.window.eval("pendingInvite={name:'Sam',email:'sam@example.com'};s.modal='send';renderModal();sendInvitation()");
-await prospect.window.eval('refreshOutgoing()');
-assert.equal(prospect.window.eval('s.view'),'dashboard');
-assert.equal(prospect.window.eval('s.outgoing.length'),1);
-assert.match(prospect.window.document.querySelector('.chempatRail').textContent,/Sam/);
-assert.equal(prospect.window.document.querySelectorAll('.chempatContact').length,2);
-Object.assign(outgoingState,{status:'request',prospect_name:'Sam',prospect_photo:photo,prospect_answers:[0,1,2,0,1]});await prospect.window.eval('refreshOutgoing()');
-prospect.window.eval(`selectChempat('${outgoingId}')`);
-assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Sam wants to talk/);
-prospect.window.eval(`openOutgoing('${outgoingId}')`);
-assert.match(prospect.window.document.querySelector('.outgoingModal').textContent,/OUR FIRST FIVE/);
-await prospect.window.eval("decideOutgoing('accept')");assert.equal(outgoingState.status,'chat');
-prospect.window.document.getElementById('outgoingMessage').value='Hey Sam';await prospect.window.eval('sendOutgoingMessage()');assert.equal(outgoingState.messages.length,1);
-prospect.window.eval('closeInvite()');
-assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hey Sam/);
-prospect.window.eval(`selectChempat('${outgoingId}',true)`);assert.equal(prospect.window.document.querySelectorAll('.secretCompare').length,5);assert.equal(prospect.window.document.querySelectorAll('.inlineChat').length,0);
-prospect.window.eval(`selectChempat('${outgoingId}')`);assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hey Sam/);
-prospect.window.document.getElementById('outgoingMessage').value='From my page';await prospect.window.eval('sendOutgoingMessage()');assert.equal(outgoingState.messages.length,2);
-await member.window.eval('acceptRequest()');assert.equal(member.window.eval('s.view'),'dashboard');assert.ok(member.window.document.querySelector('.inlineChat'),'accepted connection has an inline thread');assert.ok(member.window.document.querySelector('.chatUpload input[type=file]'));assert.equal(member.window.document.querySelectorAll('.messageReactions button').length,0);await prospect.window.eval('refreshLive()');assert.equal(prospect.window.eval('s.view'),'dashboard');prospect.window.eval("selectChempat('first')");assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Chat open/i);
-prospect.window.document.getElementById('message').value='Hello from the pane';await prospect.window.eval('sendMessage()');assert.match(prospect.window.document.querySelector('.inlineChat').textContent,/Hello from the pane/);assert.equal(prospect.window.document.querySelectorAll('.messageReactions button').length,2);await prospect.window.eval("reactChat(0,'like')");assert.equal(state.messages[0].reactions.prospect,'like');assert.equal(prospect.window.document.querySelector('.messageReactions button').getAttribute('aria-pressed'),'true');
-prospect.window.eval('openConversation()');assert.equal(prospect.window.eval('s.view'),'conversation');
-assert.match(prospect.window.document.querySelector('.chatHeader h1').textContent,/Private Chat/);
-assert.equal(prospect.window.document.querySelectorAll('.chatPair img').length,2);
-prospect.window.eval('goHome()');assert.equal(prospect.window.eval('s.view'),'dashboard');assert.match(prospect.window.document.querySelector('.connectionFocus').textContent,/Private Chat/i);prospect.window.eval('openConversation()');
-prospect.window.document.getElementById('message').value='Hello';await prospect.window.eval('sendMessage()');await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.messages.length'),2);
-await prospect.window.eval('startSecondFive()');
-assert.equal(prospect.window.eval('s.view'),'results');assert.equal(prospect.window.eval('s.member.answers.length'),10);
-await member.window.eval('refreshLive()');assert.equal(member.window.eval('s.prospect.answers.length'),10);
-prospect.window.eval('continueAfterSecond()');prospect.window.document.getElementById('prospectEmail').value='mike@example.com';await prospect.window.eval('saveEmail()');assert.equal(prospect.window.eval('s.view'),'tests');
-assert.equal(prospect.window.document.querySelector('a[href^="/admin"]'),null);
-member.window.eval("pendingInvite={name:'Mike',email:'mike@example.com'};renderVerify();emailApi=async(data)=>{if(data.action==='verify')return {ok:true};throw Error('Temporary send failure')}");
-member.window.document.getElementById('emailCode').value='123456';
-await member.window.eval('verifyAndSend()');
-assert.equal(member.window.document.getElementById('emailCode').disabled,true);
-assert.match(member.window.document.querySelector('.modalForm button').textContent,/RETRY SEND/);
-assert.match(member.window.document.getElementById('verifyError').textContent,/Temporary send failure/);
-const resumed=page('https://chempatible.com/');await new Promise(r=>setTimeout(r,20));
-assert.equal(resumed.window.eval('s.view'),'dashboard');
-assert.equal(resumed.window.eval('s.memberId'),'member-id');
-assert.equal(resumed.window.eval('s.member.answers.length'),10);
-const existingMemberScan=page('https://chempatible.com/?invite='+qrToken);await new Promise(r=>setTimeout(r,20));
-assert.equal(existingMemberScan.window.eval('s.prospectId'),'member-id');
-assert.equal(existingMemberScan.window.eval('s.view'),'invitee');
-assert.equal(existingMemberScan.window.eval('s.prospect.answers.length'),0);
-existingMemberScan.window.eval('startProspect()');assert.match(existingMemberScan.window.document.querySelector('#prospectQuestion').textContent,/CORE VALUES/);
-for(let i=0;i<5;i++){existingMemberScan.window.eval('pick(0)');await existingMemberScan.window.eval('answerQuestion()')}
-assert.equal(existingMemberScan.window.eval('s.view'),'revealPhoto');
-await member.window.eval('refreshLive()');member.window.eval(`selectChempat('${id}')`);
-{const d=member.window.document;assert.match(d.querySelector('.endControls').textContent,/Unmatch.*Report/);
-member.window.eval(`openEnd('${id}','report')`);assert.match(d.querySelector('.endModal h2').textContent,/Report Mike/);
-await member.window.eval('confirmEnd()');assert.match(d.getElementById('endError').textContent,/Choose what happened/);assert.equal(lastEnd,null);
-d.querySelector('input[name=reportReason][value=harassment]').checked=true;d.getElementById('reportNote').value='Kept messaging after I said stop';
-await member.window.eval('confirmEnd()');assert.equal(lastEnd.action,'report');assert.equal(lastEnd.id,id);assert.equal(lastEnd.reason,'harassment');assert.match(lastEnd.note,/said stop/);
-assert.equal(d.getElementById('modalHost').innerHTML,'');assert.match(d.querySelector('.notice').textContent,/review your report/);
-await member.window.eval('refreshLive()');member.window.eval(`selectChempat('${id}')`);
-assert.match(d.querySelector('.connectionFocus').textContent,/Connection ended/);assert.doesNotMatch(d.querySelector('.endControls').textContent,/Unmatch/);assert.equal(d.querySelector('.inlineChat'),null)}
-// Log out from the member page, then sign back in with an emailed code.
-{const w=resumed.window,d=w.document;w.eval("navigate('dashboard','member')");
- const out=[...d.querySelectorAll('#navUser button')].find(b=>/LOG OUT/.test(b.textContent));assert.ok(out,'LOG OUT is in the top bar on the member page');
- out.click();assert.match(d.getElementById('logoutTitle').textContent,/Log out/);assert.match(d.getElementById('modalHost').textContent,/Sign in/);
- await w.eval('logout()');assert.deepEqual(memberCalls,['logout']);assert.equal(w.eval('s.view'),'landing');assert.equal(w.eval('s.member.name'),'');assert.equal(w.eval("sessionStorage.getItem(KEY)")?.includes('Cindy')??false,false);
- [...d.querySelectorAll('.joinCard .link')].find(b=>/Sign in/.test(b.textContent)).click();
- d.getElementById('signinEmail').value='nope';await w.eval('signinStart()');assert.match(d.getElementById('joinError').textContent,/email on your page/);
- d.getElementById('signinEmail').value='Cindy@Example.com';await w.eval('signinStart()');assert.equal(w.eval('s.joinStep'),'signinCode');assert.match(d.querySelector('.joinCard').textContent,/cindy@example.com/);
- d.getElementById('signinCode').value='12';await w.eval('signinVerify()');assert.match(d.getElementById('joinError').textContent,/six digit code/);
- d.getElementById('signinCode').value='123456';await w.eval('signinVerify()');
- assert.deepEqual(memberCalls,['logout','code_start','code_verify']);assert.equal(w.eval('s.view'),'dashboard');assert.equal(w.eval('s.member.name'),'Cindy');assert.equal(w.eval('s.liveMember'),true)}
-member.window.close();prospect.window.close();resumed.window.close();existingMemberScan.window.close();
-console.log('Two-browser UI path passed');
+ const member=make('sender'),m=member.window;await tick();assert.equal(m.eval('s.view'),'dashboard');assert.equal(qrCreates,0);m.eval('openInvite()');await tick();assert.equal(qrCreates,1);assert.match(m.document.querySelector('.liveQr').src,/data:image\/svg/);assert.match(m.document.querySelector('#qrTimer').textContent,/Ready for/);assert.match(m.document.querySelector('.modal').textContent,/15 minutes.*not a sendable link/);m.eval("inviteMode('send')");assert.match(m.document.querySelector('.modal').textContent,/separate invitation link/);m.document.dispatchEvent(new m.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(m.document.getElementById('modalHost').innerHTML,'');assert.equal(qrCreates,1);
+ const prospect=make(null,'https://chempatible.com/?invite='+token),w=prospect.window;await tick();assert.equal(w.eval('s.view'),'invitee');assert.equal(w.eval('connectionRef().token'),token);assert.equal(w.eval('s.member.answers.length'),0);await w.eval('startProspect()');
+ for(let i=0;i<5;i++){w.eval('pick(0)');await w.eval('answerQuestion()')}
+ assert.equal(w.eval('s.view'),'revealPhoto');assert.match(w.document.body.textContent,/Sign up to save these five answers/);w.eval(`s.prospect.photo='${photo}';render()`);w.document.getElementById('newMemberName').value='Mike';w.document.getElementById('newMemberContact').value='mike@example.com';await w.eval('finishProspectRegistration()');assert.match(w.document.getElementById('revealPhotoError').textContent,/18 or older/);w.document.getElementById('newMemberAgree').checked=true;await w.eval('finishProspectRegistration()');assert.equal(w.eval('s.view'),'results');assert.equal(w.document.querySelectorAll('.revealPeople img').length,2);assert.equal(w.document.querySelectorAll('.revealItem').length,5);assert.match(w.document.body.textContent,/CREATE MY INSTANT VIBE/);
+ w.eval('showRequest()');assert.equal(w.document.getElementById('prospectName'),null);assert.equal(w.document.getElementById('prospectContact'),null);assert.equal(w.document.querySelectorAll('.chatPair img').length,2);w.eval('backToFirstResults()');assert.equal(w.eval('s.view'),'results');w.eval('showRequest()');await w.eval('sendRequest()');assert.equal(w.eval('s.modal'),'verifyEmail');w.eval('closeInvite()');assert.equal(state.status,'firstResults');await w.eval('sendRequest()');w.document.getElementById('verifyEmailCode').value='123456';await w.eval('confirmVerify()');assert.equal(state.status,'request');assert.equal(w.eval('s.view'),'dashboard');assert.equal(w.document.querySelector('.inlineChat'),null);assert.match(w.document.querySelector('.connectionFocus').textContent,/Waiting for their answer/);
+ await m.eval('refreshLive()');assert.match(m.document.querySelector('.connectionFocus').textContent,/Keep going or pass/);await m.eval('acceptRequest()');assert.equal(state.status,'secondFive');assert.equal(m.document.querySelector('.inlineChat'),null);await w.eval('refreshLive()');assert.match(w.document.querySelector('.connectionFocus').textContent,/Play the next five/);
+ // A new browser recovers received connection entirely through authenticated inbox by id.
+ const returned=make('receiver'),r=returned.window;await tick();await r.eval('refreshLive()');assert.equal(r.eval('s.actor'),'prospect');assert.equal(r.eval('s.liveToken'),'');assert.equal(r.eval('s.liveId'),id);assert.equal(r.eval('connectionRef().id'),id);assert.equal(r.document.querySelectorAll('.focusPhotos img').length,2);assert.match(r.document.querySelector('.connectionFocus').textContent,/Play the next five/);await r.eval('startSecondFive()');assert.equal(r.eval('s.view'),'questions');assert.match(r.document.querySelector('.question').textContent,/EMOTIONAL EXPRESSION/);r.eval('pick(1)');await r.eval('answerQuestion()');r.eval('goHome()');await r.eval('refreshLive()');await r.eval('startSecondFive()');assert.equal(r.eval('s.prospect.answers.length'),6,'back and resume preserve the partial next five');
+ for(let i=0;i<4;i++){r.eval('pick(1)');await r.eval('answerQuestion()')}
+ assert.equal(state.status,'secondResults');assert.equal(r.eval('s.view'),'results');assert.equal(r.eval('s.member.answers.length'),10);assert.equal(receiver.answers.length,10);assert.equal(r.eval('s.account.answers.length'),10);r.eval(`s.inbox.push({id:'sent-copy',side:'member',status:'request',prospect_name:'Sam',prospect_photo:'${photo}',prospect_answers:[0,0,0,0,0],messages:[]});selectChempat('sent-copy')`);assert.equal(r.eval('s.actor'),'member');assert.equal(r.eval('s.member.name'),'Mike');assert.equal(r.eval('s.member.answers.length'),10);r.eval(`selectChempat('${id}')`);assert.equal(r.eval('s.actor'),'prospect');assert.equal(r.eval('s.prospect.answers.length'),10);r.eval(`selectLiveConnection('${id}')`);assert.equal(r.eval('s.actor'),'prospect');assert.match(r.document.body.textContent,/ASK TO CHAT/);assert.equal(r.document.querySelector('#message'),null);await m.eval('refreshLive()');assert.equal(m.document.querySelector('.inlineChat'),null);await r.eval('requestChat()');assert.equal(state.status,'chatRequested');assert.match(r.document.body.textContent,/Waiting for their chat decision/);await m.eval('refreshLive()');await m.eval('acceptRequest()');assert.equal(state.status,'chat');await r.eval('refreshLive()');assert.ok(r.document.querySelector('.inlineChat'));assert.ok(m.document.querySelector('.inlineChat'));assert.ok(r.document.querySelector('.chatUpload input'));
+ r.document.getElementById('message').value='Hello from my returned page';await r.eval('sendMessage()');assert.equal(lastAction.id,id);assert.match(r.document.querySelector('.inlineChat').textContent,/Hello from my returned page/);await r.eval("reactChat(0,'like')");assert.equal(state.messages[0].reactions.prospect,'like');r.eval('openConversation()');assert.equal(r.document.querySelectorAll('.chatPair img').length,2);r.eval('goHome()');r.eval(`selectChempat('${id}',true)`);assert.equal(r.document.querySelectorAll('.secretCompare').length,10);assert.equal(r.document.querySelector('.inlineChat'),null);r.eval(`selectChempat('${id}')`);assert.ok(r.document.querySelector('.inlineChat'));
+ // Existing answers are reused after scanning another invitation; no first-five re-entry.
+ state.status='invited';state.prospect_answers=[];const existing=make('receiver','https://chempatible.com/?invite='+token),e=existing.window;await tick();assert.equal(e.eval('s.prospect.answers.length'),10);await e.eval('startProspect()');assert.equal(e.eval('s.view'),'results');assert.equal(e.document.getElementById('newMemberName'),null);assert.equal(state.prospect_answers.length,5);
+ // First-five completion is already enough to create a fresh introduction.
+ const before=qrCreates;e.eval('s.prospect.answers=s.prospect.answers.slice(0,5);createMyVibe()');await tick();assert.equal(e.eval('s.prospect.answers.length'),5);assert.equal(qrCreates,before+1);assert.equal(e.eval('s.modal'),'qr');e.eval('closeInvite()');e.eval('createMyVibe()');await tick();assert.equal(qrCreates,before+2);e.eval('closeInvite()');e.eval('s.prospect.answers=[0,0,0,0,0,2,2,2,2,2]');
+ // The original invitee can invite a new person, make two mutual choices, and chat from their outgoing pane.
+ e.eval("s.modal='send';renderModal()");e.document.getElementById('inviteName').value='Sam';e.document.getElementById('inviteContact').value='sam@example.com';await e.eval('prepareInvite()');await tick();await e.eval('refreshOutgoing()');assert.equal(e.eval('s.outgoing.length'),1);assert.match(e.document.querySelector('.chempatRail').textContent,/Sam/);
+ Object.assign(outgoing,{status:'request',prospect_answers:[0,1,2,0,1]});await e.eval('refreshOutgoing()');e.eval(`selectChempat('${outgoingId}');openOutgoing('${outgoingId}')`);assert.match(e.document.querySelector('.outgoingModal').textContent,/KEEP GOING/);await e.eval("decideOutgoing('accept')");assert.equal(outgoing.status,'secondFive');assert.equal(e.document.getElementById('outgoingMessage'),null);e.eval('closeInvite()');
+ Object.assign(outgoing,{status:'secondResults',prospect_answers:[0,1,2,0,1,0,1,2,0,1]});await e.eval('refreshOutgoing()');e.eval(`selectChempat('${outgoingId}',true)`);assert.equal(e.document.querySelectorAll('.secretCompare').length,10);assert.equal(e.document.querySelector('.inlineChat'),null);e.eval('showSecondResults()');assert.equal(e.eval('s.view'),'dashboard');assert.match(e.document.querySelector('.focusHeader').textContent,/Sam/);assert.match(e.document.querySelector('.focusHeader').textContent,/You/);assert.doesNotMatch(e.document.querySelector('.focusHeader').textContent,/Cindy/);assert.doesNotMatch(e.document.querySelector('.focusHeader').textContent,/ASK TO CHAT/);assert.equal(e.eval('s.member.name'),'Cindy','outgoing reveal must preserve original received pair');
+ outgoing.status='chatRequested';await e.eval('refreshOutgoing()');e.eval(`selectChempat('${outgoingId}')`);await e.eval("decideOutgoing('accept')");assert.equal(outgoing.status,'chat');e.document.getElementById('outgoingMessage').value='Hey Sam';await e.eval('sendOutgoingMessage()');assert.match(e.document.querySelector('.inlineChat').textContent,/Hey Sam/);await e.eval("reactChat(0,'like')");assert.equal(outgoing.messages[0].reactions.member,'like');
+ await e.eval("sendChatPhoto({target:{files:[{type:'text/plain'}]}})");assert.match(e.document.getElementById('chatError').textContent,/Choose an image/);
+ e.eval(`URL.createObjectURL=()=>'/local-photo';URL.revokeObjectURL=()=>{};Image=class{width=320;height=320;set src(v){this.onload()}};HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});HTMLCanvasElement.prototype.toDataURL=()=>'${photo}'`);await e.eval("sendChatPhoto({target:{files:[{type:'image/jpeg'}]}})");assert.equal(outgoing.messages.at(-1).photo,photo);assert.ok(e.document.querySelector('.chatPhoto'));
+ // A failed verified email send offers retry without asking for another code.
+ m.eval("pendingInvite={name:'Sam',email:'sam@example.com'};renderVerify();emailApi=async(data)=>{if(data.action==='verify')return {ok:true};throw Error('Temporary send failure')}");m.document.getElementById('emailCode').value='123456';await m.eval('verifyAndSend()');assert.equal(m.document.getElementById('emailCode').disabled,true);assert.match(m.document.querySelector('.modalForm button').textContent,/RETRY SEND/);assert.match(m.document.getElementById('verifyError').textContent,/Temporary send failure/);m.eval('closeInvite()');
+ // Safety and cancellation stay available; legacy chat retains composer.
+ state.status='chat';await m.eval('refreshLive()');m.eval(`selectChempat('${id}');openEnd('${id}','unmatch')`);m.eval('closeInvite()');assert.equal(state.status,'chat');m.eval(`openEnd('${id}','report')`);await m.eval('confirmEnd()');assert.match(m.document.getElementById('endError').textContent,/Choose what happened/);m.document.querySelector('input[value=harassment]').checked=true;m.document.getElementById('reportNote').value='Unwanted contact';await m.eval('confirmEnd()');assert.equal(state.status,'ended');assert.equal(m.document.querySelector('.inlineChat'),null);
+ r.eval('confirmLogout()');r.eval('closeInvite()');assert.equal(r.eval('s.view'),'dashboard');r.eval('confirmLogout()');await r.eval('logout()');assert.equal(r.eval('s.view'),'landing');assert.ok(r.document.getElementById('joinName'));r.eval('showSignin()');r.document.getElementById('signinEmail').value='mike@example.com';await r.eval('signinStart()');r.document.getElementById('signinCode').value='123456';await r.eval('signinVerify()');await tick();assert.equal(r.eval('s.view'),'dashboard');assert.equal(r.eval('s.liveToken'),'');assert.match(r.document.body.textContent,/Connection ended/);
+
+ // New members start with only five; both complete later five, visitor-first.
+ sender.answers=sender.answers.slice(0,5);receiver.answers=receiver.answers.slice(0,5);Object.assign(state,{status:'secondFive',sender_answers:[...sender.answers],prospect_answers:[...receiver.answers],messages:[]});
+ const fiveSender=make('sender'),fiveReceiver=make('receiver'),fm=fiveSender.window,fr=fiveReceiver.window;await tick();await fm.eval('refreshLive()');await fr.eval('refreshLive()');
+ assert.match(fm.document.querySelector('.connectionFocus').textContent,/Play the next five/);assert.match(fr.document.querySelector('.connectionFocus').textContent,/Play the next five/);
+ await fr.eval('startSecondFive()');for(let i=0;i<5;i++){fr.eval('pick(1)');await fr.eval('answerQuestion()')}
+ assert.equal(state.status,'secondFive');assert.equal(fr.eval('s.view'),'dashboard');assert.match(fr.document.querySelector('.connectionFocus').textContent,/Waiting for their next five/);assert.equal(fr.eval('s.member.answers.length'),5);assert.equal(fr.document.querySelector('.inlineChat'),null);
+ await fm.eval('refreshLive()');assert.equal(fm.eval('s.prospect.answers.length'),5,'recipient next five remain masked');await fm.eval('startSecondFive()');assert.equal(fm.eval('s.actor'),'member');assert.equal(fm.eval('s.view'),'questions');
+ failUiFinalize=true;for(let i=0;i<5;i++){fm.eval('pick(2)');await fm.eval('answerQuestion()')}
+ assert.equal(state.status,'secondFive');assert.equal(fm.eval('s.view'),'dashboard');assert.match(fm.document.body.textContent,/RETRY OUR REVEAL/);await fm.eval('startSecondFive()');
+ assert.equal(state.status,'secondResults');assert.equal(fm.eval('s.view'),'results');assert.equal(fm.eval('s.prospect.answers.length'),10);assert.equal(fm.eval('s.member.answers.length'),10);await fr.eval('refreshLive()');assert.equal(fr.eval('s.member.answers.length'),10);assert.equal(fr.document.querySelector('.inlineChat'),null);assert.match(fr.document.querySelector('.connectionFocus').textContent,/Open chat/);
+ await fr.eval('requestChat()');await fm.eval('refreshLive()');await fm.eval('acceptRequest()');assert.equal(state.status,'chat');
+ fr.eval(`s.account.answers[0]=2;selectChempat('${id}',true)`);assert.equal(fr.document.querySelector('.secretCompare .secretAnswers span').textContent,fr.eval('QUESTIONS[0].a[s.pairOwnAnswers[0]]'),'old pair shows immutable own answer after account edit');fr.eval('showSecondResults()');assert.equal(fr.document.querySelectorAll('.revealItem').length,5);
+
+ console.log('Two-browser UI passed: direct mobile entry, signup, mutual stages, verified reentry, existing-answer reuse, chat, safety, and cancellation');
+}finally{for(const p of pages)p.window.close()}
