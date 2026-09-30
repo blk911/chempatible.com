@@ -3,18 +3,18 @@
 .ops-card{background:#fff;border:1px solid #dbe3df;border-radius:16px;padding:20px 22px;margin:0 0 16px}
 .ops-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:0 0 16px}
 .ops-tile{display:block;background:#fff;border:1px solid #dbe3df;border-radius:14px;padding:14px 16px;color:inherit;text-decoration:none}
-a.ops-tile:hover{border-color:#d76c50}
+a.ops-tile:hover{border-color:#71439c}
 .ops-tile small{display:block;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;font-weight:850;color:#5d6f77}
 .ops-tile b{display:block;font-size:1.9rem;letter-spacing:-.04em;margin:4px 0 2px;color:#173b4c}
 .ops-tile span{font-size:.78rem;color:#5d6f77}
 .ops-funnel div{display:grid;grid-template-columns:150px 1fr 48px;align-items:center;gap:12px;margin:8px 0;font-size:.86rem}
-.ops-funnel i{display:block;height:12px;border-radius:6px;background:#d76c50}
+.ops-funnel i{display:block;height:12px;border-radius:6px;background:#71439c}
 .ops-funnel b{text-align:right;color:#173b4c}
 .ops-scroll{overflow-x:auto}
 .ops-table{width:100%;border-collapse:collapse;font-size:.84rem}
 .ops-table th{text-align:left;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:#5d6f77;padding:8px 10px;border-bottom:1px solid #dbe3df;white-space:nowrap}
 .ops-table td{padding:10px;border-bottom:1px solid #eef2ef;vertical-align:top}
-.ops-table a,.ops-feed a,.ops-report a{color:#a84d3b;font-weight:750}
+.ops-table a,.ops-feed a,.ops-report a{color:#71439c;font-weight:750}
 .strike{color:#a12d25;font-weight:900}
 .ops-feed{list-style:none;margin:0;padding:0}
 .ops-feed li{display:grid;grid-template-columns:170px 190px 1fr;gap:10px;padding:8px 0;border-bottom:1px solid #eef2ef;font-size:.84rem}
@@ -39,7 +39,7 @@ a.ops-tile:hover{border-color:#d76c50}
 .ops-report details{margin:10px 0}.ops-report summary{cursor:pointer;font-size:.84rem;font-weight:750;color:#35505a}
 .ops-chat{list-style:none;padding:0;margin:8px 0}.ops-chat li{padding:8px 0;border-bottom:1px solid #eef2ef}.ops-chat p{margin:3px 0 0}
 .ops-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
-.ops-actions .button{margin:0;background:#edf3f0;color:#173b4c}.ops-actions .button.primary{background:#d76c50;color:#fff}
+.ops-actions .button{margin:0;background:#edf3f0;color:#173b4c}.ops-actions .button.primary{background:#71439c;color:#fff}
 .ops-link{margin:10px 0;font-size:.84rem}
 .ops-profile{display:flex;gap:18px;align-items:flex-start}
 .ops-profile img{width:110px;height:110px;border-radius:14px;object-fit:cover;flex:none}

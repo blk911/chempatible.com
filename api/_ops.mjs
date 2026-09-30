@@ -1,7 +1,9 @@
+import {requireReviewRecipient} from './_review.mjs';
 // Shared moderation and activity helpers. Files starting with "_" are not deployed as their own routes.
 import {createHash,createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 
-export const ADMIN_EMAIL=(process.env.CHEMPAT_ADMIN_EMAIL||'blk911@gmail.com').trim().toLowerCase();
+const configuredAdminEmail=(process.env.CHEMPAT_ADMIN_EMAIL||'').trim().toLowerCase();
+export const ADMIN_EMAIL=configuredAdminEmail.length<=255&&/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(configuredAdminEmail)?configuredAdminEmail:'';
 export const REPORT_REASONS={harassment:'Harassment or threats',fake:'Fake profile or impersonation',inappropriate:'Inappropriate photo or messages',safety:'Made me feel unsafe',underage:'May be under 18',other:'Something else'};
 export const SUSPEND_DAYS=30;
 // Launching email only: a cell number shows the owner's name on caller ID. Set CHEMPAT_SMS=on once SMS codes exist.
@@ -34,7 +36,7 @@ export async function log(sql,kind,{member=null,connection=null,detail={}}={}){
 }
 
 const pausedMessage=until=>`Your account is paused until ${new Date(until).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}.`;
-const BLOCKED='This account can no longer play Chempatibility.';
+const BLOCKED='This account can no longer play Chem-patible.';
 function verdict(row){
  if(!row)return null;
  if(row.blocked_at)return {error:BLOCKED};
@@ -83,8 +85,9 @@ export async function linkProspect(sql,connectionId,memberToken){
 export function strikeAction(strikes){return strikes>=4?'block':strikes===3?'suspend':'flag'}
 
 export async function sendMail(to,subject,text){
+ requireReviewRecipient(to);
  if(!process.env.SENDGRID_API_KEY)throw Error('Email is not configured.');
- const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Chempatibility'},subject,content:[{type:'text/plain',value:text}]})});
+ const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Chem-patible'},subject,content:[{type:'text/plain',value:text}]})});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
 }
 
@@ -122,7 +125,8 @@ async function applyStrikes(sql,filed,reporterName,connectionId){
   if(action==='suspend'){await sql`UPDATE members SET suspended_until=now()+${`${SUSPEND_DAYS} days`}::interval WHERE id=${filed.reportedId} AND blocked_at IS NULL`;await log(sql,'auto_suspend',{member:filed.reportedId,connection:connectionId,detail:{strikes,days:SUSPEND_DAYS}})}
   if(action==='block'){await sql`UPDATE members SET blocked_at=coalesce(blocked_at,now()) WHERE id=${filed.reportedId}`;await log(sql,'auto_block',{member:filed.reportedId,connection:connectionId,detail:{strikes}})}
  }
- try{await sendMail(ADMIN_EMAIL,`Chempatibility report: ${filed.reportedName||'unknown member'}${strikes?` (strike ${strikes})`:''}`,
+ try{if(!ADMIN_EMAIL)throw Error('Admin email is not configured.');
+  await sendMail(ADMIN_EMAIL,`Chem-patible report: ${filed.reportedName||'unknown member'}${strikes?` (strike ${strikes})`:''}`,
   `${reporterName||'A member'} reported ${filed.reportedName||'someone'} (${filed.reportedContact||'no contact on file'}).\n\nReason: ${REPORT_REASONS[filed.reason]}\n${filed.note?`Note: ${filed.note}\n`:''}\n${strikes?`Strikes: ${strikes}. Action: ${action==='suspend'?`suspended ${SUSPEND_DAYS} days`:action==='block'?'blocked':'flagged for review'}.`:'Not linked to a member page yet. Review it in admin.'}\n\nhttps://chempatible.com/admin#reports`)}
  catch(error){console.error('Report alert error:',error)}
 }
@@ -130,10 +134,10 @@ async function applyStrikes(sql,filed,reporterName,connectionId){
 // Admin sessions: a signed, expiring cookie. The key is the database secret unless ADMIN_SESSION_SECRET is set.
 export const ADMIN_COOKIE='chempat_admin';
 const adminKey=()=>process.env.ADMIN_SESSION_SECRET||process.env.DATABASE_URL||'';
-export function signAdmin(email,expires){return `${expires}.${createHmac('sha256',adminKey()).update(`admin|${email}|${expires}`).digest('hex')}`}
+export function signAdmin(email,expires){if(!ADMIN_EMAIL||!adminKey())throw Error('Admin sign-in is not configured.');return `${expires}.${createHmac('sha256',adminKey()).update(`admin|${email}|${expires}`).digest('hex')}`}
 export function readAdmin(req){
  const value=(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_admin=(\d+)\.([a-f0-9]{64})(?:;|$)/);
- if(!value||!adminKey())return null;
+ if(!ADMIN_EMAIL||!value||!adminKey())return null;
  const expires=Number(value[1]);if(!(expires>Date.now()))return null;
  const expected=Buffer.from(signAdmin(ADMIN_EMAIL,expires).split('.')[1],'hex'),given=Buffer.from(value[2],'hex');
  return expected.length===given.length&&timingSafeEqual(expected,given)?ADMIN_EMAIL:null;
