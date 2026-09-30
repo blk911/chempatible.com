@@ -1,6 +1,7 @@
 import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
+import {reviewGate} from './_review.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -17,6 +18,7 @@ async function sendMail(to,subject,html,text,photo){
 }
 async function session(req,sql){const token=cookie(req).chempat_session;if(!token||!/^[a-f0-9]{64}$/.test(token))return null;const rows=await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(token)} AND expires_at>now()`;return rows[0]?.email||null}
 async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  const missing=['DATABASE_URL','SENDGRID_API_KEY'].filter(key=>!process.env[key]);
  if(missing.length)return json({error:'Email invitations are being set up. Please try again shortly.',missing},503);
  const sql=neon(process.env.DATABASE_URL);
@@ -24,7 +26,7 @@ async function handler(req){
   const url=new URL(req.url);
   if(req.method==='GET'){
    const token=url.searchParams.get('invite');
-   if(token){if(!/^[a-f0-9]{64}$/.test(token))return json({error:'Invalid invitation.'},400);const rows=await sql`SELECT sender_name,sender_photo,sender_answers FROM invitations WHERE token_hash=${hash(token)}`;return rows[0]?json({name:rows[0].sender_name,photo:rows[0].sender_photo,answers:rows[0].sender_answers.slice(0,5)}):json({error:'Invitation not found.'},404)}
+   if(token)return json({error:'Open invitations through /api/connection so ownership and reveal stages are checked.'},400);
    return json({email:await session(req,sql)});
   }
   if(req.method!=='POST')return json({error:'Method not allowed.'},405);

@@ -1,3 +1,4 @@
+import {reviewGate} from './_review.mjs';
 import {createHash,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -30,6 +31,7 @@ function tokenFrom(req){
  return match?.[1]||null;
 }
 async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  if(!process.env.DATABASE_URL)return reply({error:'Member storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{

@@ -1,3 +1,4 @@
+import {reviewGate} from './_review.mjs';
 import {createHash,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -160,6 +161,7 @@ async function act(sql,body){
 }
 
 async function handler(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  if(!process.env.DATABASE_URL)return reply({error:'Admin storage is unavailable.'},503);
  const sql=neon(process.env.DATABASE_URL);
  try{

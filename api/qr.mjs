@@ -1,3 +1,4 @@
+import {reviewGate} from './_review.mjs';
 import {createHash,randomBytes} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
@@ -5,6 +6,7 @@ import * as ops from './_ops.mjs';
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
 export default {async fetch(req){
+ const blocked=reviewGate();if(blocked)return blocked;
  if(req.method!=='POST')return reply({error:'Method not allowed.'},405);
  if(!process.env.DATABASE_URL)return reply({error:'Invitation storage is unavailable.'},503);
  const memberToken=(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_member=([a-f0-9]{64})(?:;|$)/)?.[1];

@@ -1,3 +1,4 @@
+process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -24,7 +25,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('INSERT INTO email_sessions')){sessions.set(v[0],v[1]);return []}
  throw Error('Unmocked SQL '+q);
 }
-const src=fs.readFileSync(new URL('../api/member.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__memberSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
+const src=fs.readFileSync(new URL('../api/member.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__memberSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);
 globalThis.__memberSql=sql;
 const api=(await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64'))).default;
 const post=async(body,cookie='')=>{const r=await api.fetch(new Request('https://chempatible.com/api/member',{method:'POST',headers:{'content-type':'application/json',cookie},body:JSON.stringify(body)}));return {status:r.status,body:await r.json(),cookies:r.headers.getSetCookie()}};
