@@ -81,7 +81,6 @@ async function handler(req){
   const id=hash(body.token),row=await friendRow(sql,id);
   if(!row)return reply({error:'Friend invitation not found.'},404);
   if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
-  if(row.recipient_email&&String(member.contact||'').trim().toLowerCase()!==String(row.recipient_email).trim().toLowerCase())return reply({error:'Sign in with the email address this friend invitation was sent to.'},403);
   if(row.prospect_member_id)return accepted(sql,row,member.id);
   if(row.status!=='invited')return reply({error:'This friend invitation is closed.'},410);
   if(elapsed(row))return reply({error:'This friend invitation expired. Ask for a new one.'},410);
