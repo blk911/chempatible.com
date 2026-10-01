@@ -168,4 +168,4 @@
 .friendShareModal .error:empty,.friendInvitation .error:empty{display:none}
 .friendShareModal #friendShareStatus{color:#327b74}
 .vibeReady .friendShareButton{margin-top:8px;font-size:.88rem}
-@media(max-width:700px){.socialMemberAction .button{flex:1 1 155px;width:auto;white-space:normal}.socialMemberAction .friendShareButton{font-size:.72rem}.friendInvitation{padding:18px;margin-top:16px}.friendRail .chempatContact.selected{box-shadow:none;border-color:#327b74}}
+@media(max-width:700px){.socialMemberAction{flex-direction:row}.socialMemberAction .button{flex:1 1 155px;width:auto;white-space:normal;min-height:44px}.socialMemberAction .friendShareButton{font-size:.72rem}.friendInvitation{padding:18px;margin-top:16px}.friendRail .chempatContact.selected{box-shadow:none;border-color:#327b74}}
