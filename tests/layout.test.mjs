@@ -8,10 +8,14 @@ const photo='data:image/jpeg;base64,AA==',otherPhoto='data:image/jpeg;base64,AQ=
 const own={id:'owner',name:'Taylor Owner',contact:'private-owner@example.com',photo,answers:Array(10).fill(0),verified:true};
 const sent={id:'a'.repeat(64),side:'member',prospect_name:'Morgan Other',prospect_photo:otherPhoto,prospect_answers:Array(10).fill(1),sender_name:own.name,sender_photo:photo,sender_answers:own.answers,own_answers:own.answers,status:'chat',canReport:true,messages:[{by:'prospect',text:'Hi Taylor'}],invitedAt:'2026-09-21T12:30:00.000Z',recipient_email:'private-invite@example.com',prospect_email:'unshared@example.com'};
 const received={id:'b'.repeat(64),side:'prospect',sender_name:'Riley Friend',sender_photo:otherPhoto,sender_answers:Array(10).fill(2),prospect_name:own.name,prospect_photo:photo,prospect_answers:own.answers,own_answers:own.answers,status:'email',messages:[{by:'member',text:'Hi from Riley'}],invitedAt:'2026-09-22T17:45:00.000Z',sender_email:'private-sender@example.com',prospect_email:'my-shared@example.com'};
+const longName='AlexandriaCassandraMontgomery';
+const longVibe={...sent,id:'c'.repeat(64),prospect_name:longName,status:'request'};
+const pendingFriend={...sent,id:'friend-pending',kind:'friend',channel:'friend',prospect_name:'',recipient_name:'Katie',prospect_photo:'',status:'invited',messages:[]};
+const acceptedFriend={...sent,id:'friend-chat',kind:'friend',channel:'friend',prospect_name:longName,status:'chat',messages:[]};
 const dom=new JSDOM(html,{url:'https://layout.example/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
 w.fetch=async()=>({ok:false,status:401,json:async()=>({})});w.setInterval=()=>0;w.scrollTo=()=>{};
 const script=d.createElement('script');script.textContent=source;d.body.append(script);
-const seed=()=>w.eval(`s={...blank(),view:'dashboard',actor:'member',member:${JSON.stringify(own)},memberId:'owner',account:${JSON.stringify(own)},liveMember:true,inbox:${JSON.stringify([sent,received])},selectedChempat:'${sent.id}'};render()`);
+const seed=()=>w.eval(`s={...blank(),view:'dashboard',actor:'member',member:${JSON.stringify(own)},memberId:'owner',account:${JSON.stringify(own)},liveMember:true,inbox:${JSON.stringify([sent,received,longVibe])},friends:${JSON.stringify([pendingFriend,acceptedFriend])},selectedChempat:'${sent.id}'};render()`);
 const choose=(id,secrets=false)=>w.eval(`selectChempat('${id}',${secrets})`);
 const panel=()=>d.querySelector('.connectionFocus');
 const header=()=>d.querySelector('.focusHeader');
@@ -21,7 +25,7 @@ try{
  seed();
  // Capture the actual empty Vibe/Friend cards, then restore the populated
  // dashboard so both empty and populated states share responsive checks.
- w.eval('s.inbox=[];render()');
+ w.eval('s.inbox=[];s.friends=[];render()');
  const emptyProbe=d.querySelector('.socialWorkspace').cloneNode(true);
  assert.equal(emptyProbe.querySelectorAll('.railEmpty').length,2);
  seed();d.body.append(emptyProbe);
@@ -30,16 +34,23 @@ try{
  const cssSource=d.createElement('style');cssSource.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(cssSource);
  const cssRules=[...cssSource.sheet.cssRules];cssSource.remove();
  const readyProbe=d.createElement('div');readyProbe.innerHTML=w.renderVibeReady();d.body.append(readyProbe);
- const cssAtWidth=(rules,width)=>rules.map(rule=>{
+ const cssAtWidth=(rules,width,containerWidth=width<=700?width-34:Math.max(280,(Math.min(width,1100)-50)*.35)-2,rootSize=16)=>rules.map(rule=>{
+  if(rule.constructor.name==='CSSContainerRule'){
+   assert.equal(rule.containerName,'connectionList');
+   const match=rule.containerQuery.match(/^\(max-width:\s*(\d+)(px|rem)\)$/);
+   assert.ok(match,`layout test must handle container condition ${rule.containerQuery}`);
+   const limit=Number(match[1])*(match[2]==='rem'?rootSize:1);
+   return containerWidth<=limit?cssAtWidth([...rule.cssRules],width,containerWidth,rootSize):'';
+  }
   if(rule.type!==w.CSSRule.MEDIA_RULE)return rule.cssText;
   const matches=rule.conditionText.split(/\s+and\s+/).every(condition=>{
    const match=condition.match(/^\((min|max)-width:\s*(\d+)px\)$/);
    assert.ok(match,`layout test must handle media condition ${condition}`);
    return match[1]==='min'?width>=Number(match[2]):width<=Number(match[2]);
   });
-  return matches?cssAtWidth([...rule.cssRules],width):'';
+  return matches?cssAtWidth([...rule.cssRules],width,containerWidth,rootSize):'';
  }).join('\n');
- for(const width of [320,375,390,430,700,701,1280]){
+ for(const width of [320,360,375,390,430,700,701,800,900,1150,1280]){
   const viewportCss=d.createElement('style');viewportCss.textContent=cssAtWidth(cssRules,width);d.head.append(viewportCss);
   const emptyInset=width<=700?'12px':'14px';
   for(const empty of emptyProbe.querySelectorAll('.railEmpty')){
@@ -51,6 +62,38 @@ try{
    assert.notEqual(style.whiteSpace,'nowrap');
    assert.equal(title.borderBottomWidth,'1px','keep the existing section divider');
   }
+  // Exercise actual rendered Friend and Vibe rows, including waiting/chat
+  // states and long display names. Both kinds keep controls beside identity.
+  const rows=d.querySelectorAll('#root .chempatContact');
+  assert.equal(rows.length,5);
+  for(const row of rows){
+   const friend=!!row.closest('.friendRail'),person=row.querySelector('.chempatPerson'),controls=row.querySelector('.chempatControls'),name=person.querySelector('b'),status=person.querySelector('small');
+   const rowStyle=w.getComputedStyle(row),personStyle=w.getComputedStyle(person),controlsStyle=w.getComputedStyle(controls);
+   assert.equal(rowStyle.display,'grid');
+   assert.equal(rowStyle.gridTemplateColumns,'minmax(0,1fr) auto',`${width}px: identity may shrink while controls stay on the same row`);
+   assert.equal(parseFloat(personStyle.minWidth),0);assert.equal(personStyle.flexDirection,'row');
+   assert.equal(parseFloat(w.getComputedStyle(person.querySelector('span:nth-child(2)')).minWidth),0);
+   assert.equal(controlsStyle.display,'flex');assert.equal(controlsStyle.justifyContent,'flex-end');
+   assert.equal(parseFloat(controlsStyle.paddingLeft)||0,0,`${width}px: controls have no old second-line indent`);
+   assert.equal(controls.children.length,friend?1:2,'Friends keep one pill; Vibes keep both pills');
+   assert.ok(person.getAttribute('aria-label').includes(name.textContent),'truncated display names remain fully accessible');
+   for(const text of [name,status]){
+    const style=w.getComputedStyle(text);assert.equal(style.whiteSpace,'nowrap');assert.equal(style.textOverflow,'ellipsis');
+   }
+   for(const control of controls.children){
+    const style=w.getComputedStyle(control);
+    assert.ok(parseFloat(style.minHeight)>=44,`${width}px: ${control.textContent} retains a 44px hit height`);
+    assert.ok(parseFloat(style.minWidth)>=44,`${width}px: ${control.textContent} retains a 44px hit width`);
+    assert.equal(style.fontSize,'11.2px',`${width}px: labels stay readable as padding shrinks`);
+    assert.equal(style.whiteSpace,'nowrap');assert.equal(style.flexShrink,'0');assert.notEqual(style.display,'none');
+   }
+  }
+  assert.equal(d.querySelector('.friendRail .privateChatButton').disabled,true,'waiting Friend chat remains disabled');
+  assert.equal(d.querySelector('.friendRail .chempatContact:last-child .privateChatButton').disabled,false,'accepted Friend chat stays available');
+  const workspace=w.getComputedStyle(d.querySelector('#root .socialWorkspace'));
+  if(width>700){
+   assert.equal(workspace.gridTemplateColumns,'minmax(280px,35%) minmax(0,1fr)',`${width}px: sidebar has room for names and the conversation takes only the remaining width`);
+  }else assert.equal(workspace.display,'block','phone dashboard keeps its existing single-column layout');
   const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=actions.querySelector('.friendShareButton');
   assert.ok(friendButton,'friend invitation remains a dashboard action');
   assert.equal(friendButton.getAttribute('onclick'),'openFriendShare()');
@@ -77,7 +120,40 @@ try{
   }
   viewportCss.remove();
  }
- readyProbe.remove();emptyProbe.remove();
+ // At exceptional narrow widths or enlarged text, reflow is based on the
+ // list's own width. This simulates query activation; JSDOM cannot measure
+ // box geometry, overflowing text, or pseudo-element paint.
+ for(const {width,containerWidth,rootSize,columns} of [
+  {width:320,containerWidth:271,rootSize:16,columns:'minmax(0,1fr) auto'},
+  {width:701,containerWidth:263,rootSize:16,columns:'minmax(0,1fr) auto'},
+  {width:320,containerWidth:223,rootSize:16,columns:'minmax(0,1fr)'},
+  {width:390,containerWidth:356,rootSize:32,columns:'minmax(0,1fr)'}
+ ]){
+  d.documentElement.style.fontSize=`${rootSize}px`;
+  const style=d.createElement('style');style.textContent=cssAtWidth(cssRules,width,containerWidth,rootSize);d.head.append(style);
+  for(const row of d.querySelectorAll('#root .chempatContact')){
+   assert.equal(w.getComputedStyle(row).gridTemplateColumns,columns,`${containerWidth}px list / ${rootSize}px root font reflows only when needed`);
+   const controls=row.querySelector('.chempatControls');
+   if(columns==='minmax(0,1fr)')assert.equal(w.getComputedStyle(controls).flexWrap,'wrap','large labels may wrap within the separate controls row');
+   for(const control of controls.children)assert.ok(parseFloat(w.getComputedStyle(control).minHeight)>=44);
+  }
+  style.remove();
+ }
+ d.documentElement.style.removeProperty('font-size');
+ // The compact surface is separate from the full-sized real button. Inspect
+ // its CSSOM declarations because JSDOM does not compute pseudo-elements.
+ const paint=cssRules.find(rule=>rule.selectorText?.replaceAll(', ', ',')==='.privateChatButton::before,.chempatControls .secretsButton::before');
+ assert.ok(paint,'both pills have the same compact visual surface');
+ assert.equal(paint.style.inset,'6px 0');assert.equal(paint.style.pointerEvents,'none');
+ assert.equal(paint.style.position,'absolute');assert.equal(paint.style.zIndex,'-1');
+ assert.match(paint.style.border,/1px solid var\(--pill-border/);assert.match(paint.style.background,/var\(--pill-bg/);
+ const pillCss=d.createElement('style');pillCss.textContent=cssAtWidth(cssRules,390);d.head.append(pillCss);
+ assert.equal(w.getComputedStyle(privateButton()).getPropertyValue('--pill-bg'),'#71439c','selected Vibe pill keeps its active color');
+ const waitingFriend=d.querySelector('.friendRail .privateChatButton');
+ assert.equal(w.getComputedStyle(waitingFriend).getPropertyValue('--pill-bg'),'#f4f7f5','waiting Friend keeps the disabled surface');
+ const activeFriend=d.querySelector('.friendRail .chempatContact:last-child .privateChatButton');activeFriend.classList.add('on');
+ assert.equal(w.getComputedStyle(activeFriend).getPropertyValue('--pill-bg'),'#327b74','selected Friend keeps its green surface');activeFriend.classList.remove('on');
+ pillCss.remove();readyProbe.remove();emptyProbe.remove();
  // Sent details must remain separate rows, including long recipient values.
  w.eval(`s.friendShare={expiresAt:'2099-01-01',recipient:{name:'A long synthetic friend name',email:'a.long.synthetic.recipient@example.com'},code:'ABC12345',url:'https://layout.example/friend?friend=synthetic'};s.modal='friendShare';renderModal()`);
  const sentCss=d.createElement('style');sentCss.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(sentCss);
