@@ -11,15 +11,17 @@ const ids=new Map([[hash(owner),'owner'],[hash(visitor),'visitor'],[hash(strange
 let race=false,failFinalize=false;
 const validEmailSession='f'.repeat(64);
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
+ if(q.includes('ORDER BY id FOR UPDATE')||q.startsWith('SELECT 1 FROM member_blocks'))return [];
+ if(q.startsWith('SELECT v.frozen_at'))return [{}];
  if(q.startsWith('SELECT email FROM email_sessions'))return v[0]===hash(validEmailSession)?[{email:'owner@example.com'}]:[];
  if(q.startsWith('SELECT id FROM members'))return ids.has(v[0])?[{id:ids.get(v[0])}]:[];
  if(q.startsWith('SELECT name FROM members'))return v[0]===hash(visitor)?[{name:'Mike'}]:[];
  if(q.startsWith('SELECT i.token_hash,i.created_at,i.sender_name'))return v[0]===id?[{...member,...state}]:[];
- if(q.startsWith('SELECT i.token_hash AS id'))return (v[0]===member.sender_member_id||v[1]===state.prospect_member_id)&&!(member.channel==='qr'&&!state.claim_hash&&member.expires_at<Date.now())?[{...member,...state,id,claimed:!!state.claim_hash}]:[];
+ if(q.startsWith('SELECT i.token_hash AS id'))return (v[0]===member.sender_member_id||v[0]===state.prospect_member_id)&&!(member.channel==='qr'&&!state.claim_hash&&member.expires_at<Date.now())?[{...member,...state,id,claimed:!!state.claim_hash}]:[];
  if(q.startsWith('UPDATE connection_state SET claim_hash=')){if(state.claim_hash||member.expires_at<Date.now())return [];state.claim_hash=v[0];return [{claim_hash:state.claim_hash}]}
  if(race){race=false;state.status='ended';return []}
  if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='firstResults'")){if(state.status!==v[5])return [];Object.assign(state,{prospect_name:v[0],prospect_photo:v[1],prospect_answers:JSON.parse(v[2]),prospect_member_id:v[3],status:'firstResults'});return [{status:state.status}]}
- if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='request'")){if(state.status!==v[5])return [];Object.assign(state,{prospect_name:v[0],prospect_phone:v[1],prospect_email:v[2],prospect_photo:v[3],status:'request'});return [{status:state.status}]}
+ if(q.startsWith('UPDATE connection_state SET prospect_name=')&&q.includes("status='request'")){if(state.status!==v[6])return [];Object.assign(state,{prospect_name:v[0],prospect_phone:v[1],prospect_email:v[2],prospect_photo:v[3],status:'request'});return [{status:state.status}]}
  if(q.startsWith('UPDATE connection_state SET status=?')){if(state.status!==v[2])return [];state.status=v[0];return [{status:state.status}]}
  if(q.startsWith("UPDATE connection_state SET status='chatRequested'")){if(state.status!=='nextResults')return [];state.status='chatRequested';return [{status:state.status}]}
  if(q.startsWith('WITH locked AS')){if(!['secondFive','chat'].includes(state.status)||member.sender_answers.length!==5)return [];member.sender_answers=JSON.parse(v[1]);return [{token_hash:id}]}
@@ -30,8 +32,10 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(v[0]));return [{messages:state.messages}]}
  throw Error('Unmocked SQL '+q)
 }
+sql.transaction=async build=>{const results=[];for(const next of build((s,...v)=>()=>sql(s,...v)))results.push(await next());return results};
+sql.query=async(q,v)=>{const rows=await sql([q],...v);const history=['ended','declined'].includes(state.status);return q.includes('AND NOT (v.frozen_at')?(history?[]:rows):(history?rows:[])};
 globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
-let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`);
+let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`);
 const api=(await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default;
 const headers=token=>token?{cookie:`chempat_member=${token}`} : {};
 const call=async(body,token)=>{const r=await api.fetch(new Request('https://example.com/api/connection',{method:'POST',headers:headers(token),body:JSON.stringify(body)}));return [r.status,await r.json()]};
@@ -39,7 +43,7 @@ const get=async(query,token)=>{const r=await api.fetch(new Request('https://exam
 const first={action:'first',token:raw,photo,answers:[1,1,2,0,0]};
 const second={action:'second',id,answers:[1,1,2,0,0,2,1,0,1,2]};
 const inbox=async(token=owner)=>(await get('inbox=1',token))[1].connections;
-function hidden(row){assert.equal(row.prospect_email,null);assert.equal(row.prospect_phone,null);assert.equal(row.recipient_email,null);assert(!JSON.stringify(row).includes('private-invite@example.com'))}
+function hidden(row){for(const key of ['prospect_email','prospect_phone','recipient_email'])if(key in row)assert.equal(row[key],null);assert(!JSON.stringify({...row,historyEmail:null}).includes('private-invite@example.com'));if(row.side==='prospect')assert.equal(row.historyEmail,null)}
 assert.equal((await get('invite='+raw))[1].answers.length,0);
 assert.equal((await call(first))[0],401);
 assert.equal((await call(first,owner))[0],401,'inviter cannot answer own invitation');

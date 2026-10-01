@@ -119,7 +119,7 @@ try{
  }
  // Safety actions are available through a labelled, keyboard-native menu.
  seed();const menu=d.querySelector('.connectionMenu');assert.ok(menu.querySelector('summary[aria-label="Connection options for Morgan"]'));
- assert.equal(menu.querySelectorAll('button').length,2);menu.querySelector('button').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'unmatch');
+ assert.equal(menu.querySelectorAll('button').length,3);assert.match(menu.textContent,/Freezer/);menu.querySelector('[onclick*=unmatch]').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'unmatch');
  w.eval('closeInvite()');assert.equal(w.eval('s.inbox[0].status'),'chat','cancel does not end the connection');
  d.querySelector('.connectionMenu button:last-child').click();assert.equal(w.eval('s.endTarget.kind'),'report');w.eval('closeInvite()');
  // Token-based prospect pages retain their original incoming pair while selecting outgoing.

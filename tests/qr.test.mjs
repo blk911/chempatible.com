@@ -8,6 +8,8 @@ const memberToken='a'.repeat(64),visitorToken='b'.repeat(64),photo='data:image/j
 const member={id:'11111111-1111-4111-8111-111111111111',name:'Cindy',contact:'cindy@example.com',photo,answers:[0,1,2,0,1,2,0,1,2,0]};
 let invitation=null,state=null;
 async function sql(strings,...values){const query=strings.join('?').replace(/\s+/g,' ').trim();
+ if(query.includes('ORDER BY id FOR UPDATE')||query.startsWith('SELECT 1 FROM member_blocks'))return [];
+ if(query.startsWith('SELECT v.frozen_at'))return [{}];
  if(query.startsWith('SELECT id,name,contact,photo,answers FROM members'))return values[0]===hash(memberToken)?[member]:[];
  if(query.startsWith('SELECT id FROM members'))return values[0]===hash(memberToken)?[{id:member.id}]:values[0]===hash(visitorToken)?[{id:'visitor-id'}]:[];
  if(query.startsWith('SELECT name FROM members'))return values[0]===hash(visitorToken)?[{name:'Mike'}]:[];
@@ -23,10 +25,12 @@ async function sql(strings,...values){const query=strings.join('?').replace(/\s+
  if(query.startsWith('UPDATE connection_state SET messages=')){state.messages.push(...JSON.parse(values[0]));return [{messages:state.messages}]}
  throw Error('Unmocked QR SQL '+query);
 }
+sql.transaction=async build=>{const results=[];for(const next of build((s,...v)=>()=>sql(s,...v)))results.push(await next());return results};
+sql.query=async(q,v)=>q.includes('AND NOT (v.frozen_at')?sql([q],...v):[];
 globalThis.__qrSql=sql;process.env.DATABASE_URL='postgres://test';
-const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
+const qrSource=fs.readFileSync(new URL('../api/qr.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
 const qrApi=(await import('data:text/javascript;base64,'+Buffer.from(qrSource).toString('base64'))).default;
-const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
+const connSource=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`).replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__qrSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;');
 const connection=(await import('data:text/javascript;base64,'+Buffer.from(connSource).toString('base64'))).default;
 const memberCookie=`chempat_member=${memberToken}`;
 const create=()=>qrApi.fetch(new Request('https://chempatible.com/api/qr',{method:'POST',headers:{cookie:memberCookie}}));

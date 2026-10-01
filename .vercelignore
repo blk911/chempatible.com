@@ -4,6 +4,7 @@
 !/api/
 /api/*
 !/api/_ops.mjs
+!/api/_connections.mjs
 !/api/_deployment.mjs
 !/api/_review.mjs
 !/api/admin.mjs

@@ -7,7 +7,7 @@
     "@vercel/functions": "3.9.9"
   },
   "scripts": {
-    "test": "node tests/deployment-mode.test.mjs && node tests/review-guard.test.mjs && node tests/admin-config.test.mjs && node tests/schema.test.mjs && node tests/email.test.mjs && node tests/friend.test.mjs && node tests/connection.test.mjs && node tests/qr.test.mjs && node tests/two-browser.test.mjs && node tests/ops.test.mjs && node tests/member.test.mjs && node tests/layout.test.mjs && node tests/chat-photo.test.mjs && node tests/brand.test.mjs && node tests/friend-ui.test.mjs"
+    "test": "node tests/deployment-mode.test.mjs && node tests/review-guard.test.mjs && node tests/admin-config.test.mjs && node tests/schema.test.mjs && node tests/email.test.mjs && node tests/friend.test.mjs && node tests/connection.test.mjs && node tests/qr.test.mjs && node tests/two-browser.test.mjs && node tests/ops.test.mjs && node tests/member.test.mjs && node tests/layout.test.mjs && node tests/chat-photo.test.mjs && node tests/brand.test.mjs && node tests/friend-ui.test.mjs && node tests/freezer.test.mjs && node tests/freezer-ui.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
