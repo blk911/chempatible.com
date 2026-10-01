@@ -19,6 +19,12 @@ const privateButton=()=>d.querySelector('.chempatContact.selected .privateChatBu
 
 try{
  seed();
+ // Capture the actual empty Vibe/Friend cards, then restore the populated
+ // dashboard so both empty and populated states share responsive checks.
+ w.eval('s.inbox=[];render()');
+ const emptyProbe=d.querySelector('.socialWorkspace').cloneNode(true);
+ assert.equal(emptyProbe.querySelectorAll('.railEmpty').length,2);
+ seed();d.body.append(emptyProbe);
  // JSDOM has no viewport layout engine. Activate the matching media rules
  // explicitly so computed styles still catch mobile flex-axis regressions.
  const cssSource=d.createElement('style');cssSource.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(cssSource);
@@ -35,6 +41,16 @@ try{
  }).join('\n');
  for(const width of [320,375,390,430,700,701,1280]){
   const viewportCss=d.createElement('style');viewportCss.textContent=cssAtWidth(cssRules,width);d.head.append(viewportCss);
+  const emptyInset=width<=700?'12px':'14px';
+  for(const empty of emptyProbe.querySelectorAll('.railEmpty')){
+   const style=w.getComputedStyle(empty),title=w.getComputedStyle(empty.parentElement.previousElementSibling);
+   assert.equal(style.paddingLeft,emptyInset,`${width}px: empty text stays inside the card border`);
+   assert.equal(style.paddingRight,emptyInset,`${width}px: wrapping text retains its right inset`);
+   assert.equal(style.paddingLeft,title.paddingLeft,`${width}px: empty text aligns with the section heading`);
+   assert.equal(style.paddingTop,'16px');assert.equal(style.paddingBottom,'16px');
+   assert.notEqual(style.whiteSpace,'nowrap');
+   assert.equal(title.borderBottomWidth,'1px','keep the existing section divider');
+  }
   const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=actions.querySelector('.friendShareButton');
   assert.ok(friendButton,'friend invitation remains a dashboard action');
   assert.equal(friendButton.getAttribute('onclick'),'openFriendShare()');
@@ -61,7 +77,7 @@ try{
   }
   viewportCss.remove();
  }
- readyProbe.remove();
+ readyProbe.remove();emptyProbe.remove();
  // Sent details must remain separate rows, including long recipient values.
  w.eval(`s.friendShare={expiresAt:'2099-01-01',recipient:{name:'A long synthetic friend name',email:'a.long.synthetic.recipient@example.com'},code:'ABC12345',url:'https://layout.example/friend?friend=synthetic'};s.modal='friendShare';renderModal()`);
  const sentCss=d.createElement('style');sentCss.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(sentCss);

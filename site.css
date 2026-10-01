@@ -115,12 +115,14 @@
 .connectionMenu .endControls .link:hover{background:#f4edf9}
 .focusNextActions{padding:0 18px 16px;margin-top:0}
 .focusStatus p{margin:0}
+.socialWorkspace .railEmpty{padding:16px 14px}
 .focusError:empty,.connectionFocus>.chatError:empty{display:none}
 .focusError:not(:empty){padding:0 16px 12px}
 .connectionFocus>.inlineChat{min-height:260px;max-height:510px}
 @media(min-width:701px) and (max-width:1150px){.chempatContact{grid-template-columns:minmax(0,1fr)}.chempatControls{padding-left:52px}}
 @media(max-width:700px){
  .socialWorkspace .chempatRail{display:block;max-height:300px;overflow-y:auto;overflow-x:hidden;padding:0}
+ .socialWorkspace .railEmpty{padding:16px 12px}
  .chempatContact{display:grid;grid-template-columns:minmax(0,1fr);width:100%;gap:7px;padding:10px 12px;border-width:0 0 1px;border-color:#e7eeea;border-radius:0;text-align:left}
  .chempatContact.selected{border-color:#e7eeea;box-shadow:inset 3px 0 #71439c}
  .chempatPerson{display:flex;flex-direction:row;text-align:left;gap:8px}
