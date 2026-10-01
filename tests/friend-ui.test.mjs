@@ -16,7 +16,7 @@ function service(){
  const members=new Map([[sender.id,{...sender}],[existing.id,{...existing}]]),invites=new Map([['friend-token',{id:'friend-one',sender:sender.id,status:'invited',token:'friend-token',intended:{name:existing.name,email:existing.contact}}]]),connections=[],calls=[];
  let failAccept=0,loseAccept=0,failCreate=0;
  const response=(body,status=200)=>({ok:status<400,status,json:async()=>structuredClone(body)});
- const row=(c,me)=>{const from=members.get(c.sender),to=members.get(c.recipient);return {id:c.id,kind:'friend',channel:'friend',status:c.status,canCancel:c.status==='invited'&&me===c.sender,canBlock:!!to,side:me===c.sender?'member':'prospect',sender_name:from.name,sender_photo:from.photo,recipient_name:c.intended?.name||'',recipient_email:null,prospect_name:to?.name||'',prospect_email:null,prospect_photo:to?.photo||'',sender_answers:[],prospect_answers:[],own_answers:[],messages:c.messages||[],claimed:!!to,invitedAt:'2026-09-30T10:00:00Z'}};
+ const row=(c,me)=>{const from=members.get(c.sender),to=members.get(c.recipient);return {id:c.id,kind:'friend',channel:'friend',status:c.status,canCancel:c.status==='invited'&&me===c.sender,canBlock:!!to,canReport:!!to&&c.status!=='invited',side:me===c.sender?'member':'prospect',sender_name:from.name,sender_photo:from.photo,recipient_name:c.intended?.name||'',recipient_email:null,prospect_name:to?.name||'',prospect_email:null,prospect_photo:to?.photo||'',sender_answers:[],prospect_answers:[],own_answers:[],messages:c.messages||[],claimed:!!to,invitedAt:'2026-09-30T10:00:00Z'}};
  function client(initial){let account=initial;return {get account(){return account},fetch:async(url,options={})=>{
   assert.ok(url.startsWith('/api/'),'test never contacts any external service');
   const body=options.body?JSON.parse(options.body):null;calls.push({url,body,account});
@@ -92,7 +92,7 @@ test('new friend registers with zero answers, explicitly connects, chats on both
   recipient.w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});recipient.w.HTMLCanvasElement.prototype.toDataURL=()=>otherPhoto;
   await recipient.w.sendChatPhoto({currentTarget:fileInput});await recipient.w.sendMessage();await from.w.refreshLive();assert.equal(from.d.querySelector('.chatPhoto').getAttribute('src'),otherPhoto);
   assert.equal(server.calls.filter(c=>c.body?.action==='message').at(-1).body.id,'friend-one');
-  assert.match(recipient.d.querySelector('.connectionMenu').textContent,/Unmatch.*Report/s);
+  assert.match(recipient.d.querySelector('.connectionMenu').textContent,/Report/);
   recipient.w.createMyVibe();assert.ok(recipient.d.querySelector('.question'));for(let i=0;i<5;i++){recipient.w.eval('quickLockUntil=0');await recipient.w.chooseQuick(i%3,i)}
   assert.deepEqual(server.members.get('new-member').answers,[0,1,2,0,1]);assert.equal(server.connections[0].status,'chat');
   assert.match(recipient.d.querySelector('.friendRail').textContent,/Alex/);assert.ok(recipient.d.querySelector('.socialMemberAction .friendShareButton'));
@@ -172,8 +172,8 @@ test('fresh URL tokens take precedence over saved invitations',async()=>{
 test('sender cancels a named pending friend and each new successful email send creates a fresh one-use token',async()=>{
  const server=service(),f=browser(server,{account:sender.id});
  try{
-  await flush();f.w.eval(`selectChempat('friend-one')`);assert.equal(f.d.querySelector('#connectionName').textContent,'Morgan');assert.match(f.d.querySelector('.connectionMenu').textContent,/Cancel invitation/);clickText(f,'Cancel invitation');assert.match(f.d.querySelector('#endTitle').textContent,/Cancel this invitation/);
-  const fetch=f.w.fetch;f.w.fetch=async(url,options)=>{const body=options?.body&&JSON.parse(options.body);if(url==='/api/connection'&&body.action==='cancel'){assert.equal(body.id,'friend-one');server.invites.get('friend-token').status='closed';return {ok:true,json:async()=>({ok:true})}}return fetch(url,options)};
+  await flush();f.w.eval(`selectChempat('friend-one')`);assert.equal(f.d.querySelector('#connectionName').textContent,'Morgan');assert.equal(f.d.querySelector('.freezeConnection').textContent,'Freezer');clickText(f,'Freezer');assert.match(f.d.querySelector('.endModal').textContent,/cancels the invitation immediately/);
+  const fetch=f.w.fetch;f.w.fetch=async(url,options)=>{const body=options?.body&&JSON.parse(options.body);if(url==='/api/connection'&&body.action==='freeze'){assert.equal(body.id,'friend-one');server.invites.get('friend-token').status='closed';return {ok:true,json:async()=>({ok:true})}}return fetch(url,options)};
   await f.w.confirmEnd();await flush();assert.equal(server.invites.get('friend-token').status,'closed');assert.equal(f.d.querySelector('.inlineComposer'),null);
   const first=(await sendFriend(f)).token;await f.w.copyFriendInvitation();f.w.openFriendShare();await flush();assert.equal(f.state().friendShare,null);assert.equal(server.calls.filter(c=>c.body?.action==='create').length,1,'new form does not create automatically');fillFriend(f);await f.w.makeFriendInvitation();const second=f.state().friendShare.token;assert.notEqual(first,second);assert.equal(f.copied.length,1,'opening another form never copies automatically');
   const recipient=browser(server,{account:existing.id,url:`https://friend.example/?friend=${second}`});try{await flush();await recipient.w.acceptFriendInvitation()}finally{recipient.close()}

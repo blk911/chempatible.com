@@ -6,7 +6,7 @@ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8').repl
 const source=fs.readFileSync(new URL('../game.js',import.meta.url),'utf8');
 const photo='data:image/jpeg;base64,AA==',otherPhoto='data:image/jpeg;base64,AQ==';
 const own={id:'owner',name:'Taylor Owner',contact:'private-owner@example.com',photo,answers:Array(10).fill(0),verified:true};
-const sent={id:'a'.repeat(64),side:'member',prospect_name:'Morgan Other',prospect_photo:otherPhoto,prospect_answers:Array(10).fill(1),sender_name:own.name,sender_photo:photo,sender_answers:own.answers,own_answers:own.answers,status:'chat',messages:[{by:'prospect',text:'Hi Taylor'}],invitedAt:'2026-09-21T12:30:00.000Z',recipient_email:'private-invite@example.com',prospect_email:'unshared@example.com'};
+const sent={id:'a'.repeat(64),side:'member',prospect_name:'Morgan Other',prospect_photo:otherPhoto,prospect_answers:Array(10).fill(1),sender_name:own.name,sender_photo:photo,sender_answers:own.answers,own_answers:own.answers,status:'chat',canReport:true,messages:[{by:'prospect',text:'Hi Taylor'}],invitedAt:'2026-09-21T12:30:00.000Z',recipient_email:'private-invite@example.com',prospect_email:'unshared@example.com'};
 const received={id:'b'.repeat(64),side:'prospect',sender_name:'Riley Friend',sender_photo:otherPhoto,sender_answers:Array(10).fill(2),prospect_name:own.name,prospect_photo:photo,prospect_answers:own.answers,own_answers:own.answers,status:'email',messages:[{by:'member',text:'Hi from Riley'}],invitedAt:'2026-09-22T17:45:00.000Z',sender_email:'private-sender@example.com',prospect_email:'my-shared@example.com'};
 const dom=new JSDOM(html,{url:'https://layout.example/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
 w.fetch=async()=>({ok:false,status:401,json:async()=>({})});w.setInterval=()=>0;w.scrollTo=()=>{};
@@ -119,7 +119,7 @@ try{
  }
  // Safety actions are available through a labelled, keyboard-native menu.
  seed();const menu=d.querySelector('.connectionMenu');assert.ok(menu.querySelector('summary[aria-label="Connection options for Morgan"]'));
- assert.equal(menu.querySelectorAll('button').length,3);assert.match(menu.textContent,/Freezer/);menu.querySelector('[onclick*=unmatch]').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'unmatch');
+ assert.equal(menu.querySelectorAll('button').length,1);assert.match(menu.textContent,/Report/);d.querySelector('.freezeConnection').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'freeze');
  w.eval('closeInvite()');assert.equal(w.eval('s.inbox[0].status'),'chat','cancel does not end the connection');
  d.querySelector('.connectionMenu button:last-child').click();assert.equal(w.eval('s.endTarget.kind'),'report');w.eval('closeInvite()');
  // Token-based prospect pages retain their original incoming pair while selecting outgoing.

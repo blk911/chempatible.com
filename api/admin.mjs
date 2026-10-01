@@ -138,16 +138,19 @@ async function act(sql,body){
   const {name,contact}=rows[0];
   // One transaction: their page, invitations they sent (connections cascade), reports and activity about them,
   // their email sign-ins, and their details on connections they joined through someone else's invitation.
-  await sql.transaction([
-   sql`DELETE FROM reports WHERE reporter_member_id=${id} OR reported_member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
-   sql`DELETE FROM activity WHERE member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
-   sql`UPDATE connection_state SET prospect_name='Deleted member',prospect_photo=NULL,prospect_phone=NULL,prospect_email=NULL,prospect_answers='[]'::jsonb,messages='[]'::jsonb,prospect_member_id=NULL,status=CASE WHEN status='invited' THEN status ELSE 'ended' END,ended_at=coalesce(ended_at,now()),ended_by=coalesce(ended_by,'admin'),updated_at=now() WHERE prospect_member_id=${id} OR prospect_email=${contact} OR prospect_phone=${contact}`,
-   sql`UPDATE invitations SET recipient_name='Deleted member',recipient_email='' WHERE recipient_email=${contact} AND sender_member_id IS DISTINCT FROM ${id}::uuid`,
-   sql`DELETE FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact}`,
-   sql`DELETE FROM email_sessions WHERE email=${contact}`,
-   sql`DELETE FROM email_codes WHERE email=${contact}`,
-   sql`DELETE FROM members WHERE id=${id}`
-  ]);
+  await sql.transaction(tx=>[
+   tx`SELECT id FROM members WHERE id=${id} ORDER BY id FOR UPDATE`,
+   tx`DELETE FROM reports WHERE reporter_member_id=${id} OR reported_member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
+   tx`DELETE FROM activity WHERE member_id=${id} OR connection_id IN (SELECT token_hash FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact})`,
+   tx`UPDATE connection_state SET prospect_name='Deleted member',prospect_photo=NULL,prospect_phone=NULL,prospect_email=NULL,prospect_answers='[]'::jsonb,messages='[]'::jsonb,prospect_member_id=NULL,status=CASE WHEN status='invited' THEN status ELSE 'ended' END,ended_at=coalesce(ended_at,now()),ended_by=coalesce(ended_by,'admin'),updated_at=now() WHERE prospect_member_id=${id} OR prospect_email=${contact} OR prospect_phone=${contact}`,
+   tx`UPDATE connection_state c SET status='ended',ended_at=coalesce(c.ended_at,now()),ended_by=coalesce(c.ended_by,'admin'),updated_at=now() FROM invitations i WHERE i.token_hash=c.invitation_hash AND (i.intended_member_id=${id} OR i.intended_email=${contact})`,
+   tx`UPDATE invitations SET intended_member_id=NULL,intended_email='deleted:'||token_hash,recipient_name='Deleted member',recipient_email='' WHERE intended_member_id=${id} OR intended_email=${contact}`,
+   tx`UPDATE invitations SET recipient_name='Deleted member',recipient_email='' WHERE recipient_email=${contact} AND sender_member_id IS DISTINCT FROM ${id}::uuid`,
+   tx`DELETE FROM invitations WHERE sender_member_id=${id} OR sender_email=${contact}`,
+   tx`DELETE FROM email_sessions WHERE email=${contact}`,
+   tx`DELETE FROM email_codes WHERE email=${contact}`,
+   tx`DELETE FROM members WHERE id=${id}`
+  ],{isolationLevel:'ReadCommitted'});
   await ops.log(sql,'admin_delete',{detail:{name}});
   return reply({ok:true});
  }
