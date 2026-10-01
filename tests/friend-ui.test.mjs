@@ -13,10 +13,10 @@ const sender={id:'sender',name:'Alex Sender',contact:'alex@example.com',photo,an
 const existing={id:'existing',name:'Morgan Member',contact:'morgan@example.com',photo:otherPhoto,answers:Array(10).fill(2),verified:true};
 
 function service(){
- const members=new Map([[sender.id,{...sender}],[existing.id,{...existing}]]),invites=new Map([['friend-token',{id:'friend-one',sender:sender.id,status:'invited',token:'friend-token'}]]),connections=[],calls=[];
+ const members=new Map([[sender.id,{...sender}],[existing.id,{...existing}]]),invites=new Map([['friend-token',{id:'friend-one',sender:sender.id,status:'invited',token:'friend-token',intended:{name:existing.name,email:existing.contact}}]]),connections=[],calls=[];
  let failAccept=0,loseAccept=0,failCreate=0;
  const response=(body,status=200)=>({ok:status<400,status,json:async()=>structuredClone(body)});
- const row=(c,me)=>{const from=members.get(c.sender),to=members.get(c.recipient);return {id:c.id,kind:'friend',channel:'friend',status:c.status,side:me===c.sender?'member':'prospect',sender_name:from.name,sender_photo:from.photo,prospect_name:to?.name||'Your friend',prospect_photo:to?.photo||'',sender_answers:[],prospect_answers:[],own_answers:[],messages:c.messages||[],claimed:!!to,invitedAt:'2026-09-30T10:00:00Z'}};
+ const row=(c,me)=>{const from=members.get(c.sender),to=members.get(c.recipient);return {id:c.id,kind:'friend',channel:'friend',status:c.status,side:me===c.sender?'member':'prospect',sender_name:from.name,sender_photo:from.photo,recipient_name:c.intended?.name||'',recipient_email:null,prospect_name:to?.name||'',prospect_email:null,prospect_photo:to?.photo||'',sender_answers:[],prospect_answers:[],own_answers:[],messages:c.messages||[],claimed:!!to,invitedAt:'2026-09-30T10:00:00Z'}};
  function client(initial){let account=initial;return {get account(){return account},fetch:async(url,options={})=>{
   assert.ok(url.startsWith('/api/'),'test never contacts any external service');
   const body=options.body?JSON.parse(options.body):null;calls.push({url,body,account});
@@ -31,7 +31,7 @@ function service(){
   }
   if(url.startsWith('/api/friend?invite=')){const token=new URL(url,'https://friend.example').searchParams.get('invite'),invite=invites.get(token);if(!invite)return response({error:'Invitation unavailable.'},404);const from=members.get(invite.sender);return response({kind:'friend',status:invite.status,expiresAt:'2099-01-01T00:00:00Z',...(invite.status==='invited'?{name:from.name,photo:from.photo}:{})})}
   if(url==='/api/friend'){
-   if(body.action==='create'){if(failCreate-- >0)return response({error:'Making the invitation was interrupted. Try again.'},503);const token=`created-${invites.size}`,id=`friend-${invites.size+1}`;invites.set(token,{id,sender:account,status:'invited',token});return response({id,url:`/?friend=${token}`,token,expiresAt:'2099-01-01T00:00:00Z',kind:'friend'})}
+   if(body.action==='create'){assert.ok(body.recipient?.name);assert.match(body.recipient.email,/^[^\s@]+@example\.com$/);if(failCreate-- >0)return response({error:'Sending the invitation was interrupted. Try again.'},503);const token=`created-${invites.size}`,id=`friend-${invites.size+1}`;invites.set(token,{id,sender:account,status:'invited',token,intended:{...body.recipient}});return response({id,url:`/friend?friend=${token}`,token,expiresAt:'2099-01-01T00:00:00Z',kind:'friend',recipient:{...body.recipient},code:token.slice(0,8).toUpperCase()})}
    if(body.action==='accept'){
     if(failAccept-- >0)return response({error:'Connecting was interrupted. Try again.'},503);
     const invite=invites.get(body.token);if(!account)return response({error:'Sign in to connect.'},401);
@@ -54,14 +54,21 @@ function service(){
  return {members,invites,connections,calls,client,failAccept:()=>{failAccept=1},loseAccept:()=>{loseAccept=1},failCreate:()=>{failCreate=1}};
 }
 function browser(server,{account=null,url='https://friend.example/',saved}={}){
- const dom=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document,client=server.client(account),copied=[];
+ const dom=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document,client=server.client(account),copied=[],noticeTimers=[];
+ const setTimeout=w.setTimeout.bind(w);w.setTimeout=(callback,delay,...args)=>delay===1800?(noticeTimers.push(()=>callback(...args)),0):setTimeout(callback,delay,...args);
  if(saved)w.sessionStorage.setItem(key,saved);
  w.fetch=client.fetch;w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async text=>{copied.push(text)}}});
  const script=d.createElement('script');script.textContent=source;d.body.append(script);
- return {dom,w,d,client,copied,state:()=>JSON.parse(w.eval('JSON.stringify(s)')),saved:()=>w.sessionStorage.getItem(key),close:()=>dom.window.close()};
+ return {dom,w,d,client,copied,expireNotice:()=>noticeTimers.splice(0).forEach(callback=>callback()),state:()=>JSON.parse(w.eval('JSON.stringify(s)')),saved:()=>w.sessionStorage.getItem(key),close:()=>dom.window.close()};
 }
 const clickText=(f,text)=>{const el=[...f.d.querySelectorAll('button')].find(b=>b.textContent.includes(text));assert.ok(el,`button ${text} exists`);el.click();return el};
+
+function fillFriend(f,{name=existing.name,email=existing.contact}={}){
+ f.d.querySelector('#friendName').value=name;f.d.querySelector('#friendEmail').value=email;
+}
+async function sendFriend(f,recipient){f.w.openFriendShare();fillFriend(f,recipient);await f.w.makeFriendInvitation();await flush();return f.state().friendShare}
+function showSentFriend(f){f.w.eval("s.modal='friendShare';renderModal()");assert.ok(f.d.querySelector('#friendShareLink'))}
 
 // All API and verification requests below are in-memory stubs. No live account or email writes.
 test('new friend registers with zero answers, explicitly connects, chats on both sides, and can later play their five',async()=>{
@@ -110,14 +117,22 @@ test('signup reload, sign in, back/cancel and replacing a pending link preserve 
  }finally{f.close();reloaded?.close()}
 });
 
-test('share invitation retries failures, copies only on click, and leaves the active Vibe untouched',async()=>{
+test('named friend email keeps invalid and failed forms open, then closes on success without changing the active Vibe',async()=>{
  const server=service(),f=browser(server,{account:existing.id});
  try{
   await flush();const vibe={id:'vibe',side:'prospect',kind:'vibe',sender_name:'Jordan',sender_photo:photo,sender_answers:[0,1,0,1,0],prospect_answers:existing.answers,own_answers:existing.answers,status:'secondFive',messages:[]};
   f.w.eval(`s.inbox=[${JSON.stringify(vibe)}];s.liveId='vibe';s.selectedChempat='vibe';applyConnection(s.inbox[0]);render()`);
   const snapshot=()=>{const state=f.state();return {actor:state.actor,member:state.member,prospect:state.prospect,liveId:state.liveId,phase:state.phase,pairOwnAnswers:state.pairOwnAnswers}};
-  const before=snapshot();const nativeFetch=f.w.fetch;f.w.fetch=async(url,options)=>url==='/api/connection?inbox=1'?{ok:true,json:async()=>({connections:[vibe]})}:nativeFetch(url,options);
-  server.failCreate();f.w.openFriendShare();await flush();assert.match(f.d.querySelector('#friendShareError').textContent,/interrupted/);assert.equal(f.copied.length,0);await f.w.makeFriendInvitation();assert.match(f.d.querySelector('#friendShareLink').value,/^https:\/\/friend\.example\/friend\?friend=/);assert.equal(f.copied.length,0);await f.w.copyFriendInvitation();assert.match(f.copied[0],/^Come try Chem-patible with me\.\nhttps:\/\/friend\.example/);assert.deepEqual(snapshot(),before);
+  const before=snapshot(),nativeFetch=f.w.fetch;f.w.fetch=async(url,options)=>{const response=await nativeFetch(url,options);if(url!=='/api/connection?inbox=1')return response;const body=await response.json();return {ok:true,json:async()=>({connections:[vibe,...body.connections]})}};
+  const callsBefore=server.calls.length;f.w.openFriendShare();await flush();assert.equal(server.calls.length,callsBefore,'opening the form sends no email');assert.equal(f.copied.length,0);
+  await f.w.makeFriendInvitation();assert.match(f.d.querySelector('#friendShareError').textContent,/name and email/);assert.equal(server.calls.length,callsBefore);
+  fillFriend(f,{name:'Morgan Member',email:'not-an-email'});await f.w.makeFriendInvitation();assert.equal(f.d.querySelector('#friendName').value,'Morgan Member');assert.equal(f.d.querySelector('#friendEmail').value,'not-an-email');assert.equal(f.state().modal,'friendShare');assert.equal(server.calls.length,callsBefore);
+  fillFriend(f,{name:'  Morgan Member  ',email:'  MORGAN@EXAMPLE.COM  '});server.failCreate();await f.w.makeFriendInvitation();
+  assert.match(f.d.querySelector('#friendShareError').textContent,/interrupted/);assert.equal(f.d.querySelector('#friendName').value,'Morgan Member');assert.equal(f.d.querySelector('#friendEmail').value,'morgan@example.com');assert.equal(f.state().modal,'friendShare');assert.equal(f.state().friendShare,null);assert.equal(f.copied.length,0);assert.deepEqual(snapshot(),before);
+  await f.w.makeFriendInvitation();await flush();assert.equal(f.state().modal,'');assert.equal(f.d.querySelector('#modalHost').textContent,'');assert.match(f.d.querySelector('.friendRail').textContent,/Morgan/);assert.doesNotMatch(f.d.querySelector('.friendRail').textContent,/morgan@example\.com/);assert.equal(f.d.querySelector('#connectionName').textContent,'Morgan');assert.equal(f.d.querySelector('.inlineComposer'),null,'pending friend invitation cannot open chat');
+  assert.equal(f.state().notice,'Invite sent to Morgan.');assert.deepEqual(f.state().friendShare.recipient,{name:'Morgan Member',email:'morgan@example.com'});assert.deepEqual(server.calls.filter(c=>c.body?.action==='create').at(-1).body.recipient,{name:'Morgan Member',email:'morgan@example.com'});assert.equal(f.copied.length,0);assert.deepEqual(snapshot(),before);
+  f.expireNotice();assert.equal(f.state().notice,'');assert.equal(f.d.querySelector('#modalHost').textContent,'');assert.equal(f.d.querySelector('#connectionName').textContent,'Morgan','pending recipient stays visible after confirmation disappears');
+  showSentFriend(f);assert.match(f.d.querySelector('#friendShareLink').value,/^https:\/\/friend\.example\/friend\?friend=/);assert.equal(f.copied.length,0);await f.w.copyFriendInvitation();assert.match(f.copied[0],/^Come try Duh Wild with me\.\nInvite code: CREATED-\nhttps:\/\/friend\.example/);assert.deepEqual(snapshot(),before);
  }finally{f.close()}
 });
 
@@ -154,15 +169,15 @@ test('fresh URL tokens take precedence over saved invitations',async()=>{
  }finally{original.close();freshFriend?.close();freshVibe?.close()}
 });
 
-test('sender cancels a pending friend invitation and each new Share click creates a new token',async()=>{
+test('sender cancels a named pending friend and each new successful email send creates a fresh one-use token',async()=>{
  const server=service(),f=browser(server,{account:sender.id});
  try{
-  await flush();f.w.eval(`selectChempat('friend-one')`);assert.match(f.d.querySelector('.connectionMenu').textContent,/Cancel invitation/);clickText(f,'Cancel invitation');assert.match(f.d.querySelector('#endTitle').textContent,/Cancel this friend invitation/);
+  await flush();f.w.eval(`selectChempat('friend-one')`);assert.equal(f.d.querySelector('#connectionName').textContent,'Morgan');assert.match(f.d.querySelector('.connectionMenu').textContent,/Cancel invitation/);clickText(f,'Cancel invitation');assert.match(f.d.querySelector('#endTitle').textContent,/Cancel this friend invitation/);
   const fetch=f.w.fetch;f.w.fetch=async(url,options)=>{const body=options?.body&&JSON.parse(options.body);if(url==='/api/connection'&&body.action==='unmatch'){assert.equal(body.id,'friend-one');server.invites.get('friend-token').status='closed';return {ok:true,json:async()=>({ok:true})}}return fetch(url,options)};
   await f.w.confirmEnd();await flush();assert.equal(server.invites.get('friend-token').status,'closed');assert.equal(f.d.querySelector('.inlineComposer'),null);
-  f.w.openFriendShare();await flush();const first=f.state().friendShare.token;await f.w.copyFriendInvitation();f.w.closeInvite();f.w.openFriendShare();await flush();const second=f.state().friendShare.token;assert.notEqual(first,second);assert.equal(f.copied.length,1,'opening another share never copies automatically');
+  const first=(await sendFriend(f)).token;await f.w.copyFriendInvitation();f.w.openFriendShare();await flush();assert.equal(f.state().friendShare,null);assert.equal(server.calls.filter(c=>c.body?.action==='create').length,1,'new form does not create automatically');fillFriend(f);await f.w.makeFriendInvitation();const second=f.state().friendShare.token;assert.notEqual(first,second);assert.equal(f.copied.length,1,'opening another form never copies automatically');
   const recipient=browser(server,{account:existing.id,url:`https://friend.example/?friend=${second}`});try{await flush();await recipient.w.acceptFriendInvitation()}finally{recipient.close()}
-  f.w.closeInvite();f.w.openFriendShare();await flush();assert.notEqual(f.state().friendShare.token,second,'accepted one-use link is never reused for another friend');
+  const third=await sendFriend(f,{name:'Riley Friend',email:'riley@example.com'});assert.notEqual(third.token,second,'accepted one-use link is never reused for another friend');assert.equal(third.recipient.name,'Riley Friend');assert.match(f.d.querySelector('.friendRail').textContent,/Riley/);
  }finally{f.close()}
 });
 
@@ -172,19 +187,20 @@ test('pending create or accept responses cannot mutate a logged-out or different
   try{
    await flush();const fetch=f.w.fetch;let release;
    f.w.fetch=async(url,options)=>{if(url==='/api/friend'&&JSON.parse(options.body).action===action)return new Promise(resolve=>{release=async()=>resolve(await fetch(url,options))});return fetch(url,options)};
+   if(action==='create'){f.w.openFriendShare();fillFriend(f)}
    const running=action==='create'?f.w.makeFriendInvitation():f.w.acceptFriendInvitation();await flush();assert.equal(typeof release,'function');
    f.w.confirmLogout();await f.w.logout();const loggedOut=f.state();await release();await running;await flush();assert.deepEqual(f.state(),loggedOut,'old action result leaves logged-out page unchanged');assert.equal(f.state().friendShare,null);assert.equal(f.d.querySelector('.inlineComposer'),null);
   }finally{f.close()}
  }
 });
 
-test('rapid Share clicks mint one link and native sharing only runs on its own button',async()=>{
+test('rapid send clicks send one named invitation and native sharing runs only on its own button',async()=>{
  const server=service(),f=browser(server,{account:sender.id});
  try{
   await flush();const fetch=f.w.fetch;let release;f.w.fetch=async(url,options)=>{if(url==='/api/friend')return new Promise(resolve=>{release=async()=>resolve(await fetch(url,options))});return fetch(url,options)};
   const shared=[];f.w.navigator.share=async data=>shared.push(data);
-  f.w.openFriendShare();f.w.openFriendShare();assert.equal(shared.length,0);await release();await flush();assert.equal(server.calls.filter(c=>c.body?.action==='create').length,1);assert.equal(shared.length,0);assert.equal(f.copied.length,0);
-  clickText(f,'Share invitation');await flush();assert.equal(shared.length,1);assert.equal(shared[0].text,'Come try Chem-patible with me.');assert.match(shared[0].url,/^https:\/\/friend\.example\/friend\?friend=/);
+  f.w.openFriendShare();f.w.openFriendShare();assert.equal(release,undefined);fillFriend(f);const firstSend=f.w.makeFriendInvitation(),secondSend=f.w.makeFriendInvitation();assert.equal(shared.length,0);assert.match(f.d.querySelector('.friendShareModal').textContent,/Sending your invitation/);await release();await Promise.all([firstSend,secondSend]);await flush();assert.equal(server.calls.filter(c=>c.body?.action==='create').length,1);assert.equal(shared.length,0);assert.equal(f.copied.length,0);assert.equal(f.state().modal,'');
+  showSentFriend(f);clickText(f,'Share invitation');await flush();assert.equal(shared.length,1);assert.equal(shared[0].title,'Duh Wild');assert.equal(shared[0].text,`Come try Duh Wild with me. Invite code: ${f.state().friendShare.code}`);assert.match(shared[0].url,/^https:\/\/friend\.example\/friend\?friend=/);
  }finally{f.close()}
 });
 
@@ -212,8 +228,8 @@ test('an unfinished Vibe visitor can back out of friend signup without losing th
 test('closing the share modal while clipboard or native sharing finishes is harmless',async()=>{
  const server=service(),f=browser(server,{account:sender.id});
  try{
-  await flush();f.w.openFriendShare();await flush();let finishCopy;f.w.navigator.clipboard.writeText=()=>new Promise(resolve=>{finishCopy=resolve});const copying=f.w.copyFriendInvitation();f.w.closeInvite();finishCopy();await copying;assert.equal(f.d.querySelector('#modalHost').textContent,'');
-  f.w.openFriendShare();await flush();let finishShare;f.w.navigator.share=()=>new Promise(resolve=>{finishShare=resolve});const sharing=f.w.shareFriendInvitation();f.w.closeInvite();finishShare();await sharing;assert.equal(f.d.querySelector('#modalHost').textContent,'');
+  await flush();await sendFriend(f);showSentFriend(f);let finishCopy;f.w.navigator.clipboard.writeText=()=>new Promise(resolve=>{finishCopy=resolve});const copying=f.w.copyFriendInvitation();f.w.closeInvite();finishCopy();await copying;assert.equal(f.d.querySelector('#modalHost').textContent,'');
+  await sendFriend(f);showSentFriend(f);let finishShare;f.w.navigator.share=()=>new Promise(resolve=>{finishShare=resolve});const sharing=f.w.shareFriendInvitation();f.w.closeInvite();finishShare();await sharing;assert.equal(f.d.querySelector('#modalHost').textContent,'');
  }finally{f.close()}
 });
 

@@ -287,7 +287,7 @@ function preview() {
     draft.showPriorities ? `<section class="member-card"><h3>My 10</h3><p>The questions I care about. My top five lead the first exchange.</p><ol class="priorities">${draft.selectedQuestions.map(index => `<li>${escapeHtml(questionText(index))}</li>`).join('') || '<li>Choose your first ten in the editor.</li>'}</ol></section>` : ''
   ].join('');
   const connections = draft.showConnections ? `<div class="member-column"><section class="member-card"><h3>Connections</h3><button type="button" class="connection-row"><span class="avatar">C</span><span><b>Connection</b><small>Five answered · Your move</small></span><span style="margin-left:auto">→</span></button><div class="conversation"><b>Member + Connection</b>Your connection answered your first five. Read their answers, then continue the exchange.</div></section></div>` : '';
-  $('profilePreview').innerHTML = `<header class="member-bar"><div class="member-logo"><span class="brandAsset"><img src="/brand-logo.png" alt="Chem-patible"></span></div><div class="member-id"><span class="avatar">M</span><span><b>Member</b><br>Email private</span></div></header><div class="member-content"><div class="member-hero"><span class="member-eyebrow">MY PAGE</span><h2>${greeting}</h2><p>${escapeHtml(draft.intro)}</p></div>${draft.showConnect ? `<section class="member-cta"><div><span class="member-eyebrow">YOUR NEXT CONNECTION</span><h3>${escapeHtml(draft.connectTitle)}</h3><p>${escapeHtml(draft.connectText)}</p></div><button type="button" class="cta-button">${escapeHtml(draft.connectButton)}</button></section>` : ''}${contents || connections ? `<div class="member-grid"><div class="member-column">${contents}</div>${connections}</div>` : '<p>Turn on a section to see it here.</p>'}</div>`;
+  $('profilePreview').innerHTML = `<header class="member-bar"><div class="member-logo"><span class="brandWordmark">Duh <em>Wild</em></span></div><div class="member-id"><span class="avatar">M</span><span><b>Member</b><br>Email private</span></div></header><div class="member-content"><div class="member-hero"><span class="member-eyebrow">MY PAGE</span><h2>${greeting}</h2><p>${escapeHtml(draft.intro)}</p></div>${draft.showConnect ? `<section class="member-cta"><div><span class="member-eyebrow">YOUR NEXT CONNECTION</span><h3>${escapeHtml(draft.connectTitle)}</h3><p>${escapeHtml(draft.connectText)}</p></div><button type="button" class="cta-button">${escapeHtml(draft.connectButton)}</button></section>` : ''}${contents || connections ? `<div class="member-grid"><div class="member-column">${contents}</div>${connections}</div>` : '<p>Turn on a section to see it here.</p>'}</div>`;
 }
 function questionPage(testSlug) {
   if (testSlug) {
@@ -313,7 +313,7 @@ function showPage(page, testSlug = '') {
   $('templatePage').hidden = !isTemplate;
   $('otherPage').hidden = isTemplate;
   $('pageTitle').textContent = isTemplate ? 'Member Profile' : pages[page].title;
-  document.title = `${isTemplate ? 'Member Profile Template' : pages[page].title} · Chem-patible`;
+  document.title = `${isTemplate ? 'Member Profile Template' : pages[page].title} · Duh Wild`;
   for (const button of document.querySelectorAll('[data-page]')) {
     const selected = button.dataset.page === page;
     button.classList.toggle('active', selected);

@@ -25,16 +25,12 @@
 !/admin-questions.css
 !/admin.css
 !/admin.js
-!/apple-touch-icon.png
-!/brand-logo.png
-!/favicon.png
 !/favicon.svg
 !/game.js
 !/deployment.js
 !/index.html
 !/friend.html
 !/middleware.js
-!/og-image.png
 !/package-lock.json
 !/package.json
 !/privacy.html
@@ -44,3 +40,6 @@
 !/sitemap.xml
 !/terms.html
 !/vercel.json
+!/duh-wild-og.png
+!/duh-wild-icon.png
+!/duh-wild-apple.png

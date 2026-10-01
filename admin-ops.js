@@ -42,7 +42,7 @@ function activate(page){
 async function open(page,arg=''){
  $('templatePage').hidden=true;document.querySelector('.draft-badge')?.setAttribute('hidden','');
  const host=$('otherPage');host.hidden=false;host.classList.remove('questions-layout');host.classList.add('ops-page');
- $('pageTitle').textContent=OPS[page];document.title=`${OPS[page]} · Chem-patible admin`;
+ $('pageTitle').textContent=OPS[page];document.title=`${OPS[page]} · Duh Wild admin`;
  activate(page);history.replaceState(null,'',`/admin#${page}${arg?`/${arg}`:''}`);
  host.innerHTML='<p class="ops-empty">Loading…</p>';
  try{host.innerHTML=await renderers[page](arg)}catch(e){host.innerHTML=`<p class="error">${esc(e.message)}</p>`}

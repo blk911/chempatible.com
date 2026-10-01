@@ -1,5 +1,7 @@
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 process.env.DATABASE_URL='postgres://local-test-only';
+process.env.SENDGRID_API_KEY='isolated-fake-provider-key';
+process.env.CHEMPAT_REVIEW_EMAILS='owner@example.com,visitor@example.com,other@example.com,fourth@example.com';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -11,7 +13,7 @@ const photo='data:image/jpeg;base64,AA==',secretPhoto='data:image/jpeg;base64,BB
 const tokens={owner:'a'.repeat(64),visitor:'b'.repeat(64),other:'c'.repeat(64),fourth:'d'.repeat(64)};
 const ids={owner:'11111111-1111-4111-8111-111111111111',visitor:'22222222-2222-4222-8222-222222222222',other:'33333333-3333-4333-8333-333333333333',fourth:'44444444-4444-4444-8444-444444444444'};
 await db.exec(`CREATE TABLE members(id uuid PRIMARY KEY,session_hash text UNIQUE,name text,photo text,answers jsonb DEFAULT '[]',contact text,email_verified_at timestamptz,suspended_until timestamptz,blocked_at timestamptz); CREATE TABLE invitations(token_hash text PRIMARY KEY,created_at timestamptz DEFAULT now(),sender_email text NOT NULL,sender_name text,sender_photo text,sender_answers jsonb NOT NULL,recipient_name text,recipient_email text,sender_member_id uuid,channel text,expires_at timestamptz); CREATE TABLE connection_state(invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,prospect_member_id uuid,prospect_name text,prospect_photo text,prospect_answers jsonb DEFAULT '[]',prospect_phone text,prospect_email text,status text DEFAULT 'invited',claim_hash text,messages jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now()); CREATE TABLE email_sessions(token_hash text,email text,expires_at timestamptz);`);
-for(const [name,id] of Object.entries(ids))await db.query('INSERT INTO members(id,session_hash,name,photo,contact,email_verified_at) VALUES($1,$2,$3,$4,$5,now())',[id,hash(tokens[name]),name,photo,`${name}@private.test`]);
+for(const [name,id] of Object.entries(ids))await db.query('INSERT INTO members(id,session_hash,name,photo,contact,email_verified_at) VALUES($1,$2,$3,$4,$5,now())',[id,hash(tokens[name]),name,photo,`${name}@example.com`]);
 const query=(strings,values)=>({text:strings.reduce((out,part,index)=>out+(index?`$${index}`:'')+part,''),values});
 async function run(executor,{text,values}){return (await executor.query(text,values)).rows}
 const sql=(strings,...values)=>run(db,query(strings,values));
@@ -33,10 +35,18 @@ globalThis.__friendOps={
  log:async(_sql,kind,data)=>logs.push({kind,...data}),
  endConnection:async(_sql,args)=>{logs.push({kind:'end',...args});await sql`UPDATE connection_state SET status='ended' WHERE invitation_hash=${args.id}`;return {status:200,body:{ok:true,status:'ended'}}}
 };
-async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
+async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace(/from '\.\/_review\.mjs'/g,`from '${new URL('../api/_review.mjs',import.meta.url).href}'`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
+const mail=[];let providerStatus=202;
+const originalFetch=globalThis.fetch;
+globalThis.fetch=async(url,options)=>{
+ assert.equal(url,'https://api.sendgrid.com/v3/mail/send','all mail uses the isolated provider stub');
+ assert.equal(options.headers.authorization,'Bearer isolated-fake-provider-key');
+ const body=JSON.parse(options.body);assert.ok(body.personalizations[0].to.every(({email})=>email.endsWith('@example.com')));
+ mail.push(body);return new Response(null,{status:providerStatus});
+};
 const friend=await load('friend'),connection=await load('connection');
 async function call(api,{body,query='',as,cookie,method}={}){const response=await api.fetch(new Request(`https://untrusted.example/api/test${query?'?'+query:''}`,{method:method||(body===undefined?'GET':'POST'),headers:{...(as?{cookie:`chempat_member=${tokens[as]||as}`}:{cookie:cookie||''})},...(body===undefined?{}:{body:typeof body==='string'?body:JSON.stringify(body)})}));return {status:response.status,data:await response.json(),headers:response.headers}}
-const create=async(as='owner',extra={})=>{const response=await call(friend,{as,body:{action:'create',...extra}});assert.equal(response.status,200);assert.equal(response.data.kind,'friend');assert.match(response.data.token,/^[a-f0-9]{64}$/);assert.equal(response.data.id,hash(response.data.token));assert.equal(response.data.url,`/friend?friend=${response.data.token}`);assert.equal(response.headers.get('cache-control'),'no-store');return response.data};
+const create=async(as='owner',extra={})=>{const response=await call(friend,{as,body:{action:'create',recipient:{name:as==='visitor'?'Owner Friend':'Visitor Friend',email:as==='visitor'?'owner@example.com':'visitor@example.com'},...extra}});assert.equal(response.status,200);assert.equal(response.data.kind,'friend');assert.match(response.data.token,/^[a-f0-9]{64}$/);assert.equal(response.data.id,hash(response.data.token));assert.equal(response.data.url,`/friend?friend=${response.data.token}`);assert.equal(response.data.code,response.data.token.slice(0,8).toUpperCase());assert.ok(response.data.recipient.name);assert.match(response.data.recipient.email,/@example\.com$/);assert.equal(response.headers.get('cache-control'),'no-store');return response.data};
 const accept=(invite,as='visitor',extra={})=>call(friend,{as,body:{action:'accept',token:invite.token,...extra}});
 const preview=invite=>call(friend,{query:'invite='+invite.token});
 const inbox=async as=>{const result=await call(connection,{as,query:'inbox=1'});assert.equal(result.status,200);return result.data.connections};
@@ -45,7 +55,7 @@ const clear=()=>db.exec('DELETE FROM invitations');
 const privacy=row=>{
  for(const key of ['answers','prospectAnswers','sender_answers','prospect_answers','own_answers'])if(key in row)assert.deepEqual(row[key],[],key);
  for(const key of ['recipient_email','prospect_email','prospectEmail','prospect_phone','prospectPhone'])if(key in row)assert.equal(row[key],null,key);
- assert(!JSON.stringify(row).includes('@private.test'));assert(!JSON.stringify(row).includes('secret-recipient'));
+ assert(!JSON.stringify(row).includes('@example.com'));assert(!JSON.stringify(row).includes('secret-recipient'));
 };
 
 assert.equal((await call(friend,{body:{action:'create'}})).status,401);
@@ -64,9 +74,31 @@ for(const action of ['create','accept']){
 await sql`UPDATE members SET photo='bad' WHERE id=${ids.owner}`;
 assert.equal((await call(friend,{as:'owner',body:{action:'create',photo}})).status,400,'client cannot repair or spoof server profile');
 await sql`UPDATE members SET photo=${photo} WHERE id=${ids.owner}`;
+// Creating a friend invitation requires an explicit name, email, and available mail provider.
+const beforeInvalid=mail.length;
+for(const recipient of [undefined,{}, {name:'',email:'visitor@example.com'},{name:'Visitor',email:'invalid'}]){
+ const result=await call(friend,{as:'owner',body:{action:'create',recipient}});assert.equal(result.status,400);
+}
+assert.equal(mail.length,beforeInvalid);assert.equal((await sql`SELECT * FROM invitations`).length,0);
+delete process.env.SENDGRID_API_KEY;
+assert.equal((await call(friend,{as:'owner',body:{action:'create',recipient:{name:'Visitor',email:'visitor@example.com'}}})).status,503);
+process.env.SENDGRID_API_KEY='isolated-fake-provider-key';
+const originalError=console.error,expectedErrors=[];console.error=(...args)=>expectedErrors.push(args);
+try{
+ const blocked=await call(friend,{as:'owner',body:{action:'create',recipient:{name:'Not approved',email:'unapproved@example.com'}}});
+ assert.equal(blocked.status,500);assert.equal(mail.length,beforeInvalid,'review recipient guard prevents provider calls');
+ assert.equal((await sql`SELECT * FROM invitations`).length,0,'review rejection rolls back pending invitation');
+ providerStatus=503;
+ assert.equal((await call(friend,{as:'owner',body:{action:'create',recipient:{name:'Visitor',email:'visitor@example.com'}}})).status,500);
+ assert.equal((await sql`SELECT * FROM invitations`).length,0,'provider failure rolls back pending invitation');
+ assert.equal((await sql`SELECT * FROM connection_state`).length,0,'provider failure leaves no orphan connection');
+ assert.equal(expectedErrors.length,2);
+}finally{console.error=originalError;providerStatus=202}
 const invite=await create('owner',{name:'Spoofed',photo:secretPhoto,answers:Array(10).fill(2),kind:'vibe'});
 const stored=(await sql`SELECT * FROM invitations WHERE token_hash=${invite.id}`)[0];
-assert.equal(stored.channel,'friend');assert.equal(stored.sender_name,'owner');assert.equal(stored.sender_photo,photo);assert.deepEqual(stored.sender_answers,[]);assert.equal(stored.sender_email,'');assert.equal(stored.recipient_email,'');assert.equal(stored.recipient_name,'');
+assert.equal(stored.channel,'friend');assert.equal(stored.sender_name,'owner');assert.equal(stored.sender_photo,photo);assert.deepEqual(stored.sender_answers,[]);assert.equal(stored.sender_email,'');assert.equal(stored.recipient_email,'visitor@example.com');assert.equal(stored.recipient_name,'Visitor Friend');assert.deepEqual(invite.recipient,{name:'Visitor Friend',email:'visitor@example.com'});
+const invitationMail=mail.at(-1);assert.deepEqual(invitationMail.personalizations,[{to:[{email:'visitor@example.com'}]}]);assert.equal(invitationMail.from.name,'Duh Wild');assert.equal(invitationMail.subject,'owner invited you to Duh Wild');assert.match(invitationMail.content[0].value,/Hey Visitor,/);assert.match(invitationMail.content[0].value,/Come try Duh Wild with me/);assert.ok(invitationMail.content.every(c=>c.value.includes(`https://untrusted.example/friend?friend=${invite.token}`)));assert.equal(invitationMail.attachments[0].content,'AA==');
+const pendingRow=(await inbox('owner'))[0];assert.equal(pendingRow.recipient_name,'Visitor Friend');assert.equal(pendingRow.claimed,false);privacy(pendingRow);
 assert(Math.abs(new Date(stored.expires_at)-Date.now()-7*86400000)<10000);
 assert.equal((await state(invite.id)).status,'invited');assert.equal((await state(invite.id)).prospect_member_id,null);
 assert.deepEqual(Object.keys((await preview(invite)).data).sort(),['expiresAt','kind','name','photo','status']);
@@ -86,11 +118,11 @@ assert.equal((await call(connection,{as:'visitor',query:'invite='+invite.token})
 assert.deepEqual(await inbox('other'),[]);
 for(const as of ['owner','visitor']){const own=(await inbox(as))[0];assert.equal(own.kind,'friend');privacy(own)}
 // Even corrupt legacy answer/contact columns never leak through a friend view.
-await sql`UPDATE invitations SET sender_answers='[2,2,2,2,2,2,2,2,2,2]',sender_email='owner@private.test',recipient_email='secret-recipient@private.test' WHERE token_hash=${invite.id}`;
-await sql`UPDATE connection_state SET prospect_answers='[1,1,1,1,1,1,1,1,1,1]',prospect_email='visitor@private.test',prospect_phone='1234567890' WHERE invitation_hash=${invite.id}`;
+await sql`UPDATE invitations SET sender_answers='[2,2,2,2,2,2,2,2,2,2]',sender_email='owner@example.com',recipient_email='secret-recipient@example.com' WHERE token_hash=${invite.id}`;
+await sql`UPDATE connection_state SET prospect_answers='[1,1,1,1,1,1,1,1,1,1]',prospect_email='visitor@example.com',prospect_phone='1234567890' WHERE invitation_hash=${invite.id}`;
 for(const as of ['owner','visitor'])privacy((await inbox(as))[0]);privacy((await call(connection,{as:'visitor',query:'invite='+invite.token})).data);
 for(const action of ['first','request','decision','second','chat','email'])for(const as of ['owner','visitor']){
- const result=await call(connection,{as,body:{action,id:invite.id,token:invite.token,kind:'vibe',channel:'email',answers:Array(10).fill(1),photo,name:'visitor',contact:'expose@private.test',email:'expose@private.test',decision:'accept'}});
+ const result=await call(connection,{as,body:{action,id:invite.id,token:invite.token,kind:'vibe',channel:'email',answers:Array(10).fill(1),photo,name:'visitor',contact:'expose@example.com',email:'expose@example.com',decision:'accept'}});
  assert.equal(result.status,409,`${action} cannot turn friend into Vibe`);
 }
 assert.equal((await call(connection,{as:'other',body:{action:'message',id:invite.id,text:'intruder',kind:'friend'}})).status,404);
@@ -118,6 +150,14 @@ const declined=await create();await sql`UPDATE connection_state SET status='decl
 const paused=await create();await sql`UPDATE members SET blocked_at=now() WHERE id=${ids.owner}`;assert.equal((await preview(paused)).data.status,'unavailable');assert.equal((await accept(paused)).status,403);await sql`UPDATE members SET blocked_at=NULL WHERE id=${ids.owner}`;
 const missing=await create('fourth');await sql`DELETE FROM members WHERE id=${ids.fourth}`;assert.equal((await preview(missing)).data.status,'unavailable');assert.equal((await accept(missing)).status,403);
 await clear();
+// Named email delivery still yields a shareable one-use link. It binds to the
+// first verified accepting account, not to the original delivery address.
+const sharedLink=await create();assert.equal(sharedLink.recipient.email,'visitor@example.com');
+assert.equal((await accept(sharedLink,'other')).status,200);assert.equal((await state(sharedLink.id)).prospect_member_id,ids.other);
+assert.equal((await accept(sharedLink,'visitor')).status,409,'the named email recipient cannot take over a consumed link');
+assert.equal((await call(connection,{as:'visitor',query:'invite='+sharedLink.token})).status,403);
+assert.equal((await accept(sharedLink,'other')).data.id,sharedLink.id,'the actual accepting account can recover its chat');
+await clear();
 const race=await create();const raced=await Promise.all([accept(race,'visitor'),accept(race,'other')]);assert.deepEqual(raced.map(r=>r.status).sort(),[200,409]);const winner=(await state(race.id)).prospect_member_id;assert([ids.visitor,ids.other].includes(winner));
 await clear();
 const pairOne=await create(),pairTwo=await create('visitor');const pairRace=await Promise.all([accept(pairOne,'visitor'),accept(pairTwo,'owner')]);assert(pairRace.every(r=>r.status===200));assert.equal(pairRace[0].data.id,pairRace[1].data.id);assert.equal((await sql`SELECT invitation_hash FROM connection_state WHERE status='chat'`).length,1);
@@ -138,5 +178,6 @@ const vibe=await create();await sql`UPDATE invitations SET channel='email',sende
 assert.equal((await accept(vibe,'visitor',{kind:'friend'})).status,404);assert.equal((await preview(vibe)).status,404);
 assert.equal((await call(connection,{as:'visitor',body:{action:'message',token:vibe.token,text:'skip consent',kind:'friend'}})).status,409);
 assert.equal((await state(vibe.id)).status,'invited');
+globalThis.fetch=originalFetch;
 await db.close();
 console.log('Friend creation, PostgreSQL atomic acceptance, duplicate/retry recovery, privacy, authorization, expiry, moderation, and race guards passed');
