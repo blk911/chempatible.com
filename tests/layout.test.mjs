@@ -19,6 +19,49 @@ const privateButton=()=>d.querySelector('.chempatContact.selected .privateChatBu
 
 try{
  seed();
+ // JSDOM has no viewport layout engine. Activate the matching media rules
+ // explicitly so computed styles still catch mobile flex-axis regressions.
+ const cssSource=d.createElement('style');cssSource.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(cssSource);
+ const cssRules=[...cssSource.sheet.cssRules];cssSource.remove();
+ const readyProbe=d.createElement('div');readyProbe.innerHTML=w.renderVibeReady();d.body.append(readyProbe);
+ const cssAtWidth=(rules,width)=>rules.map(rule=>{
+  if(rule.type!==w.CSSRule.MEDIA_RULE)return rule.cssText;
+  const matches=rule.conditionText.split(/\s+and\s+/).every(condition=>{
+   const match=condition.match(/^\((min|max)-width:\s*(\d+)px\)$/);
+   assert.ok(match,`layout test must handle media condition ${condition}`);
+   return match[1]==='min'?width>=Number(match[2]):width<=Number(match[2]);
+  });
+  return matches?cssAtWidth([...rule.cssRules],width):'';
+ }).join('\n');
+ for(const width of [320,375,390,430,700,701,1280]){
+  const viewportCss=d.createElement('style');viewportCss.textContent=cssAtWidth(cssRules,width);d.head.append(viewportCss);
+  const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=actions.querySelector('.friendShareButton');
+  assert.ok(friendButton,'friend invitation remains a dashboard action');
+  assert.equal(friendButton.getAttribute('onclick'),'openFriendShare()');
+  const readyFriend=readyProbe.querySelector('.vibeReady .friendShareButton');
+  assert.ok(readyFriend,'friend invitation remains available after the first five');
+  assert.equal(readyFriend.getAttribute('onclick'),'openFriendShare()');
+  assert.equal(actions.firstElementChild,prompt,'prompt stays above the action buttons');
+  assert.equal(w.getComputedStyle(prompt).flexBasis,'100%');
+  if(width<=700){
+   assert.equal(w.getComputedStyle(actions).flexDirection,'row',`${width}px: button basis must control width, never height`);
+   assert.equal(w.getComputedStyle(actions).flexWrap,'wrap',`${width}px: narrow screens can wrap the buttons`);
+   for(const action of actions.querySelectorAll('.button')){
+    const style=w.getComputedStyle(action);
+    assert.equal(style.flexBasis,'155px',`${width}px: buttons retain their horizontal sizing`);
+    assert.ok(parseFloat(style.minHeight)>=44,`${width}px: buttons retain a usable touch target`);
+    assert.notEqual(style.display,'none');
+   }
+   assert.equal(w.getComputedStyle(readyFriend).display,'block');
+   assert.equal(w.getComputedStyle(readyFriend).width,'100%');
+   assert.ok(parseFloat(w.getComputedStyle(readyFriend).minHeight)>=44);
+  }else{
+   assert.equal(w.getComputedStyle(actions).flexDirection,'column',`${width}px: desktop action layout stays unchanged`);
+   assert.equal(w.getComputedStyle(friendButton).flexBasis,'auto');
+  }
+  viewportCss.remove();
+ }
+ readyProbe.remove();
  // Sent and received selections always identify the other person with one image.
  for(const [connection,name] of [[sent,'Morgan'],[received,'Riley']]){
   choose(connection.id);
