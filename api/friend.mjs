@@ -24,7 +24,7 @@ const tokenFrom=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_me
 const available=row=>!!row.sender_exists&&!!row.sender_verified&&!row.sender_blocked&&(!row.sender_suspended||new Date(row.sender_suspended).getTime()<=Date.now());
 const elapsed=row=>!row.prospect_member_id&&!(new Date(row.expires_at).getTime()>Date.now());
 async function friendRow(sql,id){
- const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
+ const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
  return rows[0]||null;
 }
 function publicInvite(row){
@@ -59,7 +59,7 @@ async function handler(req){
   if(!['create','accept'].includes(body.action))return reply({error:'Unknown action.'},400);
   const session=tokenFrom(req);
   if(!session)return reply({error:'Open your member page to connect with friends.'},401);
-  const members=await sql`SELECT id,name,photo FROM members WHERE session_hash=${hash(session)}`;
+  const members=await sql`SELECT id,name,photo,contact FROM members WHERE session_hash=${hash(session)}`;
   const member=members[0];
   if(!member)return reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
   const denied=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);
@@ -81,6 +81,7 @@ async function handler(req){
   const id=hash(body.token),row=await friendRow(sql,id);
   if(!row)return reply({error:'Friend invitation not found.'},404);
   if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
+  if(row.recipient_email&&String(member.contact||'').trim().toLowerCase()!==String(row.recipient_email).trim().toLowerCase())return reply({error:'Sign in with the email address this friend invitation was sent to.'},403);
   if(row.prospect_member_id)return accepted(sql,row,member.id);
   if(row.status!=='invited')return reply({error:'This friend invitation is closed.'},410);
   if(elapsed(row))return reply({error:'This friend invitation expired. Ask for a new one.'},410);
