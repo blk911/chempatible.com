@@ -1,6 +1,7 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
+import {pairBlocked,reserveInvitation,deliveryBlocked} from './_connections.mjs';
 import {reviewGate,requireReviewRecipient} from './_review.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -52,6 +53,8 @@ async function handler(req){
    const token=new URL(req.url).searchParams.get('invite');
    if(!validToken(token))return reply({error:'Friend invitation not found.'},404);
    const row=await friendRow(sql,hash(token));
+   const viewer=await ops.memberIdFromToken(sql,tokenFrom(req));
+   if(row&&await pairBlocked(sql,row.sender_member_id,row.prospect_member_id||viewer))return reply({kind:'friend',status:'unavailable',expiresAt:row.expires_at});
    return row?reply(publicInvite(row)):reply({error:'Friend invitation not found.'},404);
   }
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
@@ -72,7 +75,9 @@ async function handler(req){
    const token=randomBytes(32).toString('hex'),id=hash(token),link=new URL(`/friend?friend=${token}`,req.url).href;
    // Friend invitations stay separate from Vibe invitations. The recipient fields
    // identify the intended friend; answers and private contact details are never exposed.
-   const rows=await sql`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) VALUES(${id},${''},${member.name},${member.photo},'[]'::jsonb,${recipientName},${recipientEmail},${member.id},'friend',now()+interval '7 days') RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`;
+   const rows=await reserveInvitation(sql,member.id,recipientEmail,tx=>tx`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) SELECT ${id},${''},${member.name},${member.photo},'[]'::jsonb,${recipientName},${recipientEmail},${member.id},'friend',now()+interval '7 days' WHERE NOT EXISTS(SELECT 1 FROM member_blocks b JOIN members recipient ON recipient.id=CASE WHEN b.blocker_id=${member.id} THEN b.blocked_id ELSE b.blocker_id END WHERE (b.blocker_id=${member.id} OR b.blocked_id=${member.id}) AND lower(recipient.contact)=${recipientEmail}) RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`);
+   if(!rows[0])return reply({error:'This invitation is unavailable.'},403);
+   if(await deliveryBlocked(sql,member.id,recipientEmail)){await sql`DELETE FROM invitations WHERE token_hash=${id}`;return reply({error:'This invitation is unavailable.'},403)}
    try{await sendFriendMail(recipientEmail,recipientName,member.name,member.photo,link)}catch(error){await sql`DELETE FROM invitations WHERE token_hash=${id}`;throw error}
    await ops.log(sql,'friend_invited',{member:member.id,connection:id});
    return reply({id,token,url:`/friend?friend=${token}`,expiresAt:rows[0].expires_at,kind:'friend',recipient:{name:recipientName,email:recipientEmail},code:token.slice(0,8).toUpperCase()});
@@ -80,6 +85,7 @@ async function handler(req){
   if(!validToken(body.token))return reply({error:'Friend invitation not found.'},404);
   const id=hash(body.token),row=await friendRow(sql,id);
   if(!row)return reply({error:'Friend invitation not found.'},404);
+  if(await pairBlocked(sql,row.sender_member_id,member.id))return reply({error:'This friend invitation is unavailable.'},403);
   if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
   if(row.prospect_member_id)return accepted(sql,row,member.id);
   if(row.status!=='invited')return reply({error:'This friend invitation is closed.'},410);
@@ -94,6 +100,7 @@ async function handler(req){
    UPDATE connection_state c SET prospect_member_id=recipient.id,prospect_name=recipient.name,prospect_photo=recipient.photo,prospect_answers='[]'::jsonb,prospect_phone=NULL,prospect_email=NULL,claim_hash=(SELECT token_hash FROM existing_friend),status=CASE WHEN EXISTS(SELECT 1 FROM existing_friend) THEN 'declined' ELSE 'chat' END,updated_at=now()
    FROM invitations i,members sender,members recipient WHERE c.invitation_hash=${id} AND i.token_hash=c.invitation_hash AND i.channel='friend' AND i.sender_member_id=sender.id AND sender.id=${row.sender_member_id} AND recipient.id=${member.id} AND recipient.session_hash=${hash(session)} AND c.prospect_member_id IS NULL AND c.status='invited' AND i.expires_at>now()
    AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
+   AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=sender.id AND b.blocked_id=recipient.id) OR (b.blocked_id=sender.id AND b.blocker_id=recipient.id))
    AND NOT EXISTS(SELECT 1 FROM invitations ended_i JOIN connection_state ended_c ON ended_c.invitation_hash=ended_i.token_hash WHERE ended_c.status IN ('ended','declined') AND (ended_i.channel<>'friend' OR ended_c.claim_hash IS NULL) AND ((ended_i.sender_member_id=sender.id AND ended_c.prospect_member_id=recipient.id) OR (ended_i.sender_member_id=recipient.id AND ended_c.prospect_member_id=sender.id)))
    RETURNING c.invitation_hash,c.status,c.claim_hash`
   ],{isolationLevel:'ReadCommitted'});

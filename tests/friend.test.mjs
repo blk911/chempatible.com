@@ -13,10 +13,13 @@ const photo='data:image/jpeg;base64,AA==',secretPhoto='data:image/jpeg;base64,BB
 const tokens={owner:'a'.repeat(64),visitor:'b'.repeat(64),other:'c'.repeat(64),fourth:'d'.repeat(64)};
 const ids={owner:'11111111-1111-4111-8111-111111111111',visitor:'22222222-2222-4222-8222-222222222222',other:'33333333-3333-4333-8333-333333333333',fourth:'44444444-4444-4444-8444-444444444444'};
 await db.exec(`CREATE TABLE members(id uuid PRIMARY KEY,session_hash text UNIQUE,name text,photo text,answers jsonb DEFAULT '[]',contact text,email_verified_at timestamptz,suspended_until timestamptz,blocked_at timestamptz); CREATE TABLE invitations(token_hash text PRIMARY KEY,created_at timestamptz DEFAULT now(),sender_email text NOT NULL,sender_name text,sender_photo text,sender_answers jsonb NOT NULL,recipient_name text,recipient_email text,sender_member_id uuid,channel text,expires_at timestamptz); CREATE TABLE connection_state(invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,prospect_member_id uuid,prospect_name text,prospect_photo text,prospect_answers jsonb DEFAULT '[]',prospect_phone text,prospect_email text,status text DEFAULT 'invited',claim_hash text,messages jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now()); CREATE TABLE email_sessions(token_hash text,email text,expires_at timestamptz);`);
+await db.exec("CREATE TABLE activity(kind text,connection_id text); ALTER TABLE connection_state ADD COLUMN ended_at timestamptz; ALTER TABLE connection_state ADD COLUMN ended_by text");
+await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_freezer.sql',import.meta.url),'utf8'));
 for(const [name,id] of Object.entries(ids))await db.query('INSERT INTO members(id,session_hash,name,photo,contact,email_verified_at) VALUES($1,$2,$3,$4,$5,now())',[id,hash(tokens[name]),name,photo,`${name}@example.com`]);
 const query=(strings,values)=>({text:strings.reduce((out,part,index)=>out+(index?`$${index}`:'')+part,''),values});
 async function run(executor,{text,values}){return (await executor.query(text,values)).rows}
 const sql=(strings,...values)=>run(db,query(strings,values));
+sql.query=async(text,values)=>(await db.query(text,values)).rows;
 let beforeTransaction=null,transactionCount=0;
 sql.transaction=async(fn,options)=>{
  assert.equal(options.isolationLevel,'ReadCommitted');transactionCount++;
@@ -30,12 +33,13 @@ sql.transaction=async(fn,options)=>{
 const logs=[];
 globalThis.__friendSql=sql;
 globalThis.__friendOps={
+ memberIdFromToken:async(_sql,token)=>{const row=await sql`SELECT id FROM members WHERE session_hash=${hash(token||'')}`;return row[0]?.id||null},
  standing:async(_sql,id)=>{const [m]=await sql`SELECT suspended_until,blocked_at FROM members WHERE id=${id}`;return m?.blocked_at||m?.suspended_until&&new Date(m.suspended_until)>new Date()?{error:'Paused'}:null},
  requireVerified:async(_sql,id)=>{const [m]=await sql`SELECT email_verified_at FROM members WHERE id=${id}`;return m?.email_verified_at?null:{error:'Verify',needsVerify:true}},
  log:async(_sql,kind,data)=>logs.push({kind,...data}),
  endConnection:async(_sql,args)=>{logs.push({kind:'end',...args});await sql`UPDATE connection_state SET status='ended' WHERE invitation_hash=${args.id}`;return {status:200,body:{ok:true,status:'ended'}}}
 };
-async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace(/from '\.\/_review\.mjs'/g,`from '${new URL('../api/_review.mjs',import.meta.url).href}'`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
+async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace(/from '\.\/_review\.mjs'/g,`from '${new URL('../api/_review.mjs',import.meta.url).href}'`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
 const mail=[];let providerStatus=202;
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async(url,options)=>{
@@ -55,7 +59,7 @@ const clear=()=>db.exec('DELETE FROM invitations');
 const privacy=row=>{
  for(const key of ['answers','prospectAnswers','sender_answers','prospect_answers','own_answers'])if(key in row)assert.deepEqual(row[key],[],key);
  for(const key of ['recipient_email','prospect_email','prospectEmail','prospect_phone','prospectPhone'])if(key in row)assert.equal(row[key],null,key);
- assert(!JSON.stringify(row).includes('@example.com'));assert(!JSON.stringify(row).includes('secret-recipient'));
+ assert(!JSON.stringify({...row,historyEmail:null}).includes('@example.com'));assert(!JSON.stringify({...row,historyEmail:null}).includes('secret-recipient'));if(row.side==='prospect')assert.equal(row.historyEmail,null);
 };
 
 assert.equal((await call(friend,{body:{action:'create'}})).status,401);
@@ -143,7 +147,7 @@ assert.equal((await call(connection,{as:'owner',body:{action:'message',id:invite
 const afterEnd=await create();assert.equal((await accept(afterEnd)).status,409,'fresh links cannot undo an ended friend pair');assert.equal((await state(afterEnd.id)).prospect_member_id,null);
 await clear();
 const expiring=await create();await sql`UPDATE invitations SET expires_at=now()-interval '1 second' WHERE token_hash=${expiring.id}`;
-assert.equal((await preview(expiring)).data.status,'expired');assert.equal('name' in (await preview(expiring)).data,false);assert.equal((await accept(expiring)).status,410);assert.equal((await inbox('owner')).length,0);
+assert.equal((await preview(expiring)).data.status,'expired');assert.equal('name' in (await preview(expiring)).data,false);assert.equal((await accept(expiring)).status,410);assert.equal((await inbox('owner')).length,1);assert.equal((await inbox('owner'))[0].freezerAction,'expired');
 const closed=await create();await sql`UPDATE connection_state SET status='ended' WHERE invitation_hash=${closed.id}`;assert.equal((await accept(closed)).status,410);
 const revoked=await create();assert.equal((await call(connection,{as:'other',body:{action:'unmatch',id:revoked.id}})).status,404);assert.equal((await call(connection,{as:'owner',body:{action:'unmatch',id:revoked.id}})).status,200,'inviter can revoke an unaccepted friend link');assert.equal((await accept(revoked)).status,410);
 const declined=await create();await sql`UPDATE connection_state SET status='declined' WHERE invitation_hash=${declined.id}`;assert.equal((await accept(declined)).status,410);

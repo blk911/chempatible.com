@@ -1,6 +1,7 @@
 import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
+import {reserveInvitation,deliveryBlocked} from './_connections.mjs';
 import {reviewGate,reviewRecipientAllowed,requireReviewRecipient} from './_review.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -63,8 +64,9 @@ async function handler(req){
    if(!reviewRecipientAllowed(theirEmail))return json({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
    const token=randomBytes(32).toString('hex');const link=new URL(`/?invite=${token}`,req.url).href;
-   await sql`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) VALUES(${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)},${theirName},${theirEmail},${member.id})`;
-   try{await sql`INSERT INTO connection_state(invitation_hash) VALUES(${hash(token)})`}catch(e){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;throw e}
+   const reserved=await reserveInvitation(sql,member.id,theirEmail,tx=>tx`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) SELECT ${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)}::jsonb,${theirName},${theirEmail},${member.id} WHERE NOT EXISTS(SELECT 1 FROM member_blocks b JOIN members recipient ON recipient.id=CASE WHEN b.blocker_id=${member.id} THEN b.blocked_id ELSE b.blocker_id END WHERE (b.blocker_id=${member.id} OR b.blocked_id=${member.id}) AND lower(recipient.contact)=${theirEmail}) RETURNING token_hash) INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash`);
+   if(!reserved[0])return json({error:'This invitation is unavailable.'},403);
+   if(await deliveryBlocked(sql,member.id,theirEmail)){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;return json({error:'This invitation is unavailable.'},403)}
    const senderFirst=first(name),recipientFirst=first(theirName),safeName=escape(senderFirst),safeRecipient=escape(recipientFirst);
    const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#c45b46;font-weight:bold">Duh <em>Wild</em> · FIVE TO VIBE</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeName}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#c45b46;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">I’ll tell you five secrets about me.<br>Want to see if we vibe?</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Pick your answers to five quick ones. Then we’ll show each other ours.</p><a href="${link}" style="display:inline-block;background:#d76b51;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">LET’S GO →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeName}</p></div>`;
    const text=`Hey ${recipientFirst},\n\nI’ll tell you five secrets about me. Want to see if we vibe?\n\nPick your answers to five quick ones. Then we'll show each other ours.\n\nLet's go: ${link}\n\n— ${senderFirst}`;
