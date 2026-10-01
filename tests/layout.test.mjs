@@ -62,6 +62,16 @@ try{
   viewportCss.remove();
  }
  readyProbe.remove();
+ // Sent details must remain separate rows, including long recipient values.
+ w.eval(`s.friendShare={expiresAt:'2099-01-01',recipient:{name:'A long synthetic friend name',email:'a.long.synthetic.recipient@example.com'},code:'ABC12345',url:'https://layout.example/friend?friend=synthetic'};s.modal='friendShare';renderModal()`);
+ const sentCss=d.createElement('style');sentCss.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(sentCss);
+ const sentCard=d.querySelector('.friendSentCard');
+ assert.ok(sentCard);
+ assert.equal(w.getComputedStyle(sentCard).display,'grid');
+ assert.equal(w.getComputedStyle(sentCard).gap,'8px');
+ assert.equal(w.getComputedStyle(sentCard).overflowWrap,'anywhere');
+ assert.equal(sentCard.children.length,4);
+ sentCss.remove();w.closeInvite();
  // Sent and received selections always identify the other person with one image.
  for(const [connection,name] of [[sent,'Morgan'],[received,'Riley']]){
   choose(connection.id);
