@@ -3,4 +3,7 @@
 .brand,.member-logo{font-style:normal}
 .brand small{font-style:normal}
 
-.brandAsset{display:inline-block;position:relative;width:160px;height:54px;overflow:hidden;vertical-align:middle}.brandAsset img{position:absolute;width:187px;max-width:none;left:-14px;top:-32px}.brand .brandAsset{background:#fff;border-radius:5px}
+.brandWordmark,.brand .brandWordmark,.member-logo .brandWordmark{display:inline-block;color:#173b4c;font-size:1.85rem;font-weight:900;font-style:normal;line-height:1.15;letter-spacing:-.055em;white-space:nowrap;vertical-align:middle}
+.brandWordmark em{color:#71439c;font-family:Georgia,"Times New Roman",serif;font-weight:700;font-style:italic;letter-spacing:-.06em}
+.brand .brandWordmark{padding:8px 10px;background:#fff;border-radius:5px}
+@media(max-width:700px){.brand .brandWordmark{font-size:1.5rem;padding:6px 8px}}

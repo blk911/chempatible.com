@@ -168,7 +168,7 @@ for(const path of ['api/_deployment.mjs','api/config.mjs','api/friend.mjs','frie
 console.log(`Deployment mode: ${combinations} combinations; fail-closed APIs, exact dev mail, live mail, robots, cold/delayed notice states, neutral failures, config privacy, and admin auth passed`);
 
 const friendPage=fs.readFileSync(new URL('../friend.html',import.meta.url),'utf8');
-assert.match(friendPage,/Come try Chem-patible with me\./);
+assert.match(friendPage,/Come try Duh Wild with me\./);
 assert.match(friendPage,/<meta name="robots" content="noindex, nofollow, noarchive">/);
 assert.match(friendPage,/<aside[^>]+id="reviewBanner"[^>]+hidden>/);
 assert.doesNotMatch(friendPage,/five secrets|Five to Vibe|Chemistry and compatibility|og-image\.png/i);

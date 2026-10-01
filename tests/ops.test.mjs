@@ -90,7 +90,7 @@ assert.equal(await ops.standing(sql,null),null);
 const req=cookie=>new Request('https://chempatible.com/admin',{headers:{cookie}});
 const good=ops.signAdmin(ops.ADMIN_EMAIL,Date.now()+60000);
 assert.equal(ops.readAdmin(req(`chempat_admin=${good}`)),'admin@example.com');
-assert.equal(ops.readAdmin(req(`chempat_admin=${good.slice(0,-1)}0`)),null);
+assert.equal(ops.readAdmin(req(`chempat_admin=${good.slice(0,-1)}${good.endsWith('0')?'1':'0'}`)),null);
 assert.equal(ops.readAdmin(req(`chempat_admin=${ops.signAdmin(ops.ADMIN_EMAIL,Date.now()-1000)}`)),null);
 assert.equal(ops.readAdmin(req(`chempat_admin=${ops.signAdmin('someone@example.com',Date.now()+60000)}`)),null);
 assert.equal(ops.readAdmin(req('')),null);
@@ -100,7 +100,7 @@ const middleware=(await import('../middleware.js')).default;
 assert.equal((await middleware(req(`chempat_admin=${good}`))).headers.get('x-middleware-next'),'1');
 const bounced=await middleware(req(''));assert.equal(bounced.status,307);assert.equal(new URL(bounced.headers.get('location')).pathname,'/admin-login');
 assert.equal((await middleware(new Request('https://chempatible.com/admin-ops.js'))).status,401);
-assert.equal((await middleware(req(`chempat_admin=${good.slice(0,-1)}0`))).status,307);
+assert.equal((await middleware(req(`chempat_admin=${good.slice(0,-1)}${good.endsWith('0')?'1':'0'}`))).status,307);
 
 // Admin API: only the admin address gets a code, codes sign in once, and data needs the cookie.
 const src=fs.readFileSync(new URL('../api/admin.mjs',import.meta.url),'utf8').replace("'./_review.mjs'",`'${new URL('../api/_review.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__adminSql;').replace("'./_ops.mjs'",`'${new URL('../api/_ops.mjs',import.meta.url).href}'`);

@@ -80,11 +80,12 @@
 
 .quickChoices,.vibeReady{max-width:480px;margin:18px auto 0;padding:22px}.quickIdentity{display:flex;align-items:center;gap:10px;font-size:.72rem;letter-spacing:.12em;font-weight:800}.quickChoices .question{border:0;padding:0;box-shadow:none;background:none;outline:none}.quickChoices .question h2{font-size:1.22rem;line-height:1.3;margin:10px 0 18px}.quickChoices .option{font-size:.95rem;min-height:50px;margin:10px 0}.quickDots{justify-content:center;gap:8px;margin:16px 0}.quickDots span{width:7px;height:7px;flex:none;border-radius:50%}.quickChoices .quickHint{font-size:.72rem;margin:14px 0 0}.quickChoices .error:empty{display:none}.vibeReady{text-align:center}.vibeReady .face{width:130px;height:130px;border-radius:18px}.vibeReady h1{font-size:1.8rem;line-height:1.15}.vibeReady .button{display:block;width:100%;margin:20px 0 8px}.vibeReady .link{display:block;margin:4px auto;font-size:.78rem}@media(max-width:700px){.quickChoices,.vibeReady{padding:18px;margin-top:16px}.quickChoices .question h2{font-size:1.12rem}.quickChoices .option{font-size:.88rem;min-height:50px}}
 
-/* Requested display spelling and italic wordmark. */
+/* Text wordmark keeps the review brand crisp at every screen size. */
 .logo{font-style:normal}
-
-.brandAsset{display:inline-block;position:relative;width:190px;height:62px;overflow:hidden;vertical-align:middle}.brandAsset img{position:absolute;width:222px!important;height:auto!important;max-width:none!important;left:-17px;top:-38px;mix-blend-mode:multiply}.logo:has(.brandAsset){padding:0;line-height:1}
-@media(max-width:700px){.brandAsset{width:142px;height:46px}.brandAsset img{width:166px!important;left:-13px;top:-28px}}
+.brandWordmark,.logo .brandWordmark{display:inline-block;color:#173b4c;font-size:2.25rem;font-weight:900;font-style:normal;line-height:1.15;letter-spacing:-.055em;white-space:nowrap;vertical-align:middle}
+.brandWordmark em{color:#71439c;font-family:Georgia,"Times New Roman",serif;font-weight:700;font-style:italic;letter-spacing:-.06em}
+.logo:has(.brandWordmark){padding:3px 0;line-height:1}
+@media(max-width:700px){.brandWordmark,.logo .brandWordmark{font-size:1.85rem}}
 
 .chatDraft{margin:12px 0;border:1px solid #d5dfdb;padding:10px;border-radius:12px}.chatDraft img{display:block;max-width:100%;max-height:180px;border-radius:8px}.chatDraft figcaption{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;margin-top:7px}.chatDraft button{background:transparent;color:#71439c;border:1px solid #bdcbc5;border-radius:7px;padding:8px}.inlineComposer{min-width:0}.inlineComposer input{min-width:0}.inlineComposer .chatUpload{flex:none}.chatPhoto{max-width:100%;height:auto}
 

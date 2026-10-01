@@ -90,7 +90,7 @@ async function handler(req){
    const code=String(randomInt(100000,1000000));
    await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
    // The code leads the subject so it shows in the phone's notification.
-   await ops.sendMail(email,`${code} is your Chem-patible code`,`Your Chem-patible code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
+   await ops.sendMail(email,`${code} is your Duh Wild code`,`Your Duh Wild code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
    return reply({ok:true});
   }
   if(body.action==='code_verify'||body.action==='signin_verify'){
