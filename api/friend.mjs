@@ -25,13 +25,22 @@ const tokenFrom=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_me
 const available=row=>!!row.sender_exists&&!!row.sender_verified&&!row.sender_blocked&&(!row.sender_suspended||new Date(row.sender_suspended).getTime()<=Date.now());
 const elapsed=row=>!row.prospect_member_id&&!(new Date(row.expires_at).getTime()>Date.now());
 async function friendRow(sql,id){
- const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,i.intended_member_id,i.intended_email,i.reinvite_from,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
+ const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,i.intended_member_id,i.intended_email,i.reinvite_from,c.status,c.prospect_member_id,c.claim_hash,c.ended_at,c.ended_by,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
  return rows[0]||null;
 }
 function publicInvite(row){
  const status=row.status==='chat'||row.status==='declined'&&validToken(row.claim_hash)?'used':['ended','declined'].includes(row.status)?'closed':elapsed(row)?'expired':!available(row)?'unavailable':'invited';
  return {kind:'friend',status,expiresAt:row.expires_at,...(status==='invited'?{name:row.sender_name,photo:row.sender_photo}:{})};
 }
+// Original links remain shareable for acceptance. Closing one requires the
+// verified delivery recipient, or the stronger binding on a fresh reinvite.
+async function declineAllowed(sql,row,member){
+ if(!member||member===row.sender_member_id)return false;
+ const rows=await sql`SELECT id FROM members WHERE id=${member} AND email_verified_at IS NOT NULL AND blocked_at IS NULL AND (suspended_until IS NULL OR suspended_until<=now()) AND (${row.intended_member_id}::uuid IS NOT NULL AND id=${row.intended_member_id} OR ${row.intended_member_id}::uuid IS NULL AND lower(contact)=lower(${row.intended_email??row.recipient_email}))`;
+ return rows.length>0;
+}
+const passedBy=(row,member)=>row.status==='declined'&&row.prospect_member_id===member&&row.claim_hash===null&&row.ended_by==='prospect'&&!!row.ended_at;
+const passed=()=>reply({ok:true,kind:'friend',status:'declined'});
 async function accepted(sql,row,member){
  if(row.prospect_member_id!==member)return reply({error:'This friend invitation is already in use.'},409);
  if(row.status==='chat')return reply({ok:true,id:row.token_hash,kind:'friend',status:'chat'});
@@ -54,14 +63,17 @@ async function handler(req){
    if(!validToken(token))return reply({error:'Friend invitation not found.'},404);
    const row=await friendRow(sql,hash(token));
    const viewer=await ops.memberIdFromToken(sql,tokenFrom(req));
+   if(row&&viewer&&viewer===row.sender_member_id)return reply({kind:'friend',status:'own',invitationStatus:publicInvite(row).status,expiresAt:row.expires_at});
    if(row&&!viewer&&(row.intended_member_id||row.intended_email))return reply({kind:'friend',status:'signInRequired',requiresSignIn:true});
    if(row&&!await targetAllowed(sql,row,viewer))return reply({kind:'friend',status:'signInRequired',requiresSignIn:true,error:'Open the member page this invitation was sent to.'},403);
    if(row&&await pairBlocked(sql,row.sender_member_id,row.prospect_member_id||row.intended_member_id||viewer))return reply({kind:'friend',status:'unavailable',expiresAt:row.expires_at});
-   return row?reply(publicInvite(row)):reply({error:'Friend invitation not found.'},404);
+   if(!row)return reply({error:'Friend invitation not found.'},404);
+   const preview=publicInvite(row);
+   return reply({...preview,...(viewer&&preview.status==='invited'?{canDecline:await declineAllowed(sql,row,viewer)}:{})});
   }
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
   if(!body||typeof body!=='object'||Array.isArray(body))return reply({error:'Invalid request.'},400);
-  if(!['create','accept'].includes(body.action))return reply({error:'Unknown action.'},400);
+  if(!['create','accept','decline'].includes(body.action))return reply({error:'Unknown action.'},400);
   const session=tokenFrom(req);
   if(!session)return reply({error:'Open your member page to connect with friends.'},401);
   const members=await sql`SELECT id,name,photo,contact FROM members WHERE session_hash=${hash(session)}`;
@@ -69,7 +81,7 @@ async function handler(req){
   if(!member)return reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
   const denied=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);
   if(denied)return reply(denied,403);
-  if(!validName(member.name)||!validPhoto(member.photo))return reply({error:'Add your name and picture before connecting with friends.'},400);
+  if(body.action!=='decline'&&(!validName(member.name)||!validPhoto(member.photo)))return reply({error:'Add your name and picture before connecting with friends.'},400);
   if(body.action==='create'){
    if(!process.env.SENDGRID_API_KEY)return reply({error:'Friend email invitations are being set up. Please try again shortly.'},503);
    const recipientName=String(body.recipient?.name||'').trim(),recipientEmail=String(body.recipient?.email||'').trim().toLowerCase();
@@ -87,9 +99,34 @@ async function handler(req){
   if(!validToken(body.token))return reply({error:'Friend invitation not found.'},404);
   const id=hash(body.token),row=await friendRow(sql,id);
   if(!row)return reply({error:'Friend invitation not found.'},404);
+  if(row.sender_member_id===member.id)return reply({error:'This is your own invitation. Send it to your friend to accept or pass.'},409);
   if(!await targetAllowed(sql,row,member.id))return reply({error:'Open the member page this invitation was sent to.'},403);
   if(await pairBlocked(sql,row.sender_member_id,member.id))return reply({error:'This friend invitation is unavailable.'},403);
-  if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
+  if(body.action==='decline'){
+   if(!await declineAllowed(sql,row,member.id))return reply({error:'Sign in with the verified account this invitation was sent to before passing.'},403);
+   if(row.prospect_member_id&&!passedBy(row,member.id))return reply({error:'This friend invitation was already accepted or is no longer pending.'},409);
+   if(row.status!=='invited'&&!passedBy(row,member.id))return reply({error:'This friend invitation is closed.'},410);
+   if(!passedBy(row,member.id)&&elapsed(row))return reply({error:'This friend invitation expired. Ask for a new one.'},410);
+   if(!available(row))return reply({error:'This friend invitation is unavailable.'},403);
+   // The same ordered participant locks serialize Pass with acceptance, freeze,
+   // cancellation and blocks. Recheck authority and eligibility after waiting.
+   const results=await sql.transaction(tx=>[
+    tx`SELECT id FROM members WHERE id IN (${member.id},${row.sender_member_id}) ORDER BY id FOR UPDATE`,
+    tx`WITH eligible AS (
+     SELECT i.token_hash,i.expires_at,recipient.id FROM invitations i JOIN members sender ON sender.id=i.sender_member_id JOIN members recipient ON recipient.id=${member.id}
+     WHERE i.token_hash=${id} AND i.channel='friend' AND sender.id=${row.sender_member_id} AND sender.id<>recipient.id AND recipient.session_hash=${hash(session)}
+     AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
+     AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=sender.id AND b.blocked_id=recipient.id) OR (b.blocked_id=sender.id AND b.blocker_id=recipient.id))
+     AND (i.intended_member_id=recipient.id OR i.intended_member_id IS NULL AND lower(recipient.contact)=lower(coalesce(i.intended_email,i.recipient_email)))
+    ), declined AS (
+     UPDATE connection_state c SET prospect_member_id=eligible.id,prospect_name=NULL,prospect_photo=NULL,prospect_answers='[]'::jsonb,prospect_phone=NULL,prospect_email=NULL,claim_hash=NULL,status='declined',ended_at=now(),ended_by='prospect',updated_at=now()
+     FROM eligible WHERE c.invitation_hash=eligible.token_hash AND c.prospect_member_id IS NULL AND c.status='invited' AND eligible.expires_at>now() RETURNING c.invitation_hash
+    ) SELECT true AS changed FROM declined UNION ALL SELECT false AS changed FROM connection_state c JOIN eligible ON eligible.token_hash=c.invitation_hash WHERE c.status='declined' AND c.prospect_member_id=eligible.id AND c.claim_hash IS NULL AND c.ended_by='prospect' AND c.ended_at IS NOT NULL`
+   ],{isolationLevel:'ReadCommitted'});
+   if(!results[1][0])return reply({error:'This friend invitation is no longer available. Refresh and try again.'},409);
+   if(results[1][0].changed)await ops.log(sql,'friend_declined',{member:member.id,connection:id});
+   return passed();
+  }
   if(row.prospect_member_id)return accepted(sql,row,member.id);
   if(row.status!=='invited')return reply({error:'This friend invitation is closed.'},410);
   if(elapsed(row))return reply({error:'This friend invitation expired. Ask for a new one.'},410);

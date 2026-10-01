@@ -166,6 +166,10 @@
 .friendRail .privateChatButton.on{--pill-bg:#327b74;--pill-border:#327b74}
 .friendInvitation{max-width:480px;margin:22px auto;text-align:center}
 .friendInvitation>.button{display:block;width:100%;margin:18px 0 8px}
+.friendChoices{justify-content:center;gap:12px;margin-top:18px}
+.friendChoices>.button{flex:1;min-height:48px}
+.friendExit h1{font-size:1.9rem;line-height:1.2}
+.friendExit>.link{display:block;margin:14px auto}
 .friendIntro{padding:0 0 15px;margin-bottom:15px;border-bottom:1px solid #e1e9e5}
 .friendIntro .face{width:68px;height:68px;margin-top:14px;border-radius:14px}
 .friendIntro h2{font-size:1.5rem;margin:12px 0 8px}

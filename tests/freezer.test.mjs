@@ -298,6 +298,32 @@ assert.equal((await reinvite(pair.id,'friend','owner','friend-fresh')).data.id,f
 const duplicate=await invite({channel:'friend',recipientEmail:'visitor@example.com'});const recovered=await call(friend,{as:'visitor',body:{action:'accept',token:duplicate.token}});assert.equal(recovered.status,200);assert.equal(recovered.data.id,fresh.token_hash);assert.equal(recovered.data.alreadyConnected,true,'an older ended invitation does not defeat active-friend duplicate recovery');
 await sql`UPDATE members SET name='owner',photo=${photo},answers='[0,1,2,0,1]'::jsonb WHERE id=${ids.owner}`;
 
+// A Pass identifies who closed the invitation, without sharing their profile.
+// Reinvite preparation and every unaccepted descendant retain the sender's
+// original label, never a live profile name or an undisclosed account email.
+process.env.CHEMPAT_REVIEW_EMAILS+=',private-visitor@example.com';
+for(const terminal of ['cancel','expired','declined']){
+ await clear();pair=await invite({channel:'friend',recipientName:'My Known Friend',recipientEmail:'visitor@example.com'});
+ assert.equal((await call(friend,{as:'visitor',body:{action:'decline',token:pair.token}})).status,200);
+ assert.equal((await state(pair.id)).prospect_name,null);assert.equal((await state(pair.id)).prospect_photo,null);
+ await sql`UPDATE members SET name='Private Changed Profile',contact='private-visitor@example.com',email_verified_at=now() WHERE id=${ids.visitor}`;
+ const privateDestination=row=>{assert(!JSON.stringify(row).includes('Private Changed Profile'),'unshared profile name stays private');assert(!JSON.stringify(row).includes('private-visitor@example.com'),'unshared account email stays private')};
+ prepared=await prepare(pair.id,'friend');assert.equal(prepared.status,200,JSON.stringify(prepared.data));assert.deepEqual(prepared.data.recipient,{name:'My Known Friend',email:null});assert.equal(prepared.data.destination,'member');privateDestination(prepared.data);privateDestination(await visible(pair.id));
+ const first=await reinvite(pair.id,'friend');assert.equal(first.status,200,JSON.stringify(first.data));privateDestination(first.data);
+ const firstId=first.data.id,firstToken=tokenFromMail(mail.at(-1)),firstRow=await invitation(firstId);
+ assert.equal(firstRow.intended_member_id,ids.visitor);assert.equal(firstRow.recipient_name,'My Known Friend');assert.equal(firstRow.recipient_email,'');
+ assert.equal(mail.at(-1).personalizations[0].to[0].email,'private-visitor@example.com','explicit reinvite uses the same bound account’s current verified destination');
+ assert(!mail.at(-1).content.some(item=>item.value.includes('Private Changed Profile')));privateDestination(await visible(firstId));
+ assert.equal((await prepare(firstId,'friend')).status,409,'pending child cannot be resent');
+ if(terminal==='cancel')assert.equal((await action('cancel',firstId)).status,200);
+ else if(terminal==='expired')await sql`UPDATE invitations SET expires_at=now()-interval '1 day' WHERE token_hash=${firstId}`;
+ else assert.equal((await call(friend,{as:'visitor',body:{action:'decline',token:firstToken}})).status,200);
+ const childPreparation=await prepare(firstId,'friend');assert.equal(childPreparation.status,200,JSON.stringify(childPreparation.data));assert.deepEqual(childPreparation.data.recipient,{name:'My Known Friend',email:null});privateDestination(childPreparation.data);privateDestination(await visible(firstId));
+ const second=await reinvite(firstId,'friend');assert.equal(second.status,200,JSON.stringify(second.data));const secondRow=await invitation(second.data.id);
+ assert.equal(secondRow.intended_member_id,ids.visitor);assert.equal(secondRow.recipient_name,'My Known Friend');assert.equal(secondRow.recipient_email,'');privateDestination(second.data);privateDestination(await visible(second.data.id));
+ await sql`UPDATE members SET name='visitor',contact='visitor@example.com' WHERE id=${ids.visitor}`;
+}
+
 // Vibe re-invites use only the current first five answers. A missing current
 // profile is reported before send; old invitation answers cannot satisfy it.
 await clear();pair=await invite({channel:'qr',prospect:'visitor',status:'chat',recipientEmail:''});assert.equal((await action('freeze',pair.id)).status,200);

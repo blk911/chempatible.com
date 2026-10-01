@@ -53,7 +53,8 @@ const friend=await load('friend'),connection=await load('connection');
 async function call(api,{body,query='',as,cookie,method}={}){const response=await api.fetch(new Request(`https://untrusted.example/api/test${query?'?'+query:''}`,{method:method||(body===undefined?'GET':'POST'),headers:{...(as?{cookie:`chempat_member=${tokens[as]||as}`}:{cookie:cookie||''})},...(body===undefined?{}:{body:typeof body==='string'?body:JSON.stringify(body)})}));return {status:response.status,data:await response.json(),headers:response.headers}}
 const create=async(as='owner',extra={})=>{const response=await call(friend,{as,body:{action:'create',recipient:{name:as==='visitor'?'Owner Friend':'Visitor Friend',email:as==='visitor'?'owner@example.com':'visitor@example.com'},...extra}});assert.equal(response.status,200);assert.equal(response.data.kind,'friend');assert.match(response.data.token,/^[a-f0-9]{64}$/);assert.equal(response.data.id,hash(response.data.token));assert.equal(response.data.url,`/friend?friend=${response.data.token}`);assert.equal(response.data.code,response.data.token.slice(0,8).toUpperCase());assert.ok(response.data.recipient.name);assert.match(response.data.recipient.email,/@example\.com$/);assert.equal(response.headers.get('cache-control'),'no-store');return response.data};
 const accept=(invite,as='visitor',extra={})=>call(friend,{as,body:{action:'accept',token:invite.token,...extra}});
-const preview=invite=>call(friend,{query:'invite='+invite.token});
+const decline=(invite,as='visitor',extra={})=>call(friend,{as,body:{action:'decline',token:invite.token,...extra}});
+const preview=(invite,as)=>call(friend,{as,query:'invite='+invite.token});
 const inbox=async as=>{const result=await call(connection,{as,query:'inbox=1'});assert.equal(result.status,200);return result.data.connections};
 const state=async id=>(await sql`SELECT * FROM connection_state WHERE invitation_hash=${id}`)[0];
 const clear=()=>db.exec('DELETE FROM invitations');
@@ -67,7 +68,7 @@ assert.equal((await call(friend,{body:{action:'create'}})).status,401);
 assert.equal((await call(friend,{as:'f'.repeat(64),body:{action:'create'}})).status,401);
 for(const body of [null,[],0,'{broken'])assert.equal((await call(friend,{as:'owner',body})).status,400);
 assert.equal((await call(friend,{method:'DELETE'})).status,405);
-for(const action of ['create','accept']){
+for(const action of ['create','accept','decline']){
  await sql`UPDATE members SET email_verified_at=NULL WHERE id=${ids.owner}`;
  assert.equal((await call(friend,{as:'owner',body:{action,token:'e'.repeat(64)}})).status,403);
  await sql`UPDATE members SET email_verified_at=now(),suspended_until=now()+interval '1 day' WHERE id=${ids.owner}`;
@@ -108,6 +109,11 @@ assert(Math.abs(new Date(stored.expires_at)-Date.now()-7*86400000)<10000);
 assert.equal((await state(invite.id)).status,'invited');assert.equal((await state(invite.id)).prospect_member_id,null);
 assert.deepEqual(Object.keys((await preview(invite)).data).sort(),['expiresAt','kind','name','photo','status']);
 assert.equal((await preview(invite)).data.status,'invited');assert.equal((await state(invite.id)).prospect_member_id,null,'GET never consumes a friend link');
+const ownPreview=(await preview(invite,'owner')).data;
+assert.deepEqual(ownPreview,{kind:'friend',status:'own',invitationStatus:'invited',expiresAt:(await preview(invite)).data.expiresAt});
+assert.equal((await preview(invite,'visitor')).data.canDecline,true);
+assert.equal((await preview(invite,'other')).data.canDecline,false);
+assert(!JSON.stringify(ownPreview).includes(ids.owner));assert(!JSON.stringify(ownPreview).includes('@example.com'));
 assert.equal((await call(connection,{query:'invite='+invite.token})).status,403,'connection token path never reveals unclaimed friend state');
 assert.equal((await call(connection,{as:'visitor',query:'invite='+invite.token})).status,403);
 assert.equal((await accept(invite,'owner')).status,409,'no self-invitation');
@@ -163,6 +169,115 @@ assert.equal((await accept(sharedLink,'visitor')).status,409,'the named email re
 assert.equal((await call(connection,{as:'visitor',query:'invite='+sharedLink.token})).status,403);
 assert.equal((await accept(sharedLink,'other')).data.id,sharedLink.id,'the actual accepting account can recover its chat');
 await clear();
+// Pass requires the verified intended recipient. An anonymous bearer or a
+// different verified account cannot cancel somebody else's shareable link.
+const pass=await create();
+assert.equal((await decline(pass,null)).status,401);
+assert.equal((await decline(pass,'f'.repeat(64))).status,401);
+assert.equal((await decline(pass,'owner')).status,409);
+assert.equal((await decline(pass,'other',{recipient_email:'other@example.com',intended_member_id:ids.other})).status,403);
+assert.equal((await state(pass.id)).status,'invited');
+await sql`UPDATE members SET email_verified_at=NULL WHERE id=${ids.visitor}`;
+assert.equal((await preview(pass,'visitor')).data.canDecline,false);
+assert.equal((await decline(pass)).data.needsVerify,true);
+await sql`UPDATE members SET email_verified_at=now(),photo=NULL,name=NULL,answers='[]' WHERE id=${ids.visitor}`;
+const beforePassMail=mail.length,passLogs=logs.length;
+assert.deepEqual((await decline(pass,'visitor',{name:'Forged',photo:secretPhoto,answers:[1,2],email:'expose@example.com'})).data,{ok:true,kind:'friend',status:'declined'});
+const passedState=await state(pass.id);
+assert.equal(passedState.status,'declined');assert.equal(passedState.prospect_member_id,ids.visitor);
+assert.equal(passedState.prospect_name,null);assert.equal(passedState.prospect_photo,null);assert.deepEqual(passedState.prospect_answers,[]);
+assert.equal(passedState.prospect_phone,null);assert.equal(passedState.prospect_email,null);assert.equal(passedState.claim_hash,null);
+assert.equal(passedState.ended_by,'prospect');assert.ok(passedState.ended_at);assert.deepEqual(passedState.messages,[]);
+assert.equal(mail.length,beforePassMail,'Pass sends no email');assert.equal(logs.length,passLogs+1);assert.equal(logs.at(-1).kind,'friend_declined');
+assert.equal((await preview(pass)).data.status,'closed');assert.equal((await preview(pass,'owner')).data.invitationStatus,'closed');
+assert.equal((await decline(pass)).status,200);assert.equal(logs.length,passLogs+1,'retry does not log another decline');assert.deepEqual(await state(pass.id),passedState,'retry preserves all state and dates');
+await sql`UPDATE members SET photo=${photo},name='visitor' WHERE id=${ids.visitor}`;
+assert.equal((await accept(pass)).status,410,'a Pass cannot be reopened by Accept');assert.equal((await decline(pass,'other')).status,403);
+for(const as of ['owner','visitor']){
+ const history=(await inbox(as))[0];assert.equal(history.status,'declined');assert.equal(history.location,'freezer');assert.equal(history.freezerAction,'declined');assert.equal(history.endedBy,'prospect');privacy(history);
+ for(const key of ['photo','sender_photo','prospect_photo','prospectPhoto','claimed','messages'])assert.equal(key in history,false,`Pass history excludes ${key}`);
+ assert.equal((await call(connection,{as,body:{action:'message',id:pass.id,text:'must not open chat'}})).status,409);
+}
+assert.deepEqual(await inbox('other'),[]);assert.equal((await call(connection,{as:'visitor',query:'invite='+pass.token})).status,410);
+await sql`UPDATE invitations SET expires_at=now()-interval '1 day' WHERE token_hash=${pass.id}`;
+assert.equal((await decline(pass)).status,200,'a recorded Pass can be retried after invitation expiry');assert.deepEqual(await state(pass.id),passedState);
+await sql`INSERT INTO member_blocks(blocker_id,blocked_id) VALUES(${ids.owner},${ids.visitor})`;
+assert.equal((await decline(pass)).status,403,'block is checked before idempotent recovery');assert.deepEqual(await state(pass.id),passedState);
+await sql`DELETE FROM member_blocks`;
+await clear();
+// Reinvites retain their stronger account/email binding, including for Pass.
+for(const binding of ['member','email']){
+ const bound=await create();
+ await sql`UPDATE invitations SET intended_member_id=${binding==='member'?ids.visitor:null},intended_email=${binding==='email'?'visitor@example.com':'other@example.com'} WHERE token_hash=${bound.id}`;
+ assert.equal((await preview(bound)).data.status,'signInRequired');assert.equal((await preview(bound,'other')).status,403);
+ assert.equal((await preview(bound,'owner')).data.status,'own','sender state precedes recipient-only preview checks');
+ assert.equal((await decline(bound,'owner')).status,409);assert.equal((await decline(bound,'other')).status,403);assert.equal((await accept(bound,'other')).status,403);
+ assert.equal((await preview(bound,'visitor')).data.canDecline,true);assert.equal((await decline(bound)).status,200);
+ assert.equal((await decline(bound)).status,200);
+ await clear();
+}
+// The explicit member binding takes precedence over a stale delivery address.
+const rebound=await create();await sql`UPDATE invitations SET intended_member_id=${ids.other} WHERE token_hash=${rebound.id}`;
+assert.equal((await decline(rebound,'visitor')).status,403);assert.equal((await decline(rebound,'other')).status,200);
+await clear();
+for(const closedStatus of ['ended','declined']){
+ const closedPass=await create();await sql`UPDATE connection_state SET status=${closedStatus} WHERE invitation_hash=${closedPass.id}`;
+ const before=await state(closedPass.id);assert.equal((await decline(closedPass)).status,410);assert.deepEqual(await state(closedPass.id),before);
+}
+const expiredPass=await create();await sql`UPDATE invitations SET expires_at=now()-interval '1 second' WHERE token_hash=${expiredPass.id}`;
+const expiredState=await state(expiredPass.id);assert.equal((await decline(expiredPass)).status,410);assert.deepEqual(await state(expiredPass.id),expiredState);
+const blockedPass=await create();await sql`INSERT INTO member_blocks(blocker_id,blocked_id) VALUES(${ids.visitor},${ids.owner})`;
+assert.equal((await decline(blockedPass)).status,403);assert.equal((await preview(blockedPass,'visitor')).data.status,'unavailable');assert.equal((await state(blockedPass.id)).status,'invited');
+await sql`DELETE FROM member_blocks`;
+const acceptedPass=await create();assert.equal((await accept(acceptedPass)).status,200);
+const acceptedState=await state(acceptedPass.id);assert.equal((await decline(acceptedPass)).status,409);assert.deepEqual(await state(acceptedPass.id),acceptedState);
+const duplicatePass=await create();assert.equal((await accept(duplicatePass)).data.id,acceptedPass.id);
+const duplicateState=await state(duplicatePass.id);assert.equal((await decline(duplicatePass)).status,409,'a spent duplicate is not a successful Pass');assert.deepEqual(await state(duplicatePass.id),duplicateState);
+await clear();
+// Actual SQL arbitration, in both arrival orders, leaves precisely one choice.
+for(const firstChoice of ['accept','decline']){
+ const choice=await create();const operations={accept:()=>accept(choice),decline:()=>decline(choice)};
+ const outcomes=await Promise.all([operations[firstChoice](),operations[firstChoice==='accept'?'decline':'accept']()]);
+ assert.equal(outcomes.filter(result=>result.status===200).length,1);
+ const result=await state(choice.id);assert(['chat','declined'].includes(result.status));assert.equal(result.prospect_member_id,ids.visitor);
+ if(result.status==='declined'){assert.equal(result.prospect_photo,null);assert.equal(result.claim_hash,null);assert.deepEqual(result.prospect_answers,[])}
+ await clear();
+}
+const repeatedPass=await create();const repeatOutcomes=await Promise.all([decline(repeatedPass),decline(repeatedPass)]);
+assert(repeatOutcomes.every(result=>result.status===200));assert.equal(logs.filter(item=>item.kind==='friend_declined'&&item.connection===repeatedPass.id).length,1);
+await clear();
+// Every fresh guard is exercised after the request's optimistic pre-read.
+for(const interruption of ['accept','freeze','expire','senderPause','recipientPause','senderVerify','recipientVerify','rotate','memberBinding','emailBinding','deliveryEmail','contact','block']){
+ const target=await create();let interruptedState;
+ beforeTransaction=async()=>{
+  if(interruption==='accept')assert.equal((await accept(target)).status,200);
+  if(interruption==='freeze'){await sql`UPDATE connection_state SET status='ended',ended_by='member',ended_at=now() WHERE invitation_hash=${target.id}`;await sql`INSERT INTO connection_visibility(member_id,invitation_hash,frozen_at,action) VALUES(${ids.owner},${target.id},now(),'freeze')`}
+  if(interruption==='expire')await sql`UPDATE invitations SET expires_at=now()-interval '1 day' WHERE token_hash=${target.id}`;
+  if(interruption==='senderPause')await sql`UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=${ids.owner}`;
+  if(interruption==='recipientPause')await sql`UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=${ids.visitor}`;
+  if(interruption==='senderVerify')await sql`UPDATE members SET email_verified_at=NULL WHERE id=${ids.owner}`;
+  if(interruption==='recipientVerify')await sql`UPDATE members SET email_verified_at=NULL WHERE id=${ids.visitor}`;
+  if(interruption==='rotate')await sql`UPDATE members SET session_hash=${hash('e'.repeat(64))} WHERE id=${ids.visitor}`;
+  if(interruption==='memberBinding')await sql`UPDATE invitations SET intended_member_id=${ids.other} WHERE token_hash=${target.id}`;
+  if(interruption==='emailBinding')await sql`UPDATE invitations SET intended_email='other@example.com' WHERE token_hash=${target.id}`;
+  if(interruption==='deliveryEmail')await sql`UPDATE invitations SET recipient_email='other@example.com' WHERE token_hash=${target.id}`;
+  if(interruption==='contact')await sql`UPDATE members SET contact='changed@example.com' WHERE id=${ids.visitor}`;
+  if(interruption==='block')await sql`INSERT INTO member_blocks(blocker_id,blocked_id) VALUES(${ids.owner},${ids.visitor})`;
+  interruptedState=await state(target.id);
+ };
+ assert.equal((await decline(target)).status,409,interruption);assert.deepEqual(await state(target.id),interruptedState,`${interruption} wins over a stale Pass`);
+ await sql`UPDATE members SET email_verified_at=now(),suspended_until=NULL WHERE id IN (${ids.owner},${ids.visitor})`;
+ await sql`UPDATE members SET session_hash=${hash(tokens.visitor)},contact='visitor@example.com' WHERE id=${ids.visitor}`;
+ await sql`DELETE FROM member_blocks`;await clear();
+}
+const retryGuard=await create();assert.equal((await decline(retryGuard)).status,200);
+const retryState=await state(retryGuard.id);
+for(const interruption of ['rotate','block']){
+ beforeTransaction=async()=>{if(interruption==='rotate')await sql`UPDATE members SET session_hash=${hash('e'.repeat(64))} WHERE id=${ids.visitor}`;else await sql`INSERT INTO member_blocks(blocker_id,blocked_id) VALUES(${ids.owner},${ids.visitor})`};
+ assert.equal((await decline(retryGuard)).status,409,`fresh ${interruption} guard on retry`);assert.deepEqual(await state(retryGuard.id),retryState);
+ await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;await sql`DELETE FROM member_blocks`;
+}
+await clear();
 const race=await create();const raced=await Promise.all([accept(race,'visitor'),accept(race,'other')]);assert.deepEqual(raced.map(r=>r.status).sort(),[200,409]);const winner=(await state(race.id)).prospect_member_id;assert([ids.visitor,ids.other].includes(winner));
 await clear();
 const pairOne=await create(),pairTwo=await create('visitor');const pairRace=await Promise.all([accept(pairOne,'visitor'),accept(pairTwo,'owner')]);assert(pairRace.every(r=>r.status===200));assert.equal(pairRace[0].data.id,pairRace[1].data.id);assert.equal((await sql`SELECT invitation_hash FROM connection_state WHERE status='chat'`).length,1);
@@ -185,4 +300,4 @@ assert.equal((await call(connection,{as:'visitor',body:{action:'message',token:v
 assert.equal((await state(vibe.id)).status,'invited');
 globalThis.fetch=originalFetch;
 await db.close();
-console.log('Friend creation, PostgreSQL atomic acceptance, duplicate/retry recovery, privacy, authorization, expiry, moderation, and race guards passed');
+console.log('Friend creation, own-invite preview, PostgreSQL atomic acceptance/Pass, duplicate/retry recovery, privacy, recipient authorization, expiry, moderation, and race guards passed');
