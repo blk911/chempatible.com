@@ -21,9 +21,12 @@ export async function reinvite(sql,{body,req,row,side,actor,ops}){
  const own=(await sql`SELECT id,name,photo,answers,contact,email_verified_at FROM members WHERE id=${actor}`)[0];
  if(!own)return result({error:'Open your member page to invite again.'},401);
  const knownEmail=side==='member'?(row.recipient_email||(!row.channel||row.channel!=='friend')&&row.history_email_shared&&row.prospect_email||null):null;
- const recipient=target?(await sql`SELECT id,name,contact,email_verified_at FROM members WHERE id=${target}`)[0]:null;
+ const recipient=target?(await sql`SELECT id,contact,email_verified_at FROM members WHERE id=${target}`)[0]:null;
  const destinationEmail=target?recipient?.email_verified_at&&recipient.contact:knownEmail;
- const name=target?(side==='member'?row.prospect_name:row.sender_name)||recipient?.name:row.recipient_name;
+ // Pass binds an account for authorization without sharing its profile. Use
+ // only the accepted snapshot or the sender's own label, including on later
+ // unaccepted reinvites. Account routing never grants access to a private name.
+ const name=side==='member'?row.prospect_name||row.recipient_name:row.sender_name;
  if(!validEmail(destinationEmail)||!name)return result({error:'There is no known destination for this invitation. You can keep it in the Freezer or move it to Trash.'},409);
  const email=destinationEmail.trim().toLowerCase();
  if(await deliveryBlocked(sql,actor,email))return result({error:'This invitation is unavailable.'},403);
