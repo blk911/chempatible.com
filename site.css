@@ -165,7 +165,37 @@
 .friendIntro p{font-size:.86rem;margin-bottom:0}
 .friendShareModal .field{text-align:left;margin:20px 0 8px;font-size:.83rem}
 .friendShareModal .field input{font-size:16px;font-weight:400}
+.friendSentCard{display:grid;gap:8px;padding:16px;margin:18px 0;background:#f5f1f9;border-radius:12px;overflow-wrap:anywhere}
+.friendSentCard small{margin-top:8px;letter-spacing:.1em}
+.friendSentCard strong{font-size:1.2rem;letter-spacing:.12em}
+.friendShareModal>.button{display:block;margin:10px auto;max-width:100%}
 .friendShareModal .error:empty,.friendInvitation .error:empty{display:none}
 .friendShareModal #friendShareStatus{color:#327b74}
 .vibeReady .friendShareButton{margin-top:8px;font-size:.88rem}
 @media(max-width:700px){.socialMemberAction{flex-direction:row}.socialMemberAction .button{flex:1 1 155px;width:auto;white-space:normal;min-height:44px}.socialMemberAction .friendShareButton{font-size:.72rem}.friendInvitation{padding:18px;margin-top:16px}.friendRail .chempatContact.selected{box-shadow:none;border-color:#327b74}}
+
+/* Duhwild public landing: expressive copy, with the form in the first screen. */
+.logo .landingWordmark{display:none}
+body:has(.landingEntry){background:#f7f5fa}
+body:has(.landingEntry) .logo .appWordmark{display:none}
+body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.75rem}
+.landingEntry{max-width:520px;margin:28px auto 0;padding:28px 32px;border-color:#e4daec;background:linear-gradient(145deg,#fff 65%,#f4edf9);box-shadow:0 16px 44px #452b6510}
+.landingEntry h1{font-size:3.75rem;line-height:1.02;letter-spacing:-.055em;color:#71439c;margin:0 0 17px}
+.landingEntry h1 em{font-family:Georgia,"Times New Roman",serif;font-weight:700;letter-spacing:-.065em}
+.landingEntry .entryHook,.landingEntry .entryInvitation{font-size:.94rem;line-height:1.45;color:#294650}
+.landingEntry .entryHook{font-weight:650;margin:0 0 4px}
+.landingEntry .entryInvitation{margin:0 0 18px}
+.landingEntry .joinInput{margin:10px 0;border-color:#cfc2da;background:#fff}
+.landingEntry .nextButton{margin-top:12px;min-height:48px;font-size:1rem}
+.landingEntry .entryPromise{font-size:.81rem;font-weight:750;color:#173b4c;text-align:center;margin:12px 0 3px}
+.landingEntry .entryPrivacy{font-size:.74rem;text-align:center;color:#60747b;margin:0}
+.landingEntry>.link{display:block;margin:9px auto 0;text-align:center;min-height:36px}
+@media(max-width:700px){
+ body:has(.landingEntry) .logo .landingWordmark{font-size:2.35rem}
+ .landingEntry{margin-top:16px;padding:20px 18px;border-radius:18px}
+ .landingEntry h1{font-size:clamp(2.3rem,10vw,3rem);line-height:1.02;margin-bottom:13px}
+ .landingEntry .entryHook,.landingEntry .entryInvitation{font-size:.86rem;line-height:1.4}
+ .landingEntry .entryInvitation{margin-bottom:14px}
+ .landingEntry .agree{font-size:.72rem;line-height:1.4}
+ .landingEntry .entryPromise{font-size:.76rem;margin-top:11px}
+}

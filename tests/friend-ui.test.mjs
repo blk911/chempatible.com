@@ -238,3 +238,102 @@ test('neutral /friend landing bootstraps the same explicit invitation flow',asyn
  const server=service(),f=browser(server,{account:existing.id,url:'https://friend.example/friend?friend=friend-token'});
  try{await flush();assert.equal(f.w.location.pathname,'/friend');assert.equal(f.w.location.search,'');assert.equal(f.state().friendToken,'friend-token');assert.match(f.d.body.textContent,/Connect as friends with Alex/);assert.equal(server.connections.length,0);await f.w.acceptFriendInvitation();assert.ok(f.d.querySelector('.inlineComposer'))}finally{f.close()}
 });
+
+const deferred=()=>{let resolve;const promise=new Promise(done=>{resolve=done});return {promise,resolve}};
+function emailService(f,{verified=false}={}){
+ const fetch=f.w.fetch,calls=[];let failSend=false;
+ f.w.fetch=async(url,options)=>{
+  if(url!=='/api/email')return fetch(url,options);
+  const body=options?.body?JSON.parse(options.body):null;calls.push(body||{action:'status'});
+  if(body?.action==='send'&&failSend){failSend=false;return {ok:false,json:async()=>({error:'Temporary send failure'})}}
+  return {ok:true,json:async()=>body?.action==='send'?{id:'vibe-email'}:!body&&verified?{email:sender.contact}:{ok:true}};
+ };
+ return {calls,failSend:()=>{failSend=true}};
+}
+function fillVibe(f){f.w.inviteMode('send');f.d.querySelector('#inviteName').value='Jordan Vibe';f.d.querySelector('#inviteContact').value='jordan@example.com'}
+
+test('friend remains Sending through delayed refresh and queues a fresh inbox read after an older poll',async()=>{
+ const server=service(),f=browser(server,{account:sender.id});
+ try{
+  await flush();const fetch=f.w.fetch,oldPoll=deferred(),freshPoll=deferred();let reads=0;
+  f.w.fetch=async(url,options)=>{if(url==='/api/connection?inbox=1'){reads++;if(reads===1){const old=await fetch(url,options);await oldPoll.promise;return old}if(reads===2)await freshPoll.promise}return fetch(url,options)};
+  const polling=f.w.refreshLive();await flush();f.w.openFriendShare();fillFriend(f,{name:'Riley Friend',email:'riley@example.com'});const sending=f.w.makeFriendInvitation();await flush();
+  assert.equal(reads,1,'send waits for the earlier inbox request');assert.equal(f.state().friendShare,null);assert.equal(f.d.querySelector('#friendName').disabled,true);assert.equal(f.d.querySelector('#friendEmail').disabled,true);assert.match(f.d.querySelector('.friendShareModal').textContent,/Sending your invitation/);
+  oldPoll.resolve();await polling;await flush();assert.equal(reads,2,'success requests an inbox snapshot newer than the email');f.w.eval('render()');
+  assert.equal(f.d.querySelector('.friendSentCard'),null);assert.equal(f.d.querySelector('#friendShareLink'),null);assert.match(f.d.querySelector('.friendShareModal').textContent,/Sending your invitation/);
+  freshPoll.resolve();await sending;assert.equal(f.state().modal,'');assert.equal(f.d.querySelector('.friendShareModal'),null);assert.match(f.d.querySelector('.friendRail').textContent,/Riley/);assert.equal(f.d.querySelector('#connectionName').textContent,'Riley');
+  assert.equal(server.calls.filter(c=>c.body?.action==='create').length,1);
+ }finally{f.close()}
+});
+
+test('closed or reopened friend forms are never replaced by an older send success, failure, or verification error',async()=>{
+ for(const outcome of ['success','failure','verify']){
+  const server=service(),f=browser(server,{account:sender.id});
+  try{
+   await flush();const fetch=f.w.fetch,wait=deferred();f.w.fetch=async(url,options)=>{if(url==='/api/friend'){await wait.promise;if(outcome!=='success')return {ok:false,status:outcome==='verify'?403:503,json:async()=>({error:'Old request failed',needsVerify:outcome==='verify'})}}return fetch(url,options)};
+   f.w.openFriendShare();fillFriend(f);const sending=f.w.makeFriendInvitation();f.w.closeInvite();f.w.openFriendShare();fillFriend(f,{name:'Riley Next',email:'riley@example.com'});
+   const field=f.d.querySelector('#friendName');assert.equal(field.disabled,false);assert.equal(f.d.querySelector('#friendEmail').disabled,false);assert.equal(f.d.querySelector('#friendSendButton').disabled,true);await f.w.makeFriendInvitation();wait.resolve();await sending;await flush();
+   assert.equal(f.state().modal,'friendShare');assert.equal(f.d.querySelector('#friendName'),field,'completion preserves the newer form instance');assert.equal(field.value,'Riley Next');assert.equal(f.d.querySelector('#friendEmail').value,'riley@example.com');assert.equal(f.d.querySelector('#friendSendButton').disabled,false);assert.equal(f.state().friendShare,null);assert.equal(f.d.querySelector('#friendShareError').textContent,'');assert.equal(f.state().notice,'');assert.equal(server.calls.filter(c=>c.body?.action==='code_start').length,0,'stale verification failure never sends a code');
+   if(outcome==='success')assert.match(f.d.querySelector('.friendRail').textContent,/Morgan/);
+  }finally{f.close()}
+ }
+});
+
+test('friend completion and expiry preserve newer Vibe forms, verification codes, and selected connections',async()=>{
+ const server=service(),f=browser(server,{account:sender.id});
+ try{
+  await flush();const fetch=f.w.fetch,wait=deferred();let delayInbox=true;
+  f.w.fetch=async(url,options)=>{if(url==='/api/connection?inbox=1'&&delayInbox){delayInbox=false;await wait.promise}return fetch(url,options)};
+  f.w.openFriendShare();fillFriend(f,{name:'Riley Friend',email:'riley@example.com'});const sending=f.w.makeFriendInvitation();await flush();f.w.closeInvite();fillVibe(f);const name=f.d.querySelector('#inviteName');wait.resolve();await sending;
+  assert.equal(f.state().modal,'send');assert.equal(f.d.querySelector('#inviteName'),name);assert.equal(name.value,'Jordan Vibe');assert.equal(f.d.querySelector('#inviteContact').value,'jordan@example.com');assert.equal(f.state().notice,'');assert.equal(f.state().selectedChempat,'friend-one','a newer interaction keeps its selected connection');
+  f.w.closeInvite();await sendFriend(f);fillVibe(f);const email=f.d.querySelector('#inviteContact');f.expireNotice();assert.equal(f.d.querySelector('#inviteContact'),email);assert.equal(email.value,'jordan@example.com');assert.equal(f.state().notice,'');
+  f.w.closeInvite();await sendFriend(f);f.w.eval("pendingInvite={name:'Jordan',email:'jordan@example.com'};renderVerify()");f.d.querySelector('#emailCode').value='123456';const code=f.d.querySelector('#emailCode');f.expireNotice();assert.equal(f.d.querySelector('#emailCode'),code);assert.equal(code.value,'123456');assert.equal(f.state().modal,'verify');
+ }finally{f.close()}
+});
+
+test('friend success survives an unavailable inbox without a fabricated date and Back cannot reopen its modal',async()=>{
+ const server=service(),f=browser(server,{account:sender.id});
+ try{
+  await flush();const fetch=f.w.fetch;f.w.fetch=async(url,options)=>url==='/api/connection?inbox=1'?{ok:false,json:async()=>({error:'Inbox temporarily unavailable'})}:fetch(url,options);
+  await sendFriend(f,{name:'Riley Friend',email:'riley@example.com'});assert.equal(f.state().modal,'');const sent=f.state().friendShare;assert.match(f.d.querySelector('.friendRail').textContent,/Riley/);assert.equal(f.state().friends.find(c=>c.id===sent.id).invitedAt,undefined);assert.equal(f.state().notice,'Invite sent to Riley.');
+  const wait=deferred();f.w.fetch=async(url,options)=>{if(url==='/api/friend')await wait.promise;return fetch(url,options)};
+  f.w.openFriendShare();fillFriend(f);const sending=f.w.makeFriendInvitation();f.w.goHome();wait.resolve();await sending;assert.equal(f.state().modal,'');assert.equal(f.d.querySelector('.friendShareModal'),null);assert.equal(f.state().notice,'');
+ }finally{f.close()}
+});
+
+test('Vibe preparation and verification cannot continue or send after another modal or account takes over',async()=>{
+ for(const stage of ['status','start','verify']){
+  const server=service(),f=browser(server,{account:sender.id});
+  try{
+   await flush();const mail=emailService(f),fetch=f.w.fetch,wait=deferred();f.w.fetch=async(url,options)=>{const action=options?.body?JSON.parse(options.body).action:'status';if(url==='/api/email'&&action===stage)await wait.promise;return fetch(url,options)};
+   fillVibe(f);let pending;
+   if(stage==='verify'){await f.w.prepareInvite();f.d.querySelector('#emailCode').value='123456';pending=f.w.verifyAndSend();await f.w.verifyAndSend()}
+   else{pending=f.w.prepareInvite();await f.w.prepareInvite();await flush()}
+   f.w.closeInvite();f.w.openFriendShare();fillFriend(f,{name:'Riley Next',email:'riley@example.com'});const field=f.d.querySelector('#friendName');wait.resolve();await pending;
+   assert.equal(f.state().modal,'friendShare');assert.equal(f.d.querySelector('#friendName'),field);assert.equal(field.value,'Riley Next');assert.equal(mail.calls.filter(c=>c.action==='send').length,0,'cancelled email stages cannot send a Vibe');assert.ok(mail.calls.filter(c=>c.action===stage).length<=1);
+  }finally{f.close()}
+ }
+});
+
+test('Vibe verification survives polling and retries a failed send without duplicate email or verification',async()=>{
+ const server=service(),f=browser(server,{account:sender.id});
+ try{
+  await flush();const mail=emailService(f);fillVibe(f);await f.w.prepareInvite();assert.equal(f.state().modal,'verify');f.d.querySelector('#emailCode').value='123456';const input=f.d.querySelector('#emailCode');
+  server.invites.set('poll-added',{id:'poll-added',sender:sender.id,status:'invited',intended:{name:'Riley',email:'riley@example.com'}});await f.w.refreshLive();assert.equal(f.d.querySelector('#emailCode'),input);assert.equal(input.value,'123456');f.w.eval('render()');assert.equal(f.state().modal,'verify');assert.equal(f.d.querySelector('#emailCode').value,'123456');assert.equal(f.d.querySelector('#inviteName'),null,'verification has an explicit modal renderer');
+  mail.failSend();await Promise.all([f.w.verifyAndSend(),f.w.verifyAndSend()]);assert.match(f.d.querySelector('#verifyError').textContent,/Temporary send failure/);assert.equal(f.d.querySelector('#emailCode').disabled,true);assert.match(f.d.querySelector('.modalForm button').textContent,/RETRY SEND/);assert.equal(mail.calls.filter(c=>c.action==='verify').length,1);
+  const fetch=f.w.fetch,wait=deferred();f.w.fetch=async(url,options)=>{if(url==='/api/email'&&JSON.parse(options.body||'{}').action==='send')await wait.promise;return fetch(url,options)};const first=f.w.sendInvitation(),second=f.w.sendInvitation();wait.resolve();await Promise.all([first,second]);assert.equal(mail.calls.filter(c=>c.action==='send').length,2,'one failed attempt plus one successful retry');assert.equal(mail.calls.filter(c=>c.action==='verify').length,1);assert.equal(f.state().modal,'');assert.match(f.state().notice,/Invitation sent to Jordan/);assert.deepEqual(mail.calls.filter(c=>c.action==='send').at(-1).recipient,{name:'Jordan Vibe',email:'jordan@example.com'});
+ }finally{f.close()}
+});
+
+test('a delayed Vibe send uses its captured recipient and leaves newer friend and account state alone',async()=>{
+ for(const change of ['friend','account']){
+  const server=service(),f=browser(server,{account:sender.id});
+  try{
+   await flush();const mail=emailService(f,{verified:true}),fetch=f.w.fetch,wait=deferred();f.w.fetch=async(url,options)=>{if(url==='/api/email'&&JSON.parse(options.body||'{}').action==='send')await wait.promise;return fetch(url,options)};
+   fillVibe(f);const pending=f.w.prepareInvite();await flush();await f.w.prepareInvite();f.w.closeInvite();
+   if(change==='account')f.w.openPage(existing);
+   f.w.openFriendShare();fillFriend(f,{name:'Riley Next',email:'riley@example.com'});f.w.eval("pendingInvite={name:'Wrong Person',email:'wrong@example.com'}");const input=f.d.querySelector('#friendName'),member=f.state().member;wait.resolve();await pending;await flush();
+   assert.equal(mail.calls.filter(c=>c.action==='send').length,1);assert.deepEqual(mail.calls.find(c=>c.action==='send').recipient,{name:'Jordan Vibe',email:'jordan@example.com'});assert.equal(f.d.querySelector('#friendName'),input);assert.equal(input.value,'Riley Next');assert.equal(f.state().modal,'friendShare');assert.deepEqual(f.state().member,member);assert.equal(f.state().notice,'');
+  }finally{f.close()}
+ }
+});
