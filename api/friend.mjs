@@ -1,7 +1,7 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
-import {pairBlocked,reserveInvitation,deliveryBlocked} from './_connections.mjs';
+import {pairBlocked,reserveInvitation,deliveryBlocked,targetAllowed} from './_connections.mjs';
 import {reviewGate,requireReviewRecipient} from './_review.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -12,7 +12,7 @@ const validName=value=>typeof value==='string'&&value.trim().length>0&&value.len
 const validEmail=value=>typeof value==='string'&&value.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const escape=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const first=value=>String(value).trim().split(/\s+/)[0];
-async function sendFriendMail(to,recipientName,senderName,senderPhoto,link){
+export async function sendFriendMail(to,recipientName,senderName,senderPhoto,link){
  requireReviewRecipient(to);
  const senderFirst=first(senderName),recipientFirst=first(recipientName),safeSender=escape(senderFirst),safeRecipient=escape(recipientFirst);
  const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#7440b3;font-weight:bold">Duh <em>Wild</em> · FRIEND INVITATION</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeSender}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#7440b3;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">Come try Duh Wild with me.</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Connect as friends and open a private chat. No dating questions required.</p><a href="${link}" style="display:inline-block;background:#7440b3;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">CONNECT AS FRIENDS →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeSender}</p></div>`;
@@ -25,7 +25,7 @@ const tokenFrom=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_me
 const available=row=>!!row.sender_exists&&!!row.sender_verified&&!row.sender_blocked&&(!row.sender_suspended||new Date(row.sender_suspended).getTime()<=Date.now());
 const elapsed=row=>!row.prospect_member_id&&!(new Date(row.expires_at).getTime()>Date.now());
 async function friendRow(sql,id){
- const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
+ const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,i.intended_member_id,i.intended_email,i.reinvite_from,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
  return rows[0]||null;
 }
 function publicInvite(row){
@@ -54,7 +54,9 @@ async function handler(req){
    if(!validToken(token))return reply({error:'Friend invitation not found.'},404);
    const row=await friendRow(sql,hash(token));
    const viewer=await ops.memberIdFromToken(sql,tokenFrom(req));
-   if(row&&await pairBlocked(sql,row.sender_member_id,row.prospect_member_id||viewer))return reply({kind:'friend',status:'unavailable',expiresAt:row.expires_at});
+   if(row&&!viewer&&(row.intended_member_id||row.intended_email))return reply({kind:'friend',status:'signInRequired',requiresSignIn:true});
+   if(row&&!await targetAllowed(sql,row,viewer))return reply({kind:'friend',status:'signInRequired',requiresSignIn:true,error:'Open the member page this invitation was sent to.'},403);
+   if(row&&await pairBlocked(sql,row.sender_member_id,row.prospect_member_id||row.intended_member_id||viewer))return reply({kind:'friend',status:'unavailable',expiresAt:row.expires_at});
    return row?reply(publicInvite(row)):reply({error:'Friend invitation not found.'},404);
   }
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
@@ -85,6 +87,7 @@ async function handler(req){
   if(!validToken(body.token))return reply({error:'Friend invitation not found.'},404);
   const id=hash(body.token),row=await friendRow(sql,id);
   if(!row)return reply({error:'Friend invitation not found.'},404);
+  if(!await targetAllowed(sql,row,member.id))return reply({error:'Open the member page this invitation was sent to.'},403);
   if(await pairBlocked(sql,row.sender_member_id,member.id))return reply({error:'This friend invitation is unavailable.'},403);
   if(row.sender_member_id===member.id)return reply({error:'Send this invitation to your friend to accept.'},409);
   if(row.prospect_member_id)return accepted(sql,row,member.id);
@@ -101,7 +104,7 @@ async function handler(req){
    FROM invitations i,members sender,members recipient WHERE c.invitation_hash=${id} AND i.token_hash=c.invitation_hash AND i.channel='friend' AND i.sender_member_id=sender.id AND sender.id=${row.sender_member_id} AND recipient.id=${member.id} AND recipient.session_hash=${hash(session)} AND c.prospect_member_id IS NULL AND c.status='invited' AND i.expires_at>now()
    AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
    AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=sender.id AND b.blocked_id=recipient.id) OR (b.blocked_id=sender.id AND b.blocker_id=recipient.id))
-   AND NOT EXISTS(SELECT 1 FROM invitations ended_i JOIN connection_state ended_c ON ended_c.invitation_hash=ended_i.token_hash WHERE ended_c.status IN ('ended','declined') AND (ended_i.channel<>'friend' OR ended_c.claim_hash IS NULL) AND ((ended_i.sender_member_id=sender.id AND ended_c.prospect_member_id=recipient.id) OR (ended_i.sender_member_id=recipient.id AND ended_c.prospect_member_id=sender.id)))
+   AND (i.intended_member_id IS NULL OR i.intended_member_id=recipient.id) AND (i.intended_member_id IS NOT NULL OR i.intended_email IS NULL OR (lower(recipient.contact)=i.intended_email AND recipient.email_verified_at IS NOT NULL))
    RETURNING c.invitation_hash,c.status,c.claim_hash`
   ],{isolationLevel:'ReadCommitted'});
   if(!results[1][0]){

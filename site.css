@@ -217,10 +217,28 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .freezerDates dt{font-size:.7rem;font-weight:800;color:#526c74;overflow-wrap:anywhere}
 .freezerDates dd{font-size:.76rem;margin:4px 0 0;overflow-wrap:anywhere}
 .freezerActions{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-.returnConnection,.loadFreezer{min-height:40px;padding:8px 11px;border:1px solid #b9d1c7;border-radius:8px;background:#fff;color:#265d57;font-size:.75rem;font-weight:800;cursor:pointer}
-.returnConnection:focus-visible,.loadFreezer:focus-visible{outline:3px solid #246d7d;outline-offset:3px}
+.loadFreezer{min-height:40px;padding:8px 11px;border:1px solid #b9d1c7;border-radius:8px;background:#fff;color:#265d57;font-size:.75rem;font-weight:800;cursor:pointer}
+.loadFreezer:focus-visible{outline:3px solid #246d7d;outline-offset:3px}
 .loadFreezer{margin-top:13px}
 .loadFreezer:disabled{cursor:wait;opacity:.65}
 .socialFreezer .error:empty{display:none}
 .pendingInvite .connectionMenu{display:inline-block;margin-left:8px}
-@media(max-width:700px){.socialFreezer{padding:13px 12px}.freezerItem{grid-template-columns:minmax(0,1fr);gap:10px;padding:12px 0}.freezerDates{padding-left:49px}.freezerActions{justify-content:flex-start;padding-left:49px}.freezerActions .connectionMenu{margin-left:auto}.returnConnection,.loadFreezer{min-height:44px}.connectionMenu .endControls{min-width:165px}}
+@media(max-width:700px){.socialFreezer{padding:13px 12px}.freezerItem{grid-template-columns:minmax(0,1fr);gap:10px;padding:12px 0}.freezerDates{padding-left:49px}.freezerActions{justify-content:flex-start;padding-left:49px}.freezerActions .connectionMenu{margin-left:auto}.loadFreezer{min-height:44px}.connectionMenu .endControls{min-width:165px}}
+/* Active contact ends through Freezer; personal Trash keeps recoverable history. */
+.activeConnectionActions{display:flex;align-items:center;gap:7px;flex:none}
+.freezeConnection{min-height:40px;padding:8px 12px;border:1px solid #b9d1c7;border-radius:8px;background:#f5f8f6;color:#265d57;font-size:.78rem;font-weight:800;cursor:pointer}
+.freezerActions{flex-wrap:wrap;max-width:255px}
+.historyAction,.loadTrash{min-height:40px;padding:8px 11px;border:1px solid #b9d1c7;border-radius:8px;background:#fff;color:#265d57;font-size:.75rem;font-weight:800;cursor:pointer}
+.historyAction.trashAction{color:#60747b;border-color:#d8e2de}
+.freezeConnection:focus-visible,.historyAction:focus-visible,.loadTrash:focus-visible,.trashLink:focus-visible{outline:3px solid #246d7d;outline-offset:3px}
+.blockedLabel{display:block;margin-top:4px;color:#71439c;font-size:.7rem;font-weight:800}
+.trashEntry{text-align:right;margin:-12px 2px 24px}
+.trashLink{font-size:.78rem;color:#60747b;min-height:36px;padding:6px 8px}
+.socialTrash{margin:0 0 24px;padding:16px 18px;background:#fff;border:1px solid #d8e4df;border-radius:12px;min-width:0}
+.socialTrash .socialSectionTitle h2{font-size:1.25rem}
+.socialTrash .error:empty{display:none}
+.loadTrash{margin-top:13px}
+.loadTrash:disabled{cursor:wait;opacity:.65}
+.reinviteDestination{overflow-wrap:anywhere;background:#f5f8f6;border-radius:9px;padding:12px;font-size:.87rem}
+.legacyFreezeNote{font-size:.8rem;color:#526c74;margin:0}
+@media(max-width:700px){.activeConnectionActions{gap:4px}.freezeConnection,.historyAction,.loadTrash{min-height:44px}.freezeConnection{padding:8px 10px}.freezerActions{max-width:none}.socialTrash{padding:13px 12px}.socialTrash .freezerDates,.socialTrash .freezerActions{padding-left:49px}.trashEntry{margin-bottom:16px}}

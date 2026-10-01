@@ -35,7 +35,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
 sql.transaction=async build=>{const results=[];for(const next of build((s,...v)=>()=>sql(s,...v)))results.push(await next());return results};
 sql.query=async(q,v)=>{const rows=await sql([q],...v);const history=['ended','declined'].includes(state.status);return q.includes('AND NOT (v.frozen_at')?(history?[]:rows):(history?rows:[])};
 globalThis.__sql=sql;process.env.DATABASE_URL='postgres://test';
-let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`);
+let source=fs.readFileSync(new URL('../api/connection.mjs',import.meta.url),'utf8').replace("'./_reinvite.mjs'",`'${new URL('../api/_reinvite.mjs',import.meta.url).href}'`).replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__sql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__ops;').replace("import {reviewGate} from './_review.mjs';",`import {reviewGate} from '${new URL('../api/_review.mjs',import.meta.url).href}';`);
 const api=(await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default;
 const headers=token=>token?{cookie:`chempat_member=${token}`} : {};
 const call=async(body,token)=>{const r=await api.fetch(new Request('https://example.com/api/connection',{method:'POST',headers:headers(token),body:JSON.stringify(body)}));return [r.status,await r.json()]};
@@ -85,7 +85,7 @@ assert.equal((await inbox())[0].prospect_email,'shared@example.com');assert.equa
 assert.equal((await call({action:'report',id,reason:'harassment'},visitor))[0],200);assert.equal(opsCalls.at(-1).side,'prospect');
 assert.equal((await call({action:'unmatch',id},owner))[0],200);assert.equal(opsCalls.at(-1).side,'member');
 assert.equal((await call({action:'unmatch',id},stranger))[0],404);
-state.status='ended';hidden((await inbox())[0]);assert.equal((await get('invite='+raw,visitor))[1].messages.length,0);assert.equal((await call({action:'email',id,email:'again@example.com'},visitor))[0],400);
+state.status='ended';hidden((await inbox())[0]);assert.equal((await get('invite='+raw,visitor))[0],410,'ended token has no reveal payload');assert.equal((await call({action:'email',id,email:'again@example.com'},visitor))[0],400);
 // Null/invalid sessions must never inherit unlinked rows or skip member verification.
 assert.equal((await call(null,owner))[0],400);
 assert.equal((await call([],owner))[0],400);

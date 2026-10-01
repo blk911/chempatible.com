@@ -10,6 +10,8 @@
 !/api/admin.mjs
 !/api/connection-schema.mjs
 !/api/connection.mjs
+!/api/connection-photo.mjs
+!/api/_reinvite.mjs
 !/api/config.mjs
 !/api/email.mjs
 !/api/friend.mjs

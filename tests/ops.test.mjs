@@ -15,6 +15,7 @@ const bad={id:'22222222-2222-4222-8222-222222222222',name:'Mike',contact:'bad@ex
 members[bad.id]=bad;
 async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').trim();
  if(/^(CREATE|ALTER)/.test(q))return [];
+ if(q.startsWith('SELECT id FROM members WHERE id=')&&q.includes('ORDER BY id FOR UPDATE'))return members[v[0]]?[{id:v[0]}]:[];
  if(q.startsWith('SELECT email_verified_at FROM members WHERE id='))return members[v[0]]?[{email_verified_at:members[v[0]].email_verified_at??null}]:[];
  if(q.startsWith('INSERT INTO activity')){activity.push({kind:v[0],member_id:v[1],connection_id:v[2],detail:JSON.parse(v[3])});return []}
  if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE id='))return members[v[0]]?[members[v[0]]]:[];
@@ -37,13 +38,20 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('DELETE FROM reports WHERE reporter_member_id=')){for(let i=reports.length-1;i>=0;i--)if(reports[i].reported_member_id===v[1]||reports[i].reporter_member_id===v[0])reports.splice(i,1);return []}
  if(q.startsWith('DELETE FROM activity WHERE member_id=')){for(let i=activity.length-1;i>=0;i--)if(activity[i].member_id===v[0])activity.splice(i,1);return []}
  if(q.startsWith("UPDATE connection_state SET prospect_name='Deleted member'")){for(const c of Object.values(connections))if(c.prospect_member_id===v[0]||c.prospect_email===v[1]||c.prospect_phone===v[2])Object.assign(c,{prospect_name:'Deleted member',prospect_email:null,prospect_phone:null,prospect_member_id:null,messages:[],status:c.status==='invited'?'invited':'ended'});return []}
+ if(q.startsWith("UPDATE connection_state c SET status='ended'")){for(const c of Object.values(connections))if(c.intended_member_id===v[0]||c.intended_email===v[1])Object.assign(c,{status:'ended',ended_at:c.ended_at||new Date(),ended_by:c.ended_by||'admin'});return []}
+ if(q.startsWith("UPDATE invitations SET intended_member_id=NULL")){for(const c of Object.values(connections))if(c.intended_member_id===v[0]||c.intended_email===v[1])Object.assign(c,{intended_member_id:null,intended_email:'deleted:'+c.token_hash,recipient_name:'Deleted member',recipient_email:''});return []}
  if(q.startsWith("UPDATE invitations SET recipient_name='Deleted member'"))return [];
  if(q.startsWith('DELETE FROM invitations WHERE sender_member_id=')){for(const [k,c] of Object.entries(connections))if(c.sender_member_id===v[0]||c.sender_email===v[1])delete connections[k];return []}
  if(q.startsWith('DELETE FROM email_sessions'))return [];
  if(q.startsWith('DELETE FROM members WHERE id=')){delete members[v[0]];return []}
  throw Error('Unmocked SQL '+q);
 }
-sql.transaction=async queries=>Promise.all(queries);
+sql.transaction=async(queries,options)=>{
+ if(typeof queries!=='function')return Promise.all(queries);
+ assert.equal(options.isolationLevel,'ReadCommitted');
+ const statements=queries((strings,...values)=>()=>sql(strings,...values));
+ const results=[];for(const statement of statements)results.push(await statement());return results;
+};
 const connection=(n,extra={})=>{const id=String(n).repeat(64).slice(0,64);connections[id]={token_hash:id,sender_member_id:'11111111-1111-4111-8111-111111111111',sender_name:'Cindy',sender_email:'cindy@example.com',status:'chat',prospect_member_id:bad.id,prospect_name:'Mike',prospect_email:'bad@example.com',prospect_phone:null,messages:[{by:'prospect',text:'hey',at:'2026-09-26T20:00:00Z'}],...extra};return id};
 
 // Unconfirmed emails can't play past the reveal; confirmed ones and visitors without a page pass.

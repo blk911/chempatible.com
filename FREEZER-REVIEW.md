@@ -1,5 +1,10 @@
 # Freezer candidate
 
+Historical notes for the first Freezer release. The current interaction lifecycle
+and rollback requirements are described in [TRASH-REVIEW.md](TRASH-REVIEW.md).
+In particular, new Freeze actions now end the interaction and there is no direct
+Return to active connections; a new invitation requires fresh consent.
+
 This candidate adds personal connection history and member-to-member blocking.
 It starts from dev commit `7dabcac44b219d323d92504d042672b61333785b`;
 the corresponding live release is `f1b5668cd0c12d5b065012be32111a50fe281c35`.

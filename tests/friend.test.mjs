@@ -15,6 +15,7 @@ const ids={owner:'11111111-1111-4111-8111-111111111111',visitor:'22222222-2222-4
 await db.exec(`CREATE TABLE members(id uuid PRIMARY KEY,session_hash text UNIQUE,name text,photo text,answers jsonb DEFAULT '[]',contact text,email_verified_at timestamptz,suspended_until timestamptz,blocked_at timestamptz); CREATE TABLE invitations(token_hash text PRIMARY KEY,created_at timestamptz DEFAULT now(),sender_email text NOT NULL,sender_name text,sender_photo text,sender_answers jsonb NOT NULL,recipient_name text,recipient_email text,sender_member_id uuid,channel text,expires_at timestamptz); CREATE TABLE connection_state(invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,prospect_member_id uuid,prospect_name text,prospect_photo text,prospect_answers jsonb DEFAULT '[]',prospect_phone text,prospect_email text,status text DEFAULT 'invited',claim_hash text,messages jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now()); CREATE TABLE email_sessions(token_hash text,email text,expires_at timestamptz);`);
 await db.exec("CREATE TABLE activity(kind text,connection_id text); ALTER TABLE connection_state ADD COLUMN ended_at timestamptz; ALTER TABLE connection_state ADD COLUMN ended_by text");
 await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_freezer.sql',import.meta.url),'utf8'));
+await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_trash.sql',import.meta.url),'utf8'));
 for(const [name,id] of Object.entries(ids))await db.query('INSERT INTO members(id,session_hash,name,photo,contact,email_verified_at) VALUES($1,$2,$3,$4,$5,now())',[id,hash(tokens[name]),name,photo,`${name}@example.com`]);
 const query=(strings,values)=>({text:strings.reduce((out,part,index)=>out+(index?`$${index}`:'')+part,''),values});
 async function run(executor,{text,values}){return (await executor.query(text,values)).rows}
@@ -39,7 +40,7 @@ globalThis.__friendOps={
  log:async(_sql,kind,data)=>logs.push({kind,...data}),
  endConnection:async(_sql,args)=>{logs.push({kind:'end',...args});await sql`UPDATE connection_state SET status='ended' WHERE invitation_hash=${args.id}`;return {status:200,body:{ok:true,status:'ended'}}}
 };
-async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace(/from '\.\/_review\.mjs'/g,`from '${new URL('../api/_review.mjs',import.meta.url).href}'`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
+async function load(name){const source=fs.readFileSync(new URL(`../api/${name}.mjs`,import.meta.url),'utf8').replace("'./_connections.mjs'",`'${new URL('../api/_connections.mjs',import.meta.url).href}'`).replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__friendSql;').replace("import * as ops from './_ops.mjs';",'const ops=globalThis.__friendOps;').replace(/from '\.\/(.*?)\.mjs'/g,(_,name)=>`from '${new URL(`../api/${name}.mjs`,import.meta.url).href}'`);return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default}
 const mail=[];let providerStatus=202;
 const originalFetch=globalThis.fetch;
 globalThis.fetch=async(url,options)=>{
@@ -144,7 +145,7 @@ assert.equal((await call(connection,{as:'visitor',body:{action:'report',id:invit
 assert.equal((await accept(invite)).status,410);assert.equal((await accept(duplicate)).status,410,'canonical ended chat is never reopened by duplicate retry');
 assert.equal((await preview(invite)).data.status,'closed');
 assert.equal((await call(connection,{as:'owner',body:{action:'message',id:invite.id,text:'reopen'}})).status,409);
-const afterEnd=await create();assert.equal((await accept(afterEnd)).status,409,'fresh links cannot undo an ended friend pair');assert.equal((await state(afterEnd.id)).prospect_member_id,null);
+const afterEnd=await create();assert.equal((await accept(afterEnd)).status,200,'fresh consent is allowed after an ended interaction when neither person blocked');assert.equal((await state(afterEnd.id)).prospect_member_id,ids.visitor);assert.equal((await state(invite.id)).status,'ended','new acceptance never reopens the old interaction');
 await clear();
 const expiring=await create();await sql`UPDATE invitations SET expires_at=now()-interval '1 second' WHERE token_hash=${expiring.id}`;
 assert.equal((await preview(expiring)).data.status,'expired');assert.equal('name' in (await preview(expiring)).data,false);assert.equal((await accept(expiring)).status,410);assert.equal((await inbox('owner')).length,1);assert.equal((await inbox('owner'))[0].freezerAction,'expired');
@@ -172,10 +173,10 @@ for(const interruption of ['end','expire','pause','rotate']){
  assert.equal((await accept(target)).status,409,interruption);assert.equal((await state(target.id)).prospect_member_id,null);
  await sql`UPDATE members SET suspended_until=NULL WHERE id=${ids.owner}`;await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;
 }
-// An ended Vibe cannot be bypassed with a friend invitation.
+// Explicit blocks govern future contact; an ended Vibe alone does not block a fresh Friend invitation.
 await clear();
 const endedVibe=await create();await sql`UPDATE invitations SET channel='qr' WHERE token_hash=${endedVibe.id}`;await sql`UPDATE connection_state SET status='ended',prospect_member_id=${ids.visitor},claim_hash=${hash('old-qr-claim')} WHERE invitation_hash=${endedVibe.id}`;
-const recontact=await create();assert.equal((await accept(recontact)).status,409);assert.equal((await state(recontact.id)).prospect_member_id,null);
+const recontact=await create();assert.equal((await accept(recontact)).status,200);assert.equal((await state(recontact.id)).prospect_member_id,ids.visitor);assert.equal((await state(endedVibe.id)).status,'ended');
 await clear();
 // Supplying friend as a client kind does not turn an ordinary invitation into chat.
 const vibe=await create();await sql`UPDATE invitations SET channel='email',sender_answers='[0,1,2,0,1]' WHERE token_hash=${vibe.id}`;
