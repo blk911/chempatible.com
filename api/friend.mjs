@@ -1,18 +1,30 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
-import {reviewGate} from './_review.mjs';
+import {reviewGate,requireReviewRecipient} from './_review.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
 const validToken=value=>typeof value==='string'&&/^[a-f0-9]{64}$/.test(value);
 const validPhoto=value=>typeof value==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(value)&&value.length<250000;
 const validName=value=>typeof value==='string'&&value.trim().length>0&&value.length<=50;
+const validEmail=value=>typeof value==='string'&&value.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const escape=value=>String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const first=value=>String(value).trim().split(/\s+/)[0];
+async function sendFriendMail(to,recipientName,senderName,senderPhoto,link){
+ requireReviewRecipient(to);
+ const senderFirst=first(senderName),recipientFirst=first(recipientName),safeSender=escape(senderFirst),safeRecipient=escape(recipientFirst);
+ const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#7440b3;font-weight:bold">Chem-<em>patible</em> · FRIEND INVITATION</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeSender}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#7440b3;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">Come try Chem-patible with me.</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Connect as friends and open a private chat. No dating questions required.</p><a href="${link}" style="display:inline-block;background:#7440b3;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">CONNECT AS FRIENDS →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeSender}</p></div>`;
+ const text=`Hey ${recipientFirst},\n\nCome try Chem-patible with me. Connect as friends and open a private chat. No dating questions required.\n\n${link}\n\n— ${senderFirst}`;
+ const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Chem-patible'},subject:`${senderFirst} invited you to Chem-patible`,content:[{type:'text/plain',value:text},{type:'text/html',value:html}],attachments:[{content:senderPhoto.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}]};
+ const response=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
+ if(!response.ok)throw Error(`Email provider returned ${response.status}`);
+}
 const tokenFrom=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_member=([a-f0-9]{64})(?:;|$)/)?.[1]||null;
 const available=row=>!!row.sender_exists&&!!row.sender_verified&&!row.sender_blocked&&(!row.sender_suspended||new Date(row.sender_suspended).getTime()<=Date.now());
 const elapsed=row=>!row.prospect_member_id&&!(new Date(row.expires_at).getTime()>Date.now());
 async function friendRow(sql,id){
- const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
+ const rows=await sql`SELECT i.token_hash,i.sender_member_id,i.sender_name,i.sender_photo,i.recipient_name,i.recipient_email,i.expires_at,c.status,c.prospect_member_id,c.claim_hash,m.id AS sender_exists,m.email_verified_at AS sender_verified,m.blocked_at AS sender_blocked,m.suspended_until AS sender_suspended FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash LEFT JOIN members m ON m.id=i.sender_member_id WHERE i.token_hash=${id} AND i.channel='friend'`;
  return rows[0]||null;
 }
 function publicInvite(row){
@@ -47,20 +59,23 @@ async function handler(req){
   if(!['create','accept'].includes(body.action))return reply({error:'Unknown action.'},400);
   const session=tokenFrom(req);
   if(!session)return reply({error:'Open your member page to connect with friends.'},401);
-  const members=await sql`SELECT id,name,photo FROM members WHERE session_hash=${hash(session)}`;
+  const members=await sql`SELECT id,name,photo,contact FROM members WHERE session_hash=${hash(session)}`;
   const member=members[0];
   if(!member)return reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
   const denied=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);
   if(denied)return reply(denied,403);
   if(!validName(member.name)||!validPhoto(member.photo))return reply({error:'Add your name and picture before connecting with friends.'},400);
   if(body.action==='create'){
-   const token=randomBytes(32).toString('hex'),id=hash(token);
-   // Both rows commit together. Friend invitations never snapshot answers or contact.
-   const rows=await sql`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) VALUES(${id},${''},${member.name},${member.photo},'[]'::jsonb,${''},${''},${member.id},'friend',now()+interval '7 days') RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`;
+   if(!process.env.SENDGRID_API_KEY)return reply({error:'Friend email invitations are being set up. Please try again shortly.'},503);
+   const recipientName=String(body.recipient?.name||'').trim(),recipientEmail=String(body.recipient?.email||'').trim().toLowerCase();
+   if(!validName(recipientName)||!validEmail(recipientEmail))return reply({error:'Enter your friend’s name and a valid email address.'},400);
+   const token=randomBytes(32).toString('hex'),id=hash(token),link=new URL(`/friend?friend=${token}`,req.url).href;
+   // Friend invitations stay separate from Vibe invitations. The recipient fields
+   // identify the intended friend; answers and private contact details are never exposed.
+   const rows=await sql`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) VALUES(${id},${''},${member.name},${member.photo},'[]'::jsonb,${recipientName},${recipientEmail},${member.id},'friend',now()+interval '7 days') RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`;
+   try{await sendFriendMail(recipientEmail,recipientName,member.name,member.photo,link)}catch(error){await sql`DELETE FROM invitations WHERE token_hash=${id}`;throw error}
    await ops.log(sql,'friend_invited',{member:member.id,connection:id});
-   // The client resolves this path against its own origin, preserving its login
-   // cookies on custom domains without trusting a supplied Host header.
-   return reply({id,token,url:`/friend?friend=${token}`,expiresAt:rows[0].expires_at,kind:'friend'});
+   return reply({id,token,url:`/friend?friend=${token}`,expiresAt:rows[0].expires_at,kind:'friend',recipient:{name:recipientName,email:recipientEmail},code:token.slice(0,8).toUpperCase()});
   }
   if(!validToken(body.token))return reply({error:'Friend invitation not found.'},404);
   const id=hash(body.token),row=await friendRow(sql,id);
