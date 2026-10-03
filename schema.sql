@@ -136,3 +136,69 @@ CREATE TABLE IF NOT EXISTS discovery_events (
 );
 
 ALTER TABLE discovery_drafts ADD COLUMN IF NOT EXISTS revision integer NOT NULL DEFAULT 0 CHECK(revision>=0);
+-- Additive, development-review only. No existing answers or contacts are changed.
+CREATE TABLE IF NOT EXISTS member_reward_state (
+ member_id uuid PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,
+ completed_level integer NOT NULL DEFAULT 0 CHECK(completed_level BETWEEN 0 AND 5),
+ answers jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(answers)='object'),
+ revision integer NOT NULL DEFAULT 0 CHECK(revision>=0),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS reward_phone_offers (
+ invitation_hash text NOT NULL REFERENCES invitations(token_hash) ON DELETE CASCADE,
+ member_id uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+ phone text NOT NULL CHECK(phone ~ '^\+[1-9][0-9]{6,14}$'),
+ offered_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(invitation_hash,member_id)
+);
+CREATE TABLE IF NOT EXISTS reward_connection_events (
+ invitation_hash text NOT NULL REFERENCES invitations(token_hash) ON DELETE CASCADE,
+ member_id uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+ event_key text NOT NULL CHECK(event_key='level-3-upgrade'),
+ created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(invitation_hash,member_id,event_key)
+);
+-- Review-only opt-in directory. Apply explicitly to the isolated development
+-- database after the reward-game migration; request handlers never run DDL.
+-- No existing account is listed and no private photo is copied by this migration.
+CREATE TABLE IF NOT EXISTS reward_directory_profile (
+ member_id uuid PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,
+ listed boolean NOT NULL DEFAULT false,
+ photo text CHECK(photo IS NULL OR length(photo)<250000),
+ display_name text CHECK(display_name IS NULL OR length(display_name) BETWEEN 1 AND 50),
+ video bytea CHECK(video IS NULL OR octet_length(video) BETWEEN 1 AND 2097152),
+ video_mime text CHECK(video_mime IS NULL OR video_mime='video/mp4'),
+ duration_seconds double precision CHECK(duration_seconds IS NULL OR (duration_seconds>0 AND duration_seconds<=15)),
+ video_published boolean NOT NULL DEFAULT false,
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ CHECK(NOT listed OR (photo IS NOT NULL AND display_name IS NOT NULL)),
+ CHECK((video IS NULL AND video_mime IS NULL AND duration_seconds IS NULL) OR (video IS NOT NULL AND video_mime IS NOT NULL AND duration_seconds IS NOT NULL)),
+ CHECK(NOT video_published OR (listed AND video IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS reward_directory_listed_idx ON reward_directory_profile(member_id) WHERE listed;
+-- Isolated development only; applied explicitly, never from request handlers.
+-- Pending previews expose profile snapshots only. The sender's first five
+-- answers are stored privately to preserve exactly what was offered; they are
+-- copied to a mutual connection only when the target explicitly accepts.
+CREATE TABLE IF NOT EXISTS reward_discovery_requests (
+ id uuid PRIMARY KEY,
+ sender_id uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+ target_id uuid NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+ status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','passed','cancelled')),
+ expires_at timestamptz NOT NULL DEFAULT now()+interval '7 days',
+ created_at timestamptz NOT NULL DEFAULT now(),
+ invitation_hash text REFERENCES invitations(token_hash) ON DELETE SET NULL,
+ sender_first_five jsonb NOT NULL CHECK(jsonb_typeof(sender_first_five)='array' AND jsonb_array_length(sender_first_five)=5 AND '[0,1,2]'::jsonb @> sender_first_five),
+ sender_name text NOT NULL CHECK(length(sender_name) BETWEEN 1 AND 50),
+ sender_photo text NOT NULL CHECK(length(sender_photo)<250000),
+ target_name text NOT NULL CHECK(length(target_name) BETWEEN 1 AND 50),
+ target_photo text NOT NULL CHECK(length(target_photo)<250000),
+ CHECK(sender_id<>target_id),
+ CHECK(status='accepted' OR invitation_hash IS NULL),
+ UNIQUE(sender_id,target_id)
+);
+-- A pass, cancellation or expiry is not a license to send repeated requests.
+-- Also prevents simultaneous opposite-direction requests creating two pairs.
+CREATE UNIQUE INDEX IF NOT EXISTS reward_discovery_requests_pair_idx ON reward_discovery_requests(least(sender_id,target_id),greatest(sender_id,target_id));
+CREATE INDEX IF NOT EXISTS reward_discovery_requests_incoming_idx ON reward_discovery_requests(target_id,created_at DESC) WHERE status='pending';
+CREATE INDEX IF NOT EXISTS reward_discovery_requests_outgoing_idx ON reward_discovery_requests(sender_id,created_at DESC) WHERE status='pending';

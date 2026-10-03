@@ -32,7 +32,7 @@ try{
  const samplePieces=['Feel Loved','Closeness Reflection',longName+' Snapshot'].map((title,i)=>({moduleId:'layout-piece-'+i,version:1,title,result:{summary:'A private result',dimensions:[]}}));
  w.eval(`mergeDiscoveryPieces(${JSON.stringify(samplePieces)});paintDiscovery()`);
  const memberHeader=d.querySelector('#root .socialMemberHeader');
- assert.deepEqual([...memberHeader.children].map(el=>el.className),['socialMemberIdentity','socialMemberAction','earnedPieces'],'desktop DOM order stays profile, Caught/action, collection');
+ assert.deepEqual([...memberHeader.children].map(el=>el.className),['socialMemberIdentity','socialMemberAction','rewardLadder'],'desktop DOM order stays profile, Caught/action, collection');
  assert.equal(d.querySelectorAll('#root #earnedPieces').length,1,'only one collection is rendered');
  assert.equal(d.querySelectorAll('#root #earnedPiecesTitle').length,1);
  const rootIds=[...d.querySelectorAll('#root [id]')].map(el=>el.id);assert.equal(new Set(rootIds).size,rootIds.length,'dashboard has no duplicate IDs');
@@ -113,28 +113,22 @@ try{
   assert.equal(friendButton.getAttribute('onclick'),'openFriendShare()');
   assert.equal(w.getComputedStyle(friendButton).width,'auto','friend invite stays a small secondary action');
   assert.ok(parseFloat(w.getComputedStyle(friendButton).minHeight)>=44);
-  const memberStyle=w.getComputedStyle(memberHeader),collection=memberHeader.querySelector('#earnedPieces');
+  const memberStyle=w.getComputedStyle(memberHeader),collection=memberHeader.querySelector('#rewardLadder');
   assert.equal(memberStyle.display,'grid');
   assert.equal(memberStyle.gridTemplateColumns,width>900?'minmax(0,0.75fr) minmax(0,1.1fr) minmax(0,1.65fr)':width>520?'minmax(0,0.8fr) minmax(0,1.2fr)':'minmax(0,1fr)',`${width}px: header uses three compact areas, then natural two/one-column stacking`);
   if(width<=900)assert.equal(w.getComputedStyle(collection).gridColumn,'1 / -1','collection spans the tablet/mobile header');
   assert.equal(parseFloat(w.getComputedStyle(collection).minWidth),0);
-  assert.equal(w.getComputedStyle(collection.querySelector('.earnedPieceGrid')).maxHeight,'180px','expanded results cannot make the header unbounded');
-  assert.equal(w.getComputedStyle(collection.querySelector('.earnedPieceGrid')).overflowY,'auto','long collections and results remain scrollable');
-  for(const piece of collection.querySelectorAll('.earnedPiece')){
-   assert.equal(w.getComputedStyle(piece).overflowWrap,'anywhere','long earned titles can wrap');
-   const summary=piece.querySelector('summary'),summaryStyle=w.getComputedStyle(summary);
-   assert.ok(parseFloat(summaryStyle.minHeight)>=44,'piece disclosure retains a touch target');
-   assert.notEqual(summaryStyle.position,'absolute');
-   assert.notEqual(summaryStyle.whiteSpace,'nowrap');
-   const details=piece.querySelector('details');details.open=true;assert.equal(w.getComputedStyle(piece).flexBasis,'100%','an expanded result gets the collection width');details.open=false;
-  }
+  assert.equal(collection.querySelectorAll('.rewardSlot').length,5,'exactly five collectible slots');
+  assert.equal(w.getComputedStyle(collection.querySelector('.rewardSlots')).gridTemplateColumns,'repeat(5,minmax(0,1fr))','five slots fit their compact area');
+  for(const slot of collection.querySelectorAll('.rewardSlot'))assert.ok(parseFloat(w.getComputedStyle(slot).minHeight)>=44,'reward slots remain touch-friendly');
+  assert.equal(memberHeader.querySelector('.earnedPiece'),null,'named optional reflections are secondary');
   const readyFriend=readyProbe.querySelector('.vibeReady .friendShareButton');
   assert.ok(readyFriend,'friend invitation remains available after the first five');
   assert.equal(readyFriend.getAttribute('onclick'),'openFriendShare()');
   const vibeRow=actions.querySelector('.socialVibeAction'),vibeButton=vibeRow.querySelector('.button');
   assert.equal(actions.firstElementChild,vibeRow,'prompt and primary action share one row');
   assert.equal(vibeRow.firstElementChild,prompt);
-  assert.equal(vibeButton.getAttribute('onclick'),'createMyVibe()');
+  assert.equal(vibeButton.getAttribute('onclick'),'createMyVibe()');assert.equal(vibeButton.textContent,'Send a vibe →');assert.equal(prompt.textContent,'Caught their vibe?');
   assert.equal(vibeRow.nextElementSibling,null,'only the primary invitation is in the compact action area');
   assert.equal(w.getComputedStyle(vibeRow).display,'flex');
   assert.equal(w.getComputedStyle(vibeRow).flexWrap,'wrap','tiny viewports may wrap rather than overflow');

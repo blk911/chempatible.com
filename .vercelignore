@@ -48,3 +48,10 @@
 !/duh-wild-apple.png
 !/api/discovery.mjs
 !/api/_discovery-modules.mjs
+!/api/rewards.mjs
+!/api/_reward-rounds.mjs
+!/api/reward-directory.mjs
+!/api/_intro-video.mjs
+!/api/_reward-auth.mjs
+
+!/api/reward-requests.mjs

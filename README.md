@@ -2,6 +2,17 @@
 
 A mobile-first two-person game with live QR and email invitations. The static page can be served locally with `python3 -m http.server 4173`; invitations require Vercel and the database below.
 
+## Five-level reward review
+
+The development-only five-level game uses saved First 5 / Second 5 answers, then
+three original five-question rounds. Rewards offer invitations, mutual phone
+exchange, individual connection status, opt-in authenticated member discovery,
+and a private-first 15-second MP4 introduction. Nothing is automatically listed
+or shared, and existing chat remains available. Full optional questionnaires
+remain separate under More reflections. See `docs/FIVE-LEVEL-REWARDS.md` for
+consent, video limits, additive migrations, test scope, and rollback. New reward
+and directory endpoints reject live mode until separate production review.
+
 ## Walkthrough
 
 `main` is the development branch; `live` is the separate public release branch. Data APIs remain disabled by default. Development gameplay requires a verified isolated database and approved test inboxes; see `docs/REVIEW-ROLLBACK.md`. Preparing source for release does not enable public mail or promote the live site.

@@ -28,6 +28,7 @@ async function fixture({rows=[row(),row('beta')],pieces=[],games=[],saved,actor=
   const requestOwner=w.eval('activeMemberId()');const body=options.body?JSON.parse(options.body):null;server.calls.push({url,body});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(url==='/api/connection?inbox=1')return response({connections:server.rows});
+  if(url.startsWith('/api/rewards'))return response({level:2,rounds:[],answers:{},draftRevision:0,connections:[],...(url.includes('connection=')?{connection:{upgraded:false,phone:{eligible:false}}}:{})});
   if(!url.startsWith('/api/discovery'))return response({},401);
   if(server.hold){const hold=server.hold;server.hold=null;await hold.promise}
   if(body&&server.failPost)return response({error:'Connection interrupted. Try again.'},503);
@@ -253,10 +254,10 @@ test('a pending global draft save re-enables the same game opened in another pai
 });
 
 
-test('compact collection occupies only the header and has no checklist or sharing mutation',async()=>{
+test('five rewards occupy the header and optional reflections stay secondary without sharing mutations',async()=>{
  const f=await fixture({pieces:[piece,{...piece,moduleId:'closeness',title:'Closeness',version:1}]});try{
   const header=f.d.querySelector('.socialMemberHeader'),collection=f.d.querySelector('#earnedPieces');
-  assert.equal(collection.parentElement,header);assert.equal(header.querySelector('.friendShareButton'),null);
+  assert.equal(collection.parentElement.className,'moreReflections');assert.equal(header.querySelectorAll('.rewardSlot').length,5);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(header.querySelector('.friendShareButton'),null);
   assert.equal(f.d.querySelectorAll('#earnedPieces').length,1);assert.equal(f.d.querySelectorAll('#earnedPiecesTitle').length,1);
   const ids=[...f.d.querySelectorAll('[id]')].map(el=>el.id);assert.equal(new Set(ids).size,ids.length);
   assert.equal(collection.querySelectorAll('.earnedPiece').length,2);assert.equal(collection.querySelector('progress,input[type="checkbox"]'),null);
@@ -281,10 +282,10 @@ test('pieces refresh retains disclosure, keyboard focus, scroll position and cha
 
 test('empty and failed compact collections remain optional and friend-only pages retain their actions',async()=>{
  const f=await fixture({rows:[row('friend',{kind:'friend',channel:'friend'})]});try{
-  const collection=f.d.querySelector('.socialMemberHeader #earnedPieces');assert.ok(collection);assert.match(collection.textContent,/optional connection games/);assert.equal(f.d.querySelector('#connectionGames'),null);assert.ok(f.d.querySelector('#message'));
+  const collection=f.d.querySelector('.moreReflections #earnedPieces');assert.ok(collection);assert.match(collection.textContent,/optional connection games/);assert.equal(f.d.querySelector('#connectionGames'),null);assert.ok(f.d.querySelector('#message'));
   f.server.failGet=true;await f.w.loadDiscoveryPieces(true);assert.match(collection.textContent,/could not be loaded/);assert.ok(collection.querySelector('button'));assert.ok(f.d.querySelector('#message'));
   f.server.failGet=false;collection.querySelector('button').click();await flush();assert.doesNotMatch(collection.textContent,/could not be loaded/);assert.equal(f.posts().length,0);
   f.w.eval('s.member.verified=false;s.account.verified=false;render()');assert.ok([...f.d.querySelectorAll('.socialMemberAction button')].find(button=>button.textContent==='CONFIRM MY EMAIL'),'email confirmation remains beside the primary action');
-  f.w.eval('s.member.answers=[];s.account.answers=[];render()');assert.ok(f.d.querySelector('.socialMemberHeader #earnedPieces'));f.d.querySelector('.socialVibeAction button').click();assert.ok(f.d.querySelector('.quickChoices'),'the existing first-five action still opens its questions');
+  f.w.eval('s.member.answers=[];s.account.answers=[];render()');assert.ok(f.d.querySelector('.moreReflections #earnedPieces'));f.d.querySelector('.socialVibeAction button').click();assert.ok(f.d.querySelector('.quickChoices'),'the existing first-five action still opens its questions');
  }finally{f.close()}
 });
