@@ -113,7 +113,8 @@ test('reward header and question controls keep shrinkable tracks and touch targe
    assert.equal(parseFloat(style(ladder).minWidth),0,`${width}px ladder may shrink`);
    assert.equal(style(slots).display,'grid');assert.match(style(slots).gridTemplateColumns,/minmax\(0,\s*1fr\)/);
    for(const button of ladder.querySelectorAll('button'))assert.ok(parseFloat(style(button).minHeight)>=44,`${width}px reward controls retain 44px height`);
-   for(const slot of ladder.querySelectorAll('.rewardSlot'))assert.equal(parseFloat(style(slot).minWidth),0);
+   for(const slot of ladder.querySelectorAll('.rewardSlot')){assert.equal(parseFloat(style(slot).minWidth),0);assert.equal(style(slot.querySelector('b')).overflowWrap,'anywhere','long labels can wrap at narrow widths and increased text size')}
+   if(width<=520){assert.equal(style(ladder.querySelector('.rewardNext .rewardButton')).width,'100%');assert.equal(style(ladder.querySelector('.rewardLadderHeading')).flexWrap,'wrap')}
    assert.match(style(dialog).maxHeight,/d?vh/);assert.equal(style(dialog).overflow,'auto');
    assert.ok(parseFloat(style(dialog.querySelector('.close')).minHeight)>=44);
    assert.ok(parseFloat(style(dialog.querySelector('.close')).minWidth)>=44);

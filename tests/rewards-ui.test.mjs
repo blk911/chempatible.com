@@ -60,7 +60,7 @@ function answer(f,level,value){for(const q of REWARD_ROUNDS.find(r=>r.level===le
 function hold(f,match){const h=deferred();f.server.hold={...h,match};return h}
 
 test('header has five functional slots and exact CTA; optional games are secondary',async()=>{
- const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader');assert.equal(header.querySelector('.ctaPrompt').textContent,'Caught their vibe?');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.deepEqual([...header.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['First 5','Second 5','Next 5','Next 5','Next 5']);assert.equal(header.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(header.querySelectorAll('.rewardSlot.current').length,1);assert.equal(header.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/Finish Second 5/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
+ const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader');assert.equal(header.querySelector('.ctaPrompt').textContent,'Caught their vibe?');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.deepEqual([...header.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['Email','Cell','Get noticed','Be discovered','Your 15 seconds']);assert.equal(header.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(header.querySelectorAll('.rewardSlot.current').length,1);assert.equal(header.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/Finish Second 5/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
 });
 test('first five uses existing flow and friend-only pages remain usable',async()=>{
  const f=await fixture({level:0});try{f.w.openRewardLevel(1);assert.ok(f.d.querySelector('.quickChoices'));f.w.goHome();f.w.selectChempat(friend);assert.ok(f.d.querySelector('#message'));assert.equal(f.d.querySelector('.rewardConnection'),null)}finally{f.close()}
@@ -179,13 +179,13 @@ test('a historical outgoing request without an eligible photo still offers Cance
 });
 
 test('polished rounds keep every original choice, show live progress, and emphasize one next action',async()=>{
- const f=await fixture({level:2});try{f.w.openRewardLevel(3);const round=REWARD_ROUNDS.find(r=>r.level===3);assert.equal(f.d.querySelector('.rewardTarget b').textContent,'Getting closer badge');const progress=f.d.querySelector('#rewardProgress');assert.equal(progress.max,5);assert.equal(progress.value,0);assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardPrimary').getAttribute('onclick'),"rewardAction('complete')");assert.equal(f.d.querySelector('.rewardDetails').open,false);for(const [i,q] of round.questions.entries()){assert.equal(f.d.querySelectorAll('.rewardQuestions legend')[i].textContent,`${i+1}. ${q.text}`);assert.deepEqual([...f.d.querySelectorAll(`input[name="reward-${i}"]+span`)].map(el=>el.textContent),q.choices.map(c=>c.label))}const input=f.d.querySelector('.rewardQuestions input');input.click();input.focus();assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);await f.w.loadRewards(true);assert.equal(f.d.querySelector('#rewardProgress'),progress);assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);answer(f,3);assert.equal(progress.value,5);await f.w.rewardAction('complete');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardDetails').open,false);assert.match(f.d.querySelector('.rewardDetails').textContent,/not a compatibility score/)}finally{f.close()}
+ const f=await fixture({level:2});try{f.w.openRewardLevel(3);const round=REWARD_ROUNDS.find(r=>r.level===3);assert.equal(f.d.querySelector('.rewardTarget b').textContent,'Getting closer badge');const progress=f.d.querySelector('#rewardProgress');assert.equal(progress.max,5);assert.equal(progress.value,0);assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),"rewardAction('complete')");assert.equal(f.d.querySelector('.rewardDetails').open,false);for(const [i,q] of round.questions.entries()){assert.equal(f.d.querySelectorAll('.rewardQuestions legend')[i].textContent,`${i+1}. ${q.text}`);assert.deepEqual([...f.d.querySelectorAll(`input[name="reward-${i}"]+span`)].map(el=>el.textContent),q.choices.map(c=>c.label))}const input=f.d.querySelector('.rewardQuestions input');input.click();input.focus();assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);await f.w.loadRewards(true);assert.equal(f.d.querySelector('#rewardProgress'),progress);assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);answer(f,3);assert.equal(progress.value,5);await f.w.rewardAction('complete');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardDetails').open,false);assert.match(f.d.querySelector('.rewardDetails').textContent,/not a compatibility score/)}finally{f.close()}
 });
 test('directory settings are compact and collapsed controls never enter the modal focus loop',async()=>{
  const f=await fixture({level:5});try{f.server.profiles=[{id:'avery',name:'Avery',videoAvailable:true}];f.w.openRewardDirectory();await flush();let own=f.d.querySelector('.rewardDirectoryOwn');assert.equal(own.tagName,'DETAILS');assert.equal(own.open,false);const hiddenButton=own.querySelector('button');assert.equal(f.w.visibleModalControl(hiddenButton),false);assert.equal(f.w.visibleModalControl(own.querySelector('summary')),true);const clip=f.d.querySelector('.rewardDirectoryGrid video');assert.equal(f.w.visibleModalControl(clip),false);own.querySelector('summary').click();await flush();assert.equal(own.open,true);assert.equal(f.w.visibleModalControl(hiddenButton),true);await f.w.loadRewardDirectory(true);own=f.d.querySelector('.rewardDirectoryOwn');assert.equal(own.open,true,'refresh preserves the expanded management choice');own.querySelector('summary').click();await flush();const close=f.d.querySelector('.rewardModal .close'),visible=[...f.d.querySelectorAll('.rewardModal button:not(:disabled),.rewardModal input:not(:disabled),.rewardModal summary,.rewardModal video[controls]')].filter(f.w.visibleModalControl);close.focus();f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));assert.equal(f.d.activeElement,visible.at(-1));assert.notEqual(f.d.activeElement,clip)}finally{f.close()}
 });
 test('polish keeps upload restrictions and consequential consent outside collapsed explanations',async()=>{
- const f=await fixture({level:5});try{f.w.openRewardDirectory('video');await flush();const limits=f.d.querySelector('.rewardMediaLimits');for(const term of ['15 seconds','2 MiB','MP4','H.264','720p','AAC','MOV','HEVC'])assert.ok(limits.textContent.includes(term));assert.equal(limits.closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.ok(f.d.querySelector('.rewardUpload.rewardPrimary input[type="file"]'));f.w.rewardScreen('directory');f.w.reviewRewardDirectory('list');assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardPrimary').getAttribute('onclick'),'rewardDirectoryAction()');f.w.closeInvite();f.w.openRewardPhone(alpha);await flush();f.d.querySelector('#rewardPhone').value='+15552223333';f.w.reviewRewardPhone();assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.match(f.d.querySelector('.rewardConsent').textContent,/Morgan/);assert.match(f.d.querySelector('.rewardConsent').textContent,/save or contact you/);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1)}finally{f.close()}
+ const f=await fixture({level:5});try{f.w.openRewardDirectory('video');await flush();const limits=f.d.querySelector('.rewardMediaLimits');for(const term of ['15 seconds','2 MiB','MP4','H.264','720p','AAC','MOV','HEVC'])assert.ok(limits.textContent.includes(term));assert.equal(limits.closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.ok(f.d.querySelector('.rewardUpload.rewardPrimary input[type="file"]'));f.w.rewardScreen('directory');f.w.reviewRewardDirectory('list');assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),'rewardDirectoryAction()');f.w.closeInvite();f.w.openRewardPhone(alpha);await flush();f.d.querySelector('#rewardPhone').value='+15552223333';f.w.reviewRewardPhone();assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.match(f.d.querySelector('.rewardConsent').textContent,/Morgan/);assert.match(f.d.querySelector('.rewardConsent').textContent,/save or contact you/);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1)}finally{f.close()}
 });
 
 
@@ -203,4 +203,41 @@ test('member discovery copy accurately names the authenticated audience without 
  assert.match(privacy,/first-five sets are shared only when the recipient accepts/);
  assert.match(privacy,/Accepting does not share contact details or open Private Chat/);
  assert.match(privacy,/signed-in, verified members in good standing who have unlocked Level 4/);
+});
+
+test('reward-first tiles explain all rewards without posting or changing consent',async()=>{
+ const labels=['Email','Cell','Get noticed','Be discovered','Your 15 seconds'];
+ const details=[/invitation by email; your email address stays private/,/both finish Second 5 and both opt in/,/badge to your connections; your answers stay private/,/eligible signed-in members.*only if you opt in/,/privately.*only if you choose/];
+ for(const level of [0,1,2,3,4,5]){
+  const f=await fixture({level});try{
+   const card=f.d.querySelector('#rewardLadder');
+   assert.equal(card.querySelector('h2').textContent,'Make your next move');
+   assert.deepEqual([...card.querySelectorAll('.rewardSlot b')].map(el=>el.textContent),labels);
+   assert.equal(card.querySelectorAll('.rewardSlotMark svg').length,5);
+   assert.equal(card.querySelectorAll('.unlocked .rewardSlotState svg').length,level);
+   assert.equal(card.querySelectorAll('.locked .rewardSlotState svg').length,Math.max(0,4-level));
+   const primary=card.querySelector('.rewardPrimary');
+   assert.equal(primary.textContent,level<5?'Unlock my next move →':'My rewards');
+   assert.equal(primary.getAttribute('onclick'),`openRewardLevel(${Math.min(5,level+1)})`);
+   if(level===1)assert.match(card.querySelector('.rewardNext').textContent,/Five quick picks unlock phone sharing/);
+   const before=f.state();
+   for(let tile=1;tile<=5;tile++){
+    const button=f.d.querySelector(`[data-reward-level="${tile}"]`);button.focus();button.click();
+    assert.match(f.d.querySelector('.rewardExplanation').textContent,details[tile-1]);
+    f.w.closeInvite();assert.equal(f.d.activeElement.dataset.rewardLevel,String(tile),'dismiss returns focus to its tile');
+   }
+   assert.deepEqual(f.state().inbox,before.inbox);assert.equal(f.state().phase,before.phase);
+   assert.equal(f.posts().length,0);assert.equal(f.directoryPosts().length,0);assert.equal(requestPosts(f).length,0);
+  }finally{f.close()}
+ }
+});
+
+test('Email reward tile explains first, then uses the same First 5 flow as the primary action',async()=>{
+ const f=await fixture({level:0});try{
+  f.d.querySelector('[data-reward-level="1"]').click();
+  assert.match(f.d.querySelector('.rewardExplanation').textContent,/email address stays private/);
+  f.d.querySelector('.rewardModal .rewardPrimary').click();
+  assert.ok(f.d.querySelector('.quickChoices'));
+  assert.equal(f.posts().length,0);
+ }finally{f.close()}
 });
