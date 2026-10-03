@@ -253,3 +253,21 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .reinviteDestination{overflow-wrap:anywhere;background:#f5f8f6;border-radius:9px;padding:12px;font-size:.87rem}
 .legacyFreezeNote{font-size:.8rem;color:#526c74;margin:0}
 @media(max-width:700px){.activeConnectionActions{gap:4px}.freezeConnection,.historyAction,.loadTrash{min-height:44px}.freezeConnection{padding:8px 10px}.freezerActions{max-width:none}.socialTrash{padding:13px 12px}.socialTrash .freezerDates,.socialTrash .freezerActions{padding-left:49px}.trashEntry{margin-bottom:16px}}
+
+/* Keep the invitation choices together without crowding the member identity. */
+.socialMemberHeader{flex-wrap:wrap}
+.socialMemberIdentity{flex:1 1 240px;min-width:0}
+.socialMemberIdentity>.face{flex:none}
+.socialMemberIdentity>div{min-width:0;overflow-wrap:anywhere}
+.socialMemberAction{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:100%;min-width:0;width:auto}
+.socialVibeAction{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 10px;max-width:100%}
+.socialMemberAction .ctaPrompt{flex:0 1 auto;font-size:clamp(1.1rem,2.2vw,1.5rem);text-align:left}
+.socialMemberAction .button{flex:none;width:auto;max-width:100%;min-height:44px;padding:9px 13px;font-size:.8rem;white-space:normal}
+.socialMemberAction .friendShareButton{font-size:.75rem;background:transparent;border:1px solid #c6d8d1;padding:8px 12px}
+@media(max-width:700px){
+ .socialMemberIdentity{flex-basis:200px}
+ .socialMemberAction{align-items:flex-start}
+ .socialVibeAction{justify-content:flex-start;gap:6px 8px}
+ .socialMemberAction .button{padding:8px 10px;font-size:.72rem}
+ .socialMemberAction .friendShareButton{font-size:.72rem}
+}
