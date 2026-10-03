@@ -22,7 +22,7 @@ Friend links use the existing invitation and connection tables with server-owned
 
 ## Prototype limits
 
-QR scanning and email invitations are live on the deployed domain. There is no text delivery or phone verification. Deeper discoveries are briefs, not completed games. The admin Questions and Templates pages are drafts saved only in the browser; they are separate from the public game.
+QR scanning and email invitations are live on the deployed domain. There is no text delivery or phone verification. Optional connection games are implemented after chat opens; see `docs/DISCOVERY-GAMES.md` for modules, consent, persistence, and release checks. The admin Questions and Templates pages are drafts saved only in the browser; they are separate from the public game.
 
 ## Moderation and admin
 

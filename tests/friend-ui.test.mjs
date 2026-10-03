@@ -20,6 +20,7 @@ function service(){
  function client(initial){let account=initial;return {get account(){return account},setAccount:id=>{account=id},fetch:async(url,options={})=>{
   assert.ok(url.startsWith('/api/'),'test never contacts any external service');
   const body=options.body?JSON.parse(options.body):null;calls.push({url,body,account});
+  if(url==='/api/discovery?pieces=1')return response({pieces:[]});
   if(url==='/api/member'){
    if(!body)return members.has(account)?response({member:members.get(account)}):response({},401);
    if(body.action==='code_start')return response({ok:true});
@@ -404,7 +405,7 @@ test('late choice successes and errors do not reopen newer pages, replacement li
    if(change==='exit')f.w.dismissFriendInvitation();
    if(change==='link'){server.invites.set('next',{id:'next',sender:sender.id,status:'invited',intended:{name:existing.name,email:existing.contact}});await f.w.openFriendInvitation('next')}
    if(change==='account'){f.client.setAccount(sender.id);f.w.openPage(sender);await flush()}
-   const snapshot=f.state(),root=text(f);wait.resolve();await pending;await flush();assert.deepEqual(f.state(),snapshot,`${action}/${change}/${failure} preserves newer state`);assert.equal(text(f),root);
+   await flush();const snapshot=f.state(),root=text(f);wait.resolve();await pending;await flush();assert.deepEqual(f.state(),snapshot,`${action}/${change}/${failure} preserves newer state`);assert.equal(text(f),root);
   }finally{f.close()}
  }
 });

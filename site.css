@@ -271,3 +271,77 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
  .socialMemberAction .button{padding:8px 10px;font-size:.72rem}
  .socialMemberAction .friendShareButton{font-size:.72rem}
 }
+
+/* Optional discovery games: separate from chat and private until both opt in. */
+.connectionGames{margin:20px 0 0;padding:20px 0 0;border-top:1px solid #dce4df;min-width:0}
+.discoveryHeading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.discoveryHeading h2,.discoveryHeading h3{margin:0 0 5px}
+.discoveryHeading p{font-size:.86rem;max-width:44rem;margin:0 0 12px}
+.discoveryButton{font-size:.82rem;min-height:44px;line-height:1.35;max-width:100%;white-space:normal}
+.discoveryHeading>.discoveryButton{flex:0 0 auto;background:#eee7f6;color:#65348b}
+.discoveryEmpty{margin:6px 0;color:#677675;font-size:.88rem}
+.discoveryGameList{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:9px}
+.discoveryGameList li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px;border:1px solid #dce4df;border-radius:12px;background:#fbfcfa;min-width:0}
+.discoveryGameList li>div{min-width:0}.discoveryGameList b,.discoveryGameList small{display:block;overflow-wrap:anywhere}
+.discoveryGameList small{line-height:1.45;font-size:.76rem;margin-top:5px}
+.discoveryGameList .discoveryButton{flex:0 0 auto}
+.earnedPieces{margin:22px 0;padding:22px;border:1px solid #d9e2de;border-radius:18px;background:#fff}
+.discoveryPrivate{display:inline-block;color:#65348b;font-size:.73rem;font-weight:800;border:1px solid #d9cbe8;background:#f7f2fb;padding:6px 9px;border-radius:20px;white-space:nowrap}
+.earnedPieceGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:14px;margin-top:10px}
+.earnedPiece{border:1px solid #e1d9e8;background:linear-gradient(155deg,#fcf9fe,#f7fbf8);border-radius:14px;padding:18px;min-width:0;overflow-wrap:anywhere}
+.discoveryPieceMark{font-size:1.5rem;color:#8a61a8;display:block;margin-bottom:8px}
+.earnedPiece h3{font-size:1.04rem}.discoveryPieceHint{font-size:.78rem;border-top:1px solid #e4dfea;padding-top:12px;margin-bottom:0}
+.discoverySummary{font-size:.95rem;color:#2e4850;line-height:1.6}
+.discoveryDimensions{margin:16px 0;display:grid;gap:12px;text-align:left}
+.discoveryDimensions>div{border-left:3px solid #c6b3d8;padding-left:11px}
+.discoveryDimensions dt{font-size:.85rem;font-weight:800;color:#26454b}
+.discoveryDimensions dd{margin:4px 0 0}.discoveryDimensions dd p{font-size:.82rem;margin:5px 0;line-height:1.5}
+.discoveryScore{font-size:.76rem;color:#71439c;font-weight:800}
+.discoveryCaution,.discoveryFootnote{font-size:.77rem;color:#677675;line-height:1.5}
+.discoveryModal{text-align:left;width:min(790px,100%);padding:28px}
+.discoveryModal>.eyebrow{margin:0 32px 14px 0;font-size:.72rem}
+.discoveryModal h2{margin:0 35px 14px 0;font-size:clamp(1.4rem,3vw,1.85rem);line-height:1.25}
+.discoveryModal .close{min-width:44px;min-height:44px}
+.discoveryPicker{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:12px;margin:20px 0}
+.discoveryPicker article{display:flex;flex-direction:column;align-items:flex-start;background:#f8faf7;border:1px solid #d9e2de;border-radius:14px;padding:18px;min-width:0}
+.discoveryPicker h3{line-height:1.3;margin:7px 0}.discoveryPicker p{font-size:.88rem}.discoveryPicker .discoveryButton{margin-top:auto}
+.discoveryPrivacy{font-size:.86rem;line-height:1.6;background:#f4f7f3;border-radius:10px;padding:12px 14px;color:#496258}
+.discoveryExisting{border-top:1px solid #dedbe3;margin-top:25px;padding-top:20px}.discoveryExisting p{font-size:.88rem}
+.discoveryCount{font-size:.79rem;font-weight:800;color:#71439c;margin:16px 0}
+.discoveryQuestions{display:grid;gap:24px;margin:20px 0}
+.discoveryQuestions fieldset{border:0;padding:0;margin:0;min-width:0}
+.discoveryQuestions legend{font-weight:750;font-size:.96rem;line-height:1.5;color:#24414a;margin-bottom:10px}
+.discoveryScale{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.discoveryScale label{position:relative;min-width:0;cursor:pointer}
+.discoveryScale input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.discoveryScale span{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;border:1px solid #cad8d1;border-radius:10px;min-height:77px;height:100%;padding:8px 4px;text-align:center;font-size:.68rem;line-height:1.35;color:#526962;background:#fafcf9;overflow-wrap:anywhere}
+.discoveryScale b{font-size:.94rem;color:#2e5056}.discoveryScale input:checked+span{border-color:#71439c;background:#eee6f5;box-shadow:inset 0 0 0 1px #71439c;color:#572e75}
+.discoveryScale input:focus-visible+span{outline:3px solid #173b4c;outline-offset:3px}
+.discoveryScale input:disabled+span{opacity:.6;cursor:wait}
+.discoveryFormActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}
+.discoveryFormActions .discoveryButton:last-child{background:#71439c;color:white}
+.discoverySaveStatus{font-size:.84rem;font-weight:750;color:#3f6b54;min-height:0;margin:15px 0 0}
+.discoverySaveStatus:empty,.discoveryModal .error:empty{display:none}
+.discoveryModal .error{margin:14px 0}.discoveryModal>.discoveryButton{margin:5px 6px 5px 0}
+.discoveryFootnote{border-top:1px solid #e5e9e3;margin:22px 0 0;padding-top:14px}
+.discoveryComparison{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}
+.discoveryComparison>section{border:1px solid #e1d9e8;border-radius:12px;padding:16px;min-width:0;overflow-wrap:anywhere}
+.discoveryComparison h3{font-size:1rem}
+.chatGameNote{align-self:center;width:100%;text-align:center;color:#64706d;background:#f4f5f0;border:1px solid #e1e5dc;border-radius:10px;padding:10px 14px;margin:7px 0;font-size:.8rem}
+.chatGameNote p{color:#526b63;font-size:.82rem;line-height:1.5;margin:3px 0}
+.chatGameNote>span{color:#84609c}.chatGameNote small{display:block;text-transform:uppercase;letter-spacing:.09em;font-size:.58rem}
+@media(max-width:700px){
+ .connectionGames{padding-top:16px;margin-top:16px}
+ .discoveryHeading{flex-wrap:wrap;gap:6px}
+ .discoveryHeading>.discoveryButton{width:auto;margin-bottom:10px}
+ .discoveryGameList li{flex-wrap:wrap;gap:10px}.discoveryGameList .discoveryButton{width:auto}
+ .earnedPieces{padding:17px}.discoveryModal{padding:23px 16px}
+ .discoveryScale{gap:4px}.discoveryScale span{padding:8px 3px;font-size:.7rem;min-height:100px}
+ .discoveryComparison{grid-template-columns:1fr}.discoveryFormActions{display:grid;grid-template-columns:1fr;width:100%}
+ .discoveryModal>.discoveryButton{margin-right:0}.discoveryPicker .discoveryButton{width:100%}
+}
+.discoveryAbout{font-size:.8rem;margin:12px 0;color:#526962}
+.discoveryAbout summary{cursor:pointer;color:#71439c;font-weight:750;min-height:32px;padding:7px 0}
+.discoveryAbout p{font-size:.8rem}.discoveryAbout li{margin:8px 0;overflow-wrap:anywhere}
+.earnedPieceResult summary{cursor:pointer;font-size:.84rem;font-weight:750;color:#71439c;padding:9px 0;min-height:44px}
+.earnedPieceResult[open] summary{margin-bottom:6px}
