@@ -254,22 +254,31 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .legacyFreezeNote{font-size:.8rem;color:#526c74;margin:0}
 @media(max-width:700px){.activeConnectionActions{gap:4px}.freezeConnection,.historyAction,.loadTrash{min-height:44px}.freezeConnection{padding:8px 10px}.freezerActions{max-width:none}.socialTrash{padding:13px 12px}.socialTrash .freezerDates,.socialTrash .freezerActions{padding-left:49px}.trashEntry{margin-bottom:16px}}
 
-/* Keep the invitation choices together without crowding the member identity. */
-.socialMemberHeader{flex-wrap:wrap}
-.socialMemberIdentity{flex:1 1 240px;min-width:0}
+/* Compact member header: identity, invitation, and a private earned collection. */
+.socialMemberHeader{display:grid;grid-template-columns:minmax(0,0.75fr) minmax(0,1.1fr) minmax(0,1.65fr);align-items:center;gap:16px;padding:17px 2px 15px}
+.socialMemberIdentity{min-width:0}
 .socialMemberIdentity>.face{flex:none}
 .socialMemberIdentity>div{min-width:0;overflow-wrap:anywhere}
-.socialMemberAction{display:flex;flex-direction:column;align-items:flex-end;gap:4px;max-width:100%;min-width:0;width:auto}
-.socialVibeAction{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:6px 10px;max-width:100%}
+.socialMemberAction{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;max-width:100%;min-width:0;width:auto}
+.socialVibeAction{display:flex;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:6px 10px;max-width:100%}
 .socialMemberAction .ctaPrompt{flex:0 1 auto;font-size:clamp(1.1rem,2.2vw,1.5rem);text-align:left}
 .socialMemberAction .button{flex:none;width:auto;max-width:100%;min-height:44px;padding:9px 13px;font-size:.8rem;white-space:normal}
-.socialMemberAction .friendShareButton{font-size:.75rem;background:transparent;border:1px solid #c6d8d1;padding:8px 12px}
+.connectionsHeading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px 8px;padding:0 14px 12px;margin-bottom:12px;border-bottom:1px solid #e6eeea}
+.connectionsHeading h2{font-size:1.25rem;margin:0;min-width:0;overflow-wrap:anywhere}
+.connectionsHeading .friendShareButton{flex:0 1 auto;width:auto;max-width:100%;min-height:44px;padding:8px 10px;font-size:.7rem;white-space:normal;background:transparent;border:1px solid #c6d8d1}
+.socialConnections .socialSectionTitle h3{font-size:1rem;letter-spacing:-.025em;margin:0}
+@media(max-width:900px){
+ .socialMemberHeader{grid-template-columns:minmax(0,0.8fr) minmax(0,1.2fr);gap:12px 16px}
+ .socialMemberHeader>.earnedPieces{grid-column:1 / -1}
+}
 @media(max-width:700px){
- .socialMemberIdentity{flex-basis:200px}
- .socialMemberAction{align-items:flex-start}
- .socialVibeAction{justify-content:flex-start;gap:6px 8px}
+ .socialMemberHeader{padding:12px 0}
+ .socialVibeAction{gap:6px 8px}
  .socialMemberAction .button{padding:8px 10px;font-size:.72rem}
- .socialMemberAction .friendShareButton{font-size:.72rem}
+ .connectionsHeading{padding:0 12px 9px;margin-bottom:10px}
+}
+@media(max-width:520px){
+ .socialMemberHeader{grid-template-columns:minmax(0,1fr);gap:10px}
 }
 
 /* Optional discovery games: separate from chat and private until both opt in. */
@@ -285,12 +294,23 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .discoveryGameList li>div{min-width:0}.discoveryGameList b,.discoveryGameList small{display:block;overflow-wrap:anywhere}
 .discoveryGameList small{line-height:1.45;font-size:.76rem;margin-top:5px}
 .discoveryGameList .discoveryButton{flex:0 0 auto}
-.earnedPieces{margin:22px 0;padding:22px;border:1px solid #d9e2de;border-radius:18px;background:#fff}
+.earnedPieces{min-width:0;margin:0;padding:12px 14px;border:1px solid #d9e2de;border-radius:12px;background:#fff}
+.earnedPieces .discoveryHeading{align-items:center;flex-wrap:wrap;gap:4px 8px}
+.earnedPieces .discoveryHeading h2{font-size:1rem;line-height:1.3;margin:0}
+.earnedPiecesNote{font-size:.73rem;line-height:1.4;margin:4px 0 0}
+.earnedPieces .discoveryEmpty{font-size:.76rem;line-height:1.45;margin:8px 0 0}
+.earnedPieces .error{font-size:.76rem;margin:8px 0;overflow-wrap:anywhere}
+.earnedPieces .discoveryButton{font-size:.76rem;margin-top:8px}
 .discoveryPrivate{display:inline-block;color:#65348b;font-size:.73rem;font-weight:800;border:1px solid #d9cbe8;background:#f7f2fb;padding:6px 9px;border-radius:20px;white-space:nowrap}
-.earnedPieceGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:14px;margin-top:10px}
-.earnedPiece{border:1px solid #e1d9e8;background:linear-gradient(155deg,#fcf9fe,#f7fbf8);border-radius:14px;padding:18px;min-width:0;overflow-wrap:anywhere}
-.discoveryPieceMark{font-size:1.5rem;color:#8a61a8;display:block;margin-bottom:8px}
-.earnedPiece h3{font-size:1.04rem}.discoveryPieceHint{font-size:.78rem;border-top:1px solid #e4dfea;padding-top:12px;margin-bottom:0}
+.earnedPieceGrid{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px;margin-top:10px;max-height:180px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:3px}
+.earnedPiece{flex:1 1 125px;border:1px solid #e1d9e8;background:linear-gradient(155deg,#fcf9fe,#f7fbf8);border-radius:9px;min-width:0;overflow-wrap:anywhere}
+.earnedPiece:has(.earnedPieceResult[open]){flex-basis:100%}
+.discoveryPieceMark{font-size:1.1rem;color:#8a61a8;flex:none}
+.earnedPieceName{flex:1;min-width:0}
+.earnedPieceToggle{flex:none;transition:transform .15s}
+.earnedPieceResult[open] .earnedPieceToggle{transform:rotate(180deg)}
+.earnedPieceBody{padding:0 11px 10px}
+.discoveryPieceHint{font-size:.73rem;border-top:1px solid #e4dfea;padding-top:9px;margin-bottom:0}
 .discoverySummary{font-size:.95rem;color:#2e4850;line-height:1.6}
 .discoveryDimensions{margin:16px 0;display:grid;gap:12px;text-align:left}
 .discoveryDimensions>div{border-left:3px solid #c6b3d8;padding-left:11px}
@@ -335,7 +355,7 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
  .discoveryHeading{flex-wrap:wrap;gap:6px}
  .discoveryHeading>.discoveryButton{width:auto;margin-bottom:10px}
  .discoveryGameList li{flex-wrap:wrap;gap:10px}.discoveryGameList .discoveryButton{width:auto}
- .earnedPieces{padding:17px}.discoveryModal{padding:23px 16px}
+ .earnedPieces{padding:11px 12px}.discoveryModal{padding:23px 16px}
  .discoveryScale{gap:4px}.discoveryScale span{padding:8px 3px;font-size:.7rem;min-height:100px}
  .discoveryComparison{grid-template-columns:1fr}.discoveryFormActions{display:grid;grid-template-columns:1fr;width:100%}
  .discoveryModal>.discoveryButton{margin-right:0}.discoveryPicker .discoveryButton{width:100%}
@@ -343,5 +363,7 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .discoveryAbout{font-size:.8rem;margin:12px 0;color:#526962}
 .discoveryAbout summary{cursor:pointer;color:#71439c;font-weight:750;min-height:32px;padding:7px 0}
 .discoveryAbout p{font-size:.8rem}.discoveryAbout li{margin:8px 0;overflow-wrap:anywhere}
-.earnedPieceResult summary{cursor:pointer;font-size:.84rem;font-weight:750;color:#71439c;padding:9px 0;min-height:44px}
-.earnedPieceResult[open] summary{margin-bottom:6px}
+.earnedPieceResult summary{display:flex;align-items:center;gap:7px;cursor:pointer;list-style:none;font-size:.76rem;line-height:1.3;font-weight:750;color:#71439c;padding:9px;min-height:44px}
+.earnedPieceResult summary::-webkit-details-marker{display:none}
+.earnedPieceResult summary:focus-visible{outline:3px solid #71439c;outline-offset:1px;border-radius:8px}
+.earnedPieceResult[open] summary{margin-bottom:2px}

@@ -29,10 +29,23 @@ try{
  const emptyProbe=d.querySelector('.socialWorkspace').cloneNode(true);
  assert.equal(emptyProbe.querySelectorAll('.railEmpty').length,2);
  seed();d.body.append(emptyProbe);
+ const samplePieces=['Feel Loved','Closeness Reflection',longName+' Snapshot'].map((title,i)=>({moduleId:'layout-piece-'+i,version:1,title,result:{summary:'A private result',dimensions:[]}}));
+ w.eval(`mergeDiscoveryPieces(${JSON.stringify(samplePieces)});paintDiscovery()`);
+ const memberHeader=d.querySelector('#root .socialMemberHeader');
+ assert.deepEqual([...memberHeader.children].map(el=>el.className),['socialMemberIdentity','socialMemberAction','earnedPieces'],'desktop DOM order stays profile, Caught/action, collection');
+ assert.equal(d.querySelectorAll('#root #earnedPieces').length,1,'only one collection is rendered');
+ assert.equal(d.querySelectorAll('#root #earnedPiecesTitle').length,1);
+ const rootIds=[...d.querySelectorAll('#root [id]')].map(el=>el.id);assert.equal(new Set(rootIds).size,rootIds.length,'dashboard has no duplicate IDs');
+ assert.doesNotMatch(memberHeader.textContent,/Your first five are ready to share/);
+ assert.equal(memberHeader.querySelector('.friendShareButton'),null,'friend action no longer crowds the member header');
+ assert.equal(memberHeader.nextElementSibling.className,'socialWorkspace');
  // JSDOM has no viewport layout engine. Activate the matching media rules
  // explicitly so computed styles still catch mobile flex-axis regressions.
  const cssSource=d.createElement('style');cssSource.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(cssSource);
  const cssRules=[...cssSource.sheet.cssRules];cssSource.remove();
+ // JSDOM hard-codes summary display as list-item, so verify its authored
+ // flex layout through CSSOM and all other disclosure styles below.
+ assert.equal(cssRules.find(rule=>rule.selectorText==='.earnedPieceResult summary').style.display,'flex');
  const readyProbe=d.createElement('div');readyProbe.innerHTML=w.renderVibeReady();d.body.append(readyProbe);
  const cssAtWidth=(rules,width,containerWidth=width<=700?width-34:Math.max(280,(Math.min(width,1100)-50)*.35)-2,rootSize=16)=>rules.map(rule=>{
   if(rule.constructor.name==='CSSContainerRule'){
@@ -94,9 +107,27 @@ try{
   if(width>700){
    assert.equal(workspace.gridTemplateColumns,'minmax(280px,35%) minmax(0,1fr)',`${width}px: sidebar has room for names and the conversation takes only the remaining width`);
   }else assert.equal(workspace.display,'block','phone dashboard keeps its existing single-column layout');
-  const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=actions.querySelector('.friendShareButton');
-  assert.ok(friendButton,'friend invitation remains a dashboard action');
+  const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=d.querySelector('#root .connectionsHeading .friendShareButton');
+  assert.ok(friendButton,'friend invitation sits beside the Connections heading');
+  assert.equal(friendButton.previousElementSibling.textContent,'Connections');
   assert.equal(friendButton.getAttribute('onclick'),'openFriendShare()');
+  assert.equal(w.getComputedStyle(friendButton).width,'auto','friend invite stays a small secondary action');
+  assert.ok(parseFloat(w.getComputedStyle(friendButton).minHeight)>=44);
+  const memberStyle=w.getComputedStyle(memberHeader),collection=memberHeader.querySelector('#earnedPieces');
+  assert.equal(memberStyle.display,'grid');
+  assert.equal(memberStyle.gridTemplateColumns,width>900?'minmax(0,0.75fr) minmax(0,1.1fr) minmax(0,1.65fr)':width>520?'minmax(0,0.8fr) minmax(0,1.2fr)':'minmax(0,1fr)',`${width}px: header uses three compact areas, then natural two/one-column stacking`);
+  if(width<=900)assert.equal(w.getComputedStyle(collection).gridColumn,'1 / -1','collection spans the tablet/mobile header');
+  assert.equal(parseFloat(w.getComputedStyle(collection).minWidth),0);
+  assert.equal(w.getComputedStyle(collection.querySelector('.earnedPieceGrid')).maxHeight,'180px','expanded results cannot make the header unbounded');
+  assert.equal(w.getComputedStyle(collection.querySelector('.earnedPieceGrid')).overflowY,'auto','long collections and results remain scrollable');
+  for(const piece of collection.querySelectorAll('.earnedPiece')){
+   assert.equal(w.getComputedStyle(piece).overflowWrap,'anywhere','long earned titles can wrap');
+   const summary=piece.querySelector('summary'),summaryStyle=w.getComputedStyle(summary);
+   assert.ok(parseFloat(summaryStyle.minHeight)>=44,'piece disclosure retains a touch target');
+   assert.notEqual(summaryStyle.position,'absolute');
+   assert.notEqual(summaryStyle.whiteSpace,'nowrap');
+   const details=piece.querySelector('details');details.open=true;assert.equal(w.getComputedStyle(piece).flexBasis,'100%','an expanded result gets the collection width');details.open=false;
+  }
   const readyFriend=readyProbe.querySelector('.vibeReady .friendShareButton');
   assert.ok(readyFriend,'friend invitation remains available after the first five');
   assert.equal(readyFriend.getAttribute('onclick'),'openFriendShare()');
@@ -104,10 +135,11 @@ try{
   assert.equal(actions.firstElementChild,vibeRow,'prompt and primary action share one row');
   assert.equal(vibeRow.firstElementChild,prompt);
   assert.equal(vibeButton.getAttribute('onclick'),'createMyVibe()');
-  assert.equal(vibeRow.nextElementSibling,friendButton,'friend action is directly below the primary row');
+  assert.equal(vibeRow.nextElementSibling,null,'only the primary invitation is in the compact action area');
   assert.equal(w.getComputedStyle(vibeRow).display,'flex');
   assert.equal(w.getComputedStyle(vibeRow).flexWrap,'wrap','tiny viewports may wrap rather than overflow');
   assert.equal(w.getComputedStyle(actions).flexDirection,'column');
+  assert.equal(w.getComputedStyle(actions).alignItems,'flex-start','Caught/action stays near the profile, aligned left');
   assert.equal(w.getComputedStyle(actions).gap,'4px','invitation choices stay grouped');
   assert.equal(w.getComputedStyle(d.querySelector('.socialMemberIdentity>div')).overflowWrap,'anywhere','long member names can wrap');
   for(const action of actions.querySelectorAll('.button')){

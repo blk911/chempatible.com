@@ -251,3 +251,40 @@ test('a pending global draft save re-enables the same game opened in another pai
   await start(f);f.w.closeInvite();f.w.selectChempat('beta');await flush();await open(f,'beta');await f.w.discoveryAction('start');f.w.closeInvite();f.w.selectChempat('alpha');await flush();await open(f);f.w.chooseDiscoveryAnswer('care-0',3);const hold=deferred();f.server.hold=hold;const pending=f.w.discoveryAction('save');f.w.closeInvite();f.w.selectChempat('beta');await flush();await open(f,'beta');const composer=f.d.querySelector('#message');assert.equal(f.d.querySelector('.discoveryQuestions fieldset').disabled,true);assert.equal(f.d.querySelector('.discoveryFormActions button').disabled,true);hold.resolve();await pending;assert.equal(f.d.querySelector('.discoveryQuestions fieldset').disabled,false);assert.equal(f.d.querySelector('.discoveryFormActions button').disabled,false);assert.equal(f.d.querySelector('input[name="discovery-0"]:checked').value,'3');assert.equal(f.d.querySelector('#message'),composer);assert.match(f.d.querySelector('.discoveryModal>.eyebrow').textContent,/Riley/);
  }finally{f.close()}
 });
+
+
+test('compact collection occupies only the header and has no checklist or sharing mutation',async()=>{
+ const f=await fixture({pieces:[piece,{...piece,moduleId:'closeness',title:'Closeness',version:1}]});try{
+  const header=f.d.querySelector('.socialMemberHeader'),collection=f.d.querySelector('#earnedPieces');
+  assert.equal(collection.parentElement,header);assert.equal(header.querySelector('.friendShareButton'),null);
+  assert.equal(f.d.querySelectorAll('#earnedPieces').length,1);assert.equal(f.d.querySelectorAll('#earnedPiecesTitle').length,1);
+  const ids=[...f.d.querySelectorAll('[id]')].map(el=>el.id);assert.equal(new Set(ids).size,ids.length);
+  assert.equal(collection.querySelectorAll('.earnedPiece').length,2);assert.equal(collection.querySelector('progress,input[type="checkbox"]'),null);
+  assert.doesNotMatch(header.textContent,/Your first five are ready to share|0 \/ 3|complete your profile/i);
+  const summaries=collection.querySelectorAll('.earnedPieceResult summary');assert.match(summaries[0].textContent,/Feel Loved/);summaries[0].click();await flush();assert.equal(collection.querySelector('.earnedPieceResult').open,true);
+  summaries[1].click();await flush();assert.equal(collection.querySelectorAll('.earnedPieceResult[open]').length,2);assert.equal(f.posts().length,0,'viewing earned pieces never offers or shares them');
+  f.d.querySelector('.connectionsHeading .friendShareButton').click();assert.equal(f.state().modal,'friendShare');f.w.closeInvite();
+  f.d.querySelector('#connectionGames .discoveryHeading button').click();await flush();assert.equal(f.state().modal,'discovery');assert.ok(f.d.querySelector('.discoveryPicker'));
+ }finally{f.close()}
+});
+
+test('pieces refresh retains disclosure, keyboard focus, scroll position and chat draft',async()=>{
+ const f=await fixture({pieces:[piece]});try{
+  let summary=f.d.querySelector('.earnedPieceResult summary');summary.click();await flush();summary.focus();f.d.querySelector('.earnedPieceGrid').scrollTop=37;
+  const composer=f.d.querySelector('#message');composer.value='Unsent while viewing a piece';
+  await f.w.loadDiscoveryPieces(true);
+  let details=f.d.querySelector('.earnedPieceResult');assert.equal(details.open,true);assert.equal(f.d.activeElement,details.querySelector('summary'));assert.equal(f.d.querySelector('.earnedPieceGrid').scrollTop,37);assert.equal(f.d.querySelector('#message'),composer);assert.equal(composer.value,'Unsent while viewing a piece');
+  details.querySelector('summary').click();await flush();await f.w.loadDiscovery('alpha',true);assert.equal(f.d.querySelector('.earnedPieceResult').open,false,'collapsed state survives pair polling');
+  assert.equal(f.d.querySelectorAll('#earnedPieces').length,1);assert.equal(f.posts().length,0);
+ }finally{f.close()}
+});
+
+test('empty and failed compact collections remain optional and friend-only pages retain their actions',async()=>{
+ const f=await fixture({rows:[row('friend',{kind:'friend',channel:'friend'})]});try{
+  const collection=f.d.querySelector('.socialMemberHeader #earnedPieces');assert.ok(collection);assert.match(collection.textContent,/optional connection games/);assert.equal(f.d.querySelector('#connectionGames'),null);assert.ok(f.d.querySelector('#message'));
+  f.server.failGet=true;await f.w.loadDiscoveryPieces(true);assert.match(collection.textContent,/could not be loaded/);assert.ok(collection.querySelector('button'));assert.ok(f.d.querySelector('#message'));
+  f.server.failGet=false;collection.querySelector('button').click();await flush();assert.doesNotMatch(collection.textContent,/could not be loaded/);assert.equal(f.posts().length,0);
+  f.w.eval('s.member.verified=false;s.account.verified=false;render()');assert.ok([...f.d.querySelectorAll('.socialMemberAction button')].find(button=>button.textContent==='CONFIRM MY EMAIL'),'email confirmation remains beside the primary action');
+  f.w.eval('s.member.answers=[];s.account.answers=[];render()');assert.ok(f.d.querySelector('.socialMemberHeader #earnedPieces'));f.d.querySelector('.socialVibeAction button').click();assert.ok(f.d.querySelector('.quickChoices'),'the existing first-five action still opens its questions');
+ }finally{f.close()}
+});

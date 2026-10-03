@@ -105,7 +105,7 @@ test('new friend registers with zero answers, explicitly connects, chats on both
   assert.match(recipient.d.querySelector('.connectionMenu').textContent,/Report/);
   recipient.w.createMyVibe();assert.ok(recipient.d.querySelector('.question'));for(let i=0;i<5;i++){recipient.w.eval('quickLockUntil=0');await recipient.w.chooseQuick(i%3,i)}
   assert.deepEqual(server.members.get('new-member').answers,[0,1,2,0,1]);assert.equal(server.connections[0].status,'chat');
-  assert.match(recipient.d.querySelector('.friendRail').textContent,/Alex/);assert.ok(recipient.d.querySelector('.socialMemberAction .friendShareButton'));
+  assert.match(recipient.d.querySelector('.friendRail').textContent,/Alex/);assert.ok(recipient.d.querySelector('.connectionsHeading .friendShareButton'));
  }finally{recipient.close();from.close()}
 });
 
