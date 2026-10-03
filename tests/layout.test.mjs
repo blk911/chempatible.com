@@ -100,23 +100,26 @@ try{
   const readyFriend=readyProbe.querySelector('.vibeReady .friendShareButton');
   assert.ok(readyFriend,'friend invitation remains available after the first five');
   assert.equal(readyFriend.getAttribute('onclick'),'openFriendShare()');
-  assert.equal(actions.firstElementChild,prompt,'prompt stays above the action buttons');
-  assert.equal(w.getComputedStyle(prompt).flexBasis,'100%');
+  const vibeRow=actions.querySelector('.socialVibeAction'),vibeButton=vibeRow.querySelector('.button');
+  assert.equal(actions.firstElementChild,vibeRow,'prompt and primary action share one row');
+  assert.equal(vibeRow.firstElementChild,prompt);
+  assert.equal(vibeButton.getAttribute('onclick'),'createMyVibe()');
+  assert.equal(vibeRow.nextElementSibling,friendButton,'friend action is directly below the primary row');
+  assert.equal(w.getComputedStyle(vibeRow).display,'flex');
+  assert.equal(w.getComputedStyle(vibeRow).flexWrap,'wrap','tiny viewports may wrap rather than overflow');
+  assert.equal(w.getComputedStyle(actions).flexDirection,'column');
+  assert.equal(w.getComputedStyle(actions).gap,'4px','invitation choices stay grouped');
+  assert.equal(w.getComputedStyle(d.querySelector('.socialMemberIdentity>div')).overflowWrap,'anywhere','long member names can wrap');
+  for(const action of actions.querySelectorAll('.button')){
+   const style=w.getComputedStyle(action);
+   assert.ok(parseFloat(style.minHeight)>=44,`${width}px: buttons retain a usable touch target`);
+   assert.equal(style.whiteSpace,'normal',`${width}px: action labels may wrap if needed`);
+   assert.notEqual(style.display,'none');
+  }
   if(width<=700){
-   assert.equal(w.getComputedStyle(actions).flexDirection,'row',`${width}px: button basis must control width, never height`);
-   assert.equal(w.getComputedStyle(actions).flexWrap,'wrap',`${width}px: narrow screens can wrap the buttons`);
-   for(const action of actions.querySelectorAll('.button')){
-    const style=w.getComputedStyle(action);
-    assert.equal(style.flexBasis,'155px',`${width}px: buttons retain their horizontal sizing`);
-    assert.ok(parseFloat(style.minHeight)>=44,`${width}px: buttons retain a usable touch target`);
-    assert.notEqual(style.display,'none');
-   }
    assert.equal(w.getComputedStyle(readyFriend).display,'block');
    assert.equal(w.getComputedStyle(readyFriend).width,'100%');
    assert.ok(parseFloat(w.getComputedStyle(readyFriend).minHeight)>=44);
-  }else{
-   assert.equal(w.getComputedStyle(actions).flexDirection,'column',`${width}px: desktop action layout stays unchanged`);
-   assert.equal(w.getComputedStyle(friendButton).flexBasis,'auto');
   }
   viewportCss.remove();
  }
