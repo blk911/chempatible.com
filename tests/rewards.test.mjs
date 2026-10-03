@@ -1,6 +1,9 @@
 // Real rewards SQL against disposable local PostgreSQL. This suite never uses
 // deployed databases, real accounts, mail providers, or external network calls.
 process.env.CHEMPAT_REVIEW_DATA = 'isolated-confirmed';
+// Run the complete same synthetic suite in trusted production mode on demand.
+// DATABASE_URL is always overwritten below and all SQL stays in PGlite.
+if(process.env.REWARD_TEST_MODE==='live')Object.assign(process.env,{CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'});
 process.env.DATABASE_URL = 'postgres://local-rewards-tests-only';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -185,15 +188,33 @@ await test('repeatable additive migrations enforce reward, revision, consent, an
   assert.deepEqual(await snapshot(),before,'rerunning the migration changes no saved state');
 });
 
-await test('deployment review and database configuration fail before private reads or writes',async()=>{
-  const oldDatabase=process.env.DATABASE_URL,oldReview=process.env.CHEMPAT_REVIEW_DATA;
+await test('deployment and database configuration fail before private reads or writes',async()=>{
+  const keys=['DATABASE_URL','CHEMPAT_REVIEW_DATA','CHEMPAT_RELEASE_MODE','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF'],saved=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
   const reads=queryCount,transactions=transactionCount;
   try{
     delete process.env.DATABASE_URL;status(await read(),503);status(await action('complete',2,'owner',{draftRevision:0}),503);
-    process.env.DATABASE_URL=oldDatabase;delete process.env.CHEMPAT_REVIEW_DATA;
+    process.env.DATABASE_URL=saved.DATABASE_URL;for(const key of keys.filter(key=>key!=='DATABASE_URL'))delete process.env[key];
     status(await read(),503);status(await action('complete',2,'owner',{draftRevision:0}),503);
     assert.equal(queryCount,reads);assert.equal(transactionCount,transactions);
-  }finally{process.env.DATABASE_URL=oldDatabase;process.env.CHEMPAT_REVIEW_DATA=oldReview}
+  }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
+});
+
+await test('approved production reaches member authentication; spoofed or incomplete deployment identity stays blocked',async()=>{
+ const keys=['CHEMPAT_RELEASE_MODE','CHEMPAT_REVIEW_DATA','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF'],names=[...keys,'DATABASE_URL'],saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ const live={CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'};
+ const configure=values=>{for(const key of keys)delete process.env[key];for(const [key,value] of Object.entries(values))if(value!==undefined)process.env[key]=value};
+ const reads=queryCount,writes=transactionCount;
+ const spoof={host:'chempatible.com','x-forwarded-host':'chempatible.com','x-vercel-project-id':live.VERCEL_PROJECT_ID,'x-vercel-env':'production','x-vercel-git-commit-ref':'live','x-chempat-release-mode':'live'};
+ try{
+  const blocked=[{},...Object.keys(live).map(key=>({...live,[key]:undefined})),{...live,VERCEL:'0'},{...live,VERCEL_PROJECT_ID:'prj_development'},{...live,VERCEL_ENV:'preview'},{...live,VERCEL_GIT_COMMIT_REF:'main'},{...live,CHEMPAT_RELEASE_MODE:'LIVE'},{...live,CHEMPAT_RELEASE_MODE:'review',CHEMPAT_REVIEW_DATA:'isolated-confirmed'}];
+  for(const config of blocked){configure(config);status(await call({as:null,query:'live=true&releaseMode=live',headers:spoof}),503);status(await call({as:null,body:{action:'list',releaseMode:'live'},headers:spoof}),503)}
+  configure(live);status(await call({as:null}),401);status(await call({as:null,body:{action:'list'}}),401);
+  configure({CHEMPAT_REVIEW_DATA:'isolated-confirmed'});status(await call({as:null}),401);
+  delete process.env.DATABASE_URL;status(await call(),503);
+  assert.equal(queryCount,reads,'blocked and signed-out probes never query private data');assert.equal(transactionCount,writes,'deployment probes never mutate data');
+  process.env.DATABASE_URL=saved.DATABASE_URL;configure(live);status(await call(),200);
+  status(await call({headers:{'x-chempat-member-id':'ffffffff-ffff-4fff-8fff-ffffffffffff'}}),403,'trusted production does not bypass account binding');
+ }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
 });
 
 await test('levels one and two use actual saved base answers and ignore client projections',async()=>{

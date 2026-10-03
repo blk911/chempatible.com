@@ -56,7 +56,7 @@ async function requestPhoto(sql,session,id,method){
  return new Response(method==='HEAD'?null:bytes,{headers:{...headers,'content-type':'image/jpeg','content-length':String(bytes.length)}});
 }
 async function handler(req){
- if(deploymentMode()!=='review')return reply({error:'Discovery requests are available only in isolated review.',reviewOnly:true},503);
+ if(deploymentMode()==='blocked')return reply({error:'Discovery requests are unavailable until this deployment is configured.',reviewOnly:true},503);
  if(!['GET','HEAD','POST'].includes(req.method))return reply({error:'Method not allowed.'},405);
  if(!process.env.DATABASE_URL)return reply({error:'Discovery requests are unavailable.'},503);
  const token=(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_member=([a-f0-9]{64})(?:;|$)/)?.[1];

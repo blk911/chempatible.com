@@ -1,6 +1,9 @@
 // Real directory SQL in disposable PostgreSQL (PGlite). Synthetic fixtures only;
 // never connects to an account, deployed database, mail, or storage provider.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
+// Run the complete same synthetic suite in trusted production mode on demand.
+// DATABASE_URL is always overwritten below and all SQL stays in PGlite.
+if(process.env.REWARD_TEST_MODE==='live')Object.assign(process.env,{CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'});
 process.env.DATABASE_URL='postgres://synthetic-reward-directory-only';
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -287,19 +290,25 @@ await test('transaction failures roll back without changing private membership, 
  failTransaction=true;status(await action('list'),503);assert.equal((await db.query('SELECT * FROM reward_directory_profile')).rows.length,0);
  await listAndPublish();status(await action('unlist'),200);assert.deepEqual((await db.query('SELECT * FROM members ORDER BY id')).rows,originalMembers);assert.deepEqual((await db.query('SELECT * FROM connection_state')).rows,originalConnections);assert.deepEqual((await db.query('SELECT * FROM member_reward_state ORDER BY member_id')).rows,originalRewards);assert.ok(pair);
 });
-await test('review gate denies blocked and fully trusted live deployments before any database access',async()=>{
- const names=['CHEMPAT_RELEASE_MODE','CHEMPAT_REVIEW_DATA','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF','DATABASE_URL'],saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
- const beforeQueries=queries,beforeTransactions=transactions;
+await test('approved production reaches member authentication; spoofed or incomplete deployment identity stays blocked',async()=>{
+ const keys=['CHEMPAT_RELEASE_MODE','CHEMPAT_REVIEW_DATA','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF'],names=[...keys,'DATABASE_URL'],saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ const live={CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'};
+ const configure=values=>{for(const key of keys)delete process.env[key];for(const [key,value] of Object.entries(values))if(value!==undefined)process.env[key]=value};
+ const reads=queries,writes=transactions;
+ const spoof={host:'chempatible.com','x-forwarded-host':'chempatible.com','x-vercel-project-id':live.VERCEL_PROJECT_ID,'x-vercel-env':'production','x-vercel-git-commit-ref':'live','x-chempat-release-mode':'live'};
  try{
-  delete process.env.CHEMPAT_REVIEW_DATA;status(await call(),503);status(await action('list'),503);
-  process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';process.env.CHEMPAT_RELEASE_MODE='live';process.env.VERCEL='1';process.env.VERCEL_PROJECT_ID='prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ';process.env.VERCEL_ENV='production';process.env.VERCEL_GIT_COMMIT_REF='live';
-  status(await call(),503);status(await directory(),503);status(await action('list'),503);status(await media(),503);status(await upload(),503);
-  delete process.env.VERCEL_PROJECT_ID;process.env.CHEMPAT_RELEASE_MODE='review';delete process.env.DATABASE_URL;status(await call(),503);
-  assert.equal(queries,beforeQueries);assert.equal(transactions,beforeTransactions);
- }finally{for(const [name,value] of Object.entries(saved)){if(value===undefined)delete process.env[name];else process.env[name]=value}}
+  const blocked=[{},...Object.keys(live).map(key=>({...live,[key]:undefined})),{...live,VERCEL:'0'},{...live,VERCEL_PROJECT_ID:'prj_development'},{...live,VERCEL_ENV:'preview'},{...live,VERCEL_GIT_COMMIT_REF:'main'},{...live,CHEMPAT_RELEASE_MODE:'LIVE'},{...live,CHEMPAT_RELEASE_MODE:'review',CHEMPAT_REVIEW_DATA:'isolated-confirmed'}];
+  for(const config of blocked){configure(config);status(await call({as:null,query:'live=true&releaseMode=live',headers:spoof}),503);status(await call({as:null,body:{action:'list',releaseMode:'live'},headers:spoof}),503)}
+  configure(live);status(await call({as:null}),401);status(await call({as:null,body:{action:'list'}}),401);status(await response({as:null,query:'photo='+ids.owner}),401);status(await response({as:null,query:'video='+ids.owner}),401);
+  configure({CHEMPAT_REVIEW_DATA:'isolated-confirmed'});status(await call({as:null}),401);
+  delete process.env.DATABASE_URL;status(await call(),503);
+  assert.equal(queries,reads,'blocked and signed-out probes never query private data');assert.equal(transactions,writes,'deployment probes never mutate data');
+  process.env.DATABASE_URL=saved.DATABASE_URL;configure(live);status(await call(),200);
+  status(await call({headers:{'x-chempat-member-id':'ffffffff-ffff-4fff-8fff-ffffffffffff'}}),403,'trusted production does not bypass account binding');
+ }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
 });
 await test('missing migration fails closed; request handlers do not initialize schema',async()=>{
  await db.exec('DROP TABLE reward_directory_profile');status(await call(),503);assert.equal((await db.query("SELECT to_regclass('reward_directory_profile') AS name")).rows[0].name,null);await db.exec(fs.readFileSync(new URL('migrations/20261003_reward_directory.sql',root),'utf8'));
 });
 await db.close();
-if(failures.length){console.error(`${failures.length} reward-directory checks failed (${passed} passed)`);process.exitCode=1}else console.log(`Reward directory: ${passed} privacy, consent, media, race, pagination and review-only checks passed`);
+if(failures.length){console.error(`${failures.length} reward-directory checks failed (${passed} passed)`);process.exitCode=1}else console.log(`Reward directory: ${passed} privacy, consent, media, race, pagination and trusted-deployment checks passed`);

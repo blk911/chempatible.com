@@ -1,4 +1,4 @@
-# Five-level reward game: development review
+# Five-level reward game
 
 ## What advances a level
 
@@ -17,7 +17,7 @@ remain available under their existing rules.
    note about that member, and their existing contact card shows the status.
    The other person does not need Level 3. Friends can see the status, while
    phone exchange remains scoped to romantic connections
-4. **Next five:** five original choices enable browsing an authenticated review
+4. **Next five:** five original choices enable browsing an authenticated member
    directory and a separate opt-in to show the member's current first name and
    profile photo. Nothing is listed merely by completing the round
 5. **Next five:** five original choices enable a private video upload and a
@@ -39,8 +39,8 @@ inside active connection games. They neither gate nor advance these levels.
   in the app; it cannot erase a number someone already saw or copied
 - Directory listing copies only the current first name and profile photo on
   explicit opt-in; private answers, scored results, email and phone are excluded
-- Directory and its photos/videos are review-only, authenticated and Level-4
-  gated. It is not a public internet search page
+- Directory and its photos/videos are authenticated and Level-4 gated in
+  both development and approved production. It is not a public internet search page
 - Directory cards offer a targeted in-app Vibe request. A named confirmation
   explains that the sender's name/photo are shown and both first-five sets are
   shared only if the recipient explicitly accepts. Pass/cancel do not connect
@@ -81,8 +81,15 @@ Additive migrations:
 
 No existing account is automatically listed and no stored phone is automatically
 shared. Test migrations on an isolated child of development, then apply to
-stable development before publishing code. Both new endpoints explicitly reject
-live deployment mode pending a separate production/privacy review.
+stable development before publishing code. Production promotion requires explicit
+approval, a saved source/deployment baseline, verified production database
+identity, and the additive migrations before the matching application release.
+Reward, directory and in-app request endpoints use the same fail-closed
+`deploymentMode()` identity gate as the existing application: verified isolated
+review or the specifically configured trusted live project, Production lane and
+`live` Git ref. Member authentication, account binding, standing, level checks,
+blocks, lifecycle restrictions and explicit consent are unchanged. See
+`RELEASE-MODE.md` for exact configuration and post-deployment verification.
 
 Rollback source baseline: e723c118445f35a2e8d90427ee5eab0e5d3725c9.
 Keep additive tables on code rollback. Do not delete reward data, contacts,

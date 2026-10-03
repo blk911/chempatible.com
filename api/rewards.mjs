@@ -47,7 +47,7 @@ async function readBody(req){
  return JSON.parse(Buffer.concat(chunks,length).toString('utf8'));
 }
 async function handler(req){
- if(deploymentMode()!=='review')return reply({error:'The reward game is available only in the development review app.',reviewOnly:true},503);
+ if(deploymentMode()==='blocked')return reply({error:'The reward game is unavailable until this deployment is configured.',reviewOnly:true},503);
  if(!process.env.DATABASE_URL)return reply({error:'Reward storage is unavailable.'},503);
  if(!['GET','POST'].includes(req.method))return reply({error:'Method not allowed.'},405);
  const token=(req.headers.get('cookie')||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('chempat_member='))?.slice(15);

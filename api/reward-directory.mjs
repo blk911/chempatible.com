@@ -78,9 +78,9 @@ async function media(sql,session,id,kind,method){
  return new Response(method==='HEAD'?null:bytes,{headers:{...headers,'content-type':video?'video/mp4':'image/jpeg','content-length':String(bytes.length),'accept-ranges':'none','content-disposition':`inline; filename="${video?'intro.mp4':'profile.jpg'}"`}});
 }
 async function handler(req){
- // This new reward must remain unavailable even on a correctly configured live
- // project until a separate production review authorizes it.
- if(deploymentMode()!=='review')return reply({error:'The member directory is available only in isolated review.',reviewOnly:true},503);
+ // Only verified isolated review or the explicitly configured trusted live
+ // deployment can reach member authorization. Request metadata grants no access.
+ if(deploymentMode()==='blocked')return reply({error:'The member directory is unavailable until this deployment is configured.',reviewOnly:true},503);
  if(!['GET','HEAD','POST'].includes(req.method))return reply({error:'Method not allowed.'},405);
  if(!process.env.DATABASE_URL)return reply({error:'The member directory is unavailable.'},503);
  const token=(req.headers.get('cookie')||'').match(/(?:^|;\s*)chempat_member=([a-f0-9]{64})(?:;|$)/)?.[1];

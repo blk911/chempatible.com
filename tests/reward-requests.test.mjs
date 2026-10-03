@@ -1,6 +1,9 @@
 // Synthetic PGlite integration only. No deployed database, real members, mail,
 // provider calls or remotely hosted media are used.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
+// Run the complete same synthetic suite in trusted production mode on demand.
+// DATABASE_URL is always overwritten below and all SQL stays in PGlite.
+if(process.env.REWARD_TEST_MODE==='live')Object.assign(process.env,{CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'});
 process.env.DATABASE_URL='postgres://synthetic-reward-requests-only';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -207,8 +210,21 @@ await test('photo MIME/HEAD checks and missing migrations fail closed without au
  await db.query('UPDATE reward_discovery_requests SET sender_photo=$1 WHERE id=$2',[photo(Buffer.from('<svg>not jpeg</svg>')),id]);status(await preview(id),404);
  await db.exec('DROP TABLE reward_discovery_requests');status(await call(),503);assert.equal((await db.query("SELECT to_regclass('reward_discovery_requests') AS name")).rows[0].name,null);await db.exec(fs.readFileSync(new URL('migrations/20261003_reward_requests.sql',root),'utf8'));
 });
-await test('trusted live and unconfigured deployments deny every operation before database access',async()=>{
- const names=['CHEMPAT_RELEASE_MODE','CHEMPAT_REVIEW_DATA','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF','DATABASE_URL'],saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));const before=queries,tx=transactions;
- try{delete process.env.CHEMPAT_REVIEW_DATA;status(await call(),503);status(await request(),503);Object.assign(process.env,{CHEMPAT_REVIEW_DATA:'isolated-confirmed',CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'});status(await call(),503);status(await request(),503);status(await preview(randomUUID()),503);delete process.env.VERCEL_PROJECT_ID;process.env.CHEMPAT_RELEASE_MODE='review';delete process.env.DATABASE_URL;status(await call(),503);assert.equal(queries,before);assert.equal(transactions,tx)}finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
+await test('approved production reaches member authentication; spoofed or incomplete deployment identity stays blocked',async()=>{
+ const keys=['CHEMPAT_RELEASE_MODE','CHEMPAT_REVIEW_DATA','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF'],names=[...keys,'DATABASE_URL'],saved=Object.fromEntries(names.map(name=>[name,process.env[name]]));
+ const live={CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'};
+ const configure=values=>{for(const key of keys)delete process.env[key];for(const [key,value] of Object.entries(values))if(value!==undefined)process.env[key]=value};
+ const reads=queries,writes=transactions;
+ const spoof={host:'chempatible.com','x-forwarded-host':'chempatible.com','x-vercel-project-id':live.VERCEL_PROJECT_ID,'x-vercel-env':'production','x-vercel-git-commit-ref':'live','x-chempat-release-mode':'live'};
+ try{
+  const blocked=[{},...Object.keys(live).map(key=>({...live,[key]:undefined})),{...live,VERCEL:'0'},{...live,VERCEL_PROJECT_ID:'prj_development'},{...live,VERCEL_ENV:'preview'},{...live,VERCEL_GIT_COMMIT_REF:'main'},{...live,CHEMPAT_RELEASE_MODE:'LIVE'},{...live,CHEMPAT_RELEASE_MODE:'review',CHEMPAT_REVIEW_DATA:'isolated-confirmed'}];
+  for(const config of blocked){configure(config);status(await call({as:null,query:'live=true&releaseMode=live',headers:spoof}),503);status(await call({as:null,body:{action:'list',releaseMode:'live'},headers:spoof}),503)}
+  configure(live);status(await call({as:null}),401);status(await call({as:null,body:{action:'list'}}),401);status(await response({as:null,query:'photo='+randomUUID()}),401);
+  configure({CHEMPAT_REVIEW_DATA:'isolated-confirmed'});status(await call({as:null}),401);
+  delete process.env.DATABASE_URL;status(await call(),503);
+  assert.equal(queries,reads,'blocked and signed-out probes never query private data');assert.equal(transactions,writes,'deployment probes never mutate data');
+  process.env.DATABASE_URL=saved.DATABASE_URL;configure(live);status(await call(),200);
+  status(await call({headers:{'x-chempat-member-id':'ffffffff-ffff-4fff-8fff-ffffffffffff'}}),403,'trusted production does not bypass account binding');
+ }finally{for(const [key,value] of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
 });
 await db.close();if(failures.length){console.error(`${failures.length} failed; ${passed} passed`);process.exitCode=1}else console.log(`Reward requests: ${passed} consent, privacy, inbox, idempotency and race groups passed`);

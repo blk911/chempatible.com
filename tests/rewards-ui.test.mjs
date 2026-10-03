@@ -187,3 +187,20 @@ test('directory settings are compact and collapsed controls never enter the moda
 test('polish keeps upload restrictions and consequential consent outside collapsed explanations',async()=>{
  const f=await fixture({level:5});try{f.w.openRewardDirectory('video');await flush();const limits=f.d.querySelector('.rewardMediaLimits');for(const term of ['15 seconds','2 MiB','MP4','H.264','720p','AAC','MOV','HEVC'])assert.ok(limits.textContent.includes(term));assert.equal(limits.closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.ok(f.d.querySelector('.rewardUpload.rewardPrimary input[type="file"]'));f.w.rewardScreen('directory');f.w.reviewRewardDirectory('list');assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardPrimary').getAttribute('onclick'),'rewardDirectoryAction()');f.w.closeInvite();f.w.openRewardPhone(alpha);await flush();f.d.querySelector('#rewardPhone').value='+15552223333';f.w.reviewRewardPhone();assert.equal(f.d.querySelector('.rewardConsent').closest('details'),null);assert.match(f.d.querySelector('.rewardConsent').textContent,/Morgan/);assert.match(f.d.querySelector('.rewardConsent').textContent,/save or contact you/);assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1)}finally{f.close()}
 });
+
+
+test('member discovery copy accurately names the authenticated audience without weakening consent',async()=>{
+ assert.doesNotMatch(source,/review directory|eligible review members/);
+ const f=await fixture({level:5});try{
+  f.w.openRewardDirectory();await flush();f.w.reviewRewardDirectory('list');
+  const consent=f.d.querySelector('.rewardConsent').textContent;assert.match(consent,/member directory/);assert.match(consent,/Signed-in members who have unlocked Level 4/);assert.match(consent,/private answers, phone, email, and chats are not listed/);
+  assert.equal(f.server.listed,false,'opening consent never opts in');await f.w.rewardDirectoryAction();assert.match(f.d.querySelector('.rewardModal').textContent,/signed-in eligible members/);
+  f.w.reviewRewardDirectory('publishVideo');assert.match(f.d.querySelector('.rewardConsent').textContent,/member directory/);assert.match(f.d.querySelector('.rewardConsent').textContent,/They may record what they can see/);assert.equal(f.server.published,false);
+ }finally{f.close()}
+ const privacy=fs.readFileSync(new URL('../privacy.html',import.meta.url),'utf8');
+ assert.doesNotMatch(privacy,/review member directory|signed-in review members|development reward game|We don’t ask for phone numbers/);
+ assert.match(privacy,/phone number only if you choose an optional, connection-specific phone exchange/);
+ assert.match(privacy,/first-five sets are shared only when the recipient accepts/);
+ assert.match(privacy,/Accepting does not share contact details or open Private Chat/);
+ assert.match(privacy,/signed-in, verified members in good standing who have unlocked Level 4/);
+});
