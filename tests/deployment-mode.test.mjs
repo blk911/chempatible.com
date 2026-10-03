@@ -162,9 +162,15 @@ for(const page of ['privacy.html','terms.html','admin-login.html','admin/index.h
 
 // Keep headers dynamic and ensure the runtime packaging includes every addition.
 const vercel=JSON.parse(fs.readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
-assert.equal(vercel.headers.flatMap(rule=>rule.headers).some(header=>header.key.toLowerCase()==='x-robots-tag'),false);
 const allowlist=fs.readFileSync(new URL('../.vercelignore',import.meta.url),'utf8').split('\n');
-for(const path of ['api/_deployment.mjs','api/config.mjs','api/friend.mjs','friend.html','deployment.js'])assert.ok(allowlist.includes('!/'+path));
+if(vercel.builds){
+ assert.ok(vercel.builds.length>0&&vercel.builds.every(entry=>entry.use==='@vercel/static'&&entry.src.startsWith('wild-hub/')),'Wild Hub branch deploys only explicit static assets');
+ assert.ok(vercel.headers.flatMap(rule=>rule.headers).some(header=>header.key==='X-Robots-Tag'&&header.value.includes('noindex')));
+ for(const path of ['api/_deployment.mjs','api/config.mjs','api/friend.mjs','friend.html','deployment.js','middleware.js'])assert.ok(!allowlist.includes('!/'+path),'no legacy runtime in static preview');
+}else{
+ assert.equal(vercel.headers.flatMap(rule=>rule.headers).some(header=>header.key.toLowerCase()==='x-robots-tag'),false);
+ for(const path of ['api/_deployment.mjs','api/config.mjs','api/friend.mjs','friend.html','deployment.js'])assert.ok(allowlist.includes('!/'+path));
+}
 console.log(`Deployment mode: ${combinations} combinations; fail-closed APIs, exact dev mail, live mail, robots, cold/delayed notice states, neutral failures, config privacy, and admin auth passed`);
 
 const friendPage=fs.readFileSync(new URL('../friend.html',import.meta.url),'utf8');

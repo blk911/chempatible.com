@@ -6,7 +6,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         },
         {
           "key": "X-Content-Type-Options",
@@ -22,9 +22,73 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self), microphone=(), geolocation=(), payment=()"
+          "value": "camera=(), microphone=(), geolocation=(), payment=()"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow, noarchive"
         }
       ]
+    }
+  ],
+  "builds": [
+    {
+      "src": "wild-hub/index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/wild-hub.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/wild-hub.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/robots.txt",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/mark.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/maya.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/alex.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/sam.svg",
+      "use": "@vercel/static"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/wild-hub/index.html"
+    },
+    {
+      "source": "/wild-hub",
+      "destination": "/wild-hub/index.html"
+    },
+    {
+      "source": "/assets/:path*",
+      "destination": "/wild-hub/assets/:path*"
+    },
+    {
+      "source": "/wild-hub.css",
+      "destination": "/wild-hub/wild-hub.css"
+    },
+    {
+      "source": "/wild-hub.js",
+      "destination": "/wild-hub/wild-hub.js"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/wild-hub/robots.txt"
     }
   ]
 }

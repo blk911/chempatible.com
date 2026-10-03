@@ -11,7 +11,7 @@ for(const file of ['friend.html','privacy.html','terms.html','admin-login.html',
 assert.match(read('terms.html'),/These Terms are an agreement between you and Chem-patible/,'legal counterparty preserved');assert.match(read('privacy.html'),/This policy explains how Chem-patible/,'existing operator preserved');
 for(const file of ['privacy.html','terms.html'])assert.match(read(file),/mailto:hello@chempatible\.com/,'real support address preserved');
 for(const file of ['index.html','friend.html']){assert.match(read(file),/https:\/\/chempatible\.com\/duh-wild-og\.png/,'branded social image on unchanged domain');assert.match(read(file),/\/duh-wild-icon\.png/);}
-const allowlist=read('.vercelignore');for(const file of ['duh-wild-og.png','duh-wild-icon.png','duh-wild-apple.png']){assert.ok(allowlist.split('\n').includes('!/'+file));const bytes=fs.readFileSync(new URL('../'+file,import.meta.url));assert.equal(bytes.subarray(1,4).toString(),'PNG');}
+const allowlist=read('.vercelignore');for(const file of ['duh-wild-og.png','duh-wild-icon.png','duh-wild-apple.png']){assert.equal(allowlist.split('\n').includes('!/'+file),!JSON.parse(read('vercel.json')).builds,'legacy assets are excluded only in the static Wild Hub preview');const bytes=fs.readFileSync(new URL('../'+file,import.meta.url));assert.equal(bytes.subarray(1,4).toString(),'PNG');}
 for(const old of ['brand-logo.png','og-image.png','favicon.png','apple-touch-icon.png'])assert.ok(!allowlist.split('\n').includes('!/'+old),'obsolete brand bitmap stays out of deployment');
 // Verify the public copy sits immediately above working entry controls and stays
 // scoped to the public opening when sign-in, verification, and photo steps render.
