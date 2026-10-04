@@ -4,13 +4,15 @@ Branch-only design concept based on the existing Duh Wild source at 26232b5. Do 
 
 ## Review
 
-Open the deployed preview root, or serve `wild-hub/` locally. The landing page links to a fictional public host, introduction form, host Approve/Pass controls, an invitation-email preview, and the sample member view. Use “Fill with sample details” and acknowledge the demo, then switch to Host view to approve your request. All changes are in memory and reset on refresh. Monthly/annual membership and one-time contributions are visual choices only, with illustrative amounts and no payments.
+Open the deployed preview root, or serve `wild-hub/` locally. The landing page links to a fictional public host, introduction form, host Approve/Pass controls, an invitation-email preview, and the sample member view. Use “Use sample details”, acknowledge the displayed original registration terms, enter demo code `246810`, choose the simulated picture, then add a separate introduction. Switch to Host view to approve the request. The returning-member Sign in path is also simulated; no real code or account is created. All changes are in memory and reset on refresh. Monthly/annual membership and one-time contributions are visual choices only, with illustrative amounts and no payments.
 
-No live API, database, account, email, upload, analytics or payment integration exists in this prototype. There is no real authentication or membership security. Fictional illustrated portraits are included, with no external images or fonts.
+No live API, database, account, email, upload, analytics or payment integration exists in this prototype. There is no real authentication or membership security. The revised design uses an original generated studio photograph and monochrome demo monograms, with no real-person photographs, external images or fonts. The original Duh Wild registration field order and returning-member sign-in sequence are retained; original Terms/Privacy links are preserved, with an explicit non-binding preview disclosure.
+
+The demo controls advance through explicit local button/Enter actions, so they do not depend on native form submission in an embedded file viewer. Real email domains are rejected with a focused message above Continue; choose “Use sample details” or a reserved example.com address. No submission permission or network connection is needed for this walkthrough.
 
 ## Deployment boundary
 
-Vercel `builds` explicitly includes eight static assets only; no function or middleware builder is selected. Root rewrites serve these assets. CSP rejects all connections and form submissions. The preview is noindex and robots-disallowed. No environment variables are embedded, read, or required. `.vercelignore` also excludes the original application runtime. Existing source files remain unchanged for future reuse.
+Vercel `builds` explicitly includes six static assets only; no function or middleware builder is selected. Root rewrites serve these assets. CSP rejects all connections and form submissions. The preview is noindex and robots-disallowed. No environment variables are embedded, read, or required. `.vercelignore` also excludes the original application runtime. Existing source files remain unchanged for future reuse.
 
 Vercel documents that an explicit `builds` list includes only the outputs of those builders: https://vercel.com/docs/project-configuration/vercel-json#builds
 

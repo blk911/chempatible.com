@@ -53,15 +53,7 @@
       "use": "@vercel/static"
     },
     {
-      "src": "wild-hub/assets/maya.svg",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "wild-hub/assets/alex.svg",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "wild-hub/assets/sam.svg",
+      "src": "wild-hub/assets/editorial.jpg",
       "use": "@vercel/static"
     }
   ],
