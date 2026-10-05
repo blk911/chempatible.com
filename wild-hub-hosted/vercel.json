@@ -1,0 +1,103 @@
+{
+  "version": 2,
+  "cleanUrls": false,
+  "builds": [
+    {
+      "src": "api/wildhub.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/wildhub-qr.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/wildhub-config.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/wildhub-billing.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/wildhub-webhook.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/wildhub-jobs.mjs",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "wild-hub-app/index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub-app/app.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub-app/app.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/wild-hub.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/mark.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/editorial.jpg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "robots.txt",
+      "use": "@vercel/static"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "cache-control",
+          "value": "private, no-store"
+        },
+        {
+          "key": "x-content-type-options",
+          "value": "nosniff"
+        },
+        {
+          "key": "x-frame-options",
+          "value": "DENY"
+        },
+        {
+          "key": "x-robots-tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "referrer-policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "cross-origin-resource-policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "permissions-policy",
+          "value": "camera=(self), microphone=(), geolocation=(), payment=()"
+        },
+        {
+          "key": "content-security-policy",
+          "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/wild-hub-app/index.html"
+    }
+  ]
+}
