@@ -96,6 +96,30 @@
   ],
   "rewrites": [
     {
+      "source": "/api/wildhub",
+      "destination": "/api/wildhub.mjs"
+    },
+    {
+      "source": "/api/wildhub-qr",
+      "destination": "/api/wildhub-qr.mjs"
+    },
+    {
+      "source": "/api/wildhub-config",
+      "destination": "/api/wildhub-config.mjs"
+    },
+    {
+      "source": "/api/wildhub-billing",
+      "destination": "/api/wildhub-billing.mjs"
+    },
+    {
+      "source": "/api/wildhub-webhook",
+      "destination": "/api/wildhub-webhook.mjs"
+    },
+    {
+      "source": "/api/wildhub-jobs",
+      "destination": "/api/wildhub-jobs.mjs"
+    },
+    {
       "source": "/",
       "destination": "/wild-hub-app/index.html"
     }
