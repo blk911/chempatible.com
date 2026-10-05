@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "files": {
+    "server/_wildhub-service.mjs": {
+      "source": "api/_wildhub-service.mjs",
+      "sha256": "0d98682d8414ddcda5db7f7396f5f48cc3143e3ed2ccb483653614aa09486a1d"
+    },
+    "server/_wildhub-images.mjs": {
+      "source": "api/_wildhub-images.mjs",
+      "sha256": "4cb6e5dd5a84cad6aa47d109da77dcd2f122e04470ab1bbd35a0213beb448517"
+    },
+    "server/_wildhub-adapters.mjs": {
+      "source": "api/_wildhub-adapters.mjs",
+      "sha256": "e4d984c0b520ffd89d6e3fc8a88debf2057dc5b2625098e78fff57ea3b8d48ec"
+    },
+    "server/_wildhub-notifications.mjs": {
+      "source": "api/_wildhub-notifications.mjs",
+      "sha256": "212d60adeb378f7e66f9460297a9d79098aa030401361447dfb1247c0d90a2bb"
+    },
+    "server/_wildhub-billing.mjs": {
+      "source": "api/_wildhub-billing.mjs",
+      "sha256": "b71b5284d066108ffc374e461128d4d304aa8fa1357559cf114997552461055f"
+    },
+    "server/_wildhub-stripe.mjs": {
+      "source": "api/_wildhub-stripe.mjs",
+      "sha256": "d62d6fb542b38fd2d993e825d7298be16f39dfff2fca94c9bebee905241be97c"
+    },
+    "server/_wildhub-qr.mjs": {
+      "source": "api/_wildhub-qr.mjs",
+      "sha256": "237e9ae190a21d3bdde3b622ca66d361356b3a6543293b4d07613b0ee9086aac"
+    },
+    "server/_wildhub-hosted.mjs": {
+      "source": "api/_wildhub-hosted.mjs",
+      "sha256": "3ec26672c82f821ad2c97cfc147740630b091a7ca50b57ea31f44ed7add3929e"
+    },
+    "server/_wildhub-runtime.mjs": {
+      "source": "api/_wildhub-runtime.mjs",
+      "sha256": "d192a4f81d200dd11cedeb79b94bd18633094cd5da7d6100f1afb0e3cd0fc045"
+    },
+    "wild-hub-app/index.html": {
+      "source": "wild-hub-app/index.html",
+      "sha256": "bf96a7daae2aa21212076838e14277613f3c611e1e42c5372110a1fe2b369cb1"
+    },
+    "wild-hub-app/app.js": {
+      "source": "wild-hub-app/app.js",
+      "sha256": "8695ce67bce879015f7f6ea35d6ba9d430e910640f41cfb1f0a59b26fecbe7f4"
+    },
+    "wild-hub-app/app.css": {
+      "source": "wild-hub-app/app.css",
+      "sha256": "e0f2b8835a8e21f5a81f62578e048703326aebea06abc072fed0cba08d603402"
+    },
+    "wild-hub/wild-hub.css": {
+      "source": "wild-hub/wild-hub.css",
+      "sha256": "743f1ffe0b1cf9ab666b5833335d0ebc7c108f378a34ce456b3befac420ea438"
+    },
+    "wild-hub/assets/mark.svg": {
+      "source": "wild-hub/assets/mark.svg",
+      "sha256": "4ffeba8d9014119ff96eb92124b4c67dc0d9aa10111f9a9a0ae60422537d75a0"
+    },
+    "wild-hub/assets/editorial.jpg": {
+      "source": "wild-hub/assets/editorial.jpg",
+      "sha256": "4a2b9c66619473bba68af3754057dab61ffe4fe673d2dc494aa4c6c5fccddadf"
+    }
+  }
+}
