@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="theme-color" content="#12313c">
+  <meta name="description" content="An unofficial Wild Hub design study for Lauren Landers. Editorial samples and illustrative sailing artwork, not an official community.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Lauren Landers · An unofficial Wild Hub concept</title>
+  <link rel="stylesheet" href="./concept.css">
+  <script src="./concept.js" defer></script>
+</head>
+<body class="theme-ocean layout-grid">
+  <a class="skip-link" href="#posts">Skip to the journal</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/#home" aria-label="Wild Hub home">wild hub<span aria-hidden="true">.</span></a>
+      <span class="concept-label"><span class="concept-dot" aria-hidden="true"></span> Unofficial concept</span>
+      <button class="button button-quiet edit-preview" id="edit-preview" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg><span>Customize preview</span></button>
+    </div>
+  </header>
+  <div class="concept-notice" role="note">Unofficial Wild Hub concept for Lauren Landers. Sample editorial copy by Wild Hub; not authored or endorsed by Lauren.</div>
+
+  <main>
+    <section class="hero" aria-labelledby="hub-title">
+      <img class="hero-image" src="./assets/sailing-hero.webp" alt="Illustrative sailing artwork showing open water and a sailboat; not Lauren’s footage" width="1536" height="1024" fetchpriority="high">
+      <div class="hero-shade"></div>
+      <div class="hero-content">
+        <p class="eyebrow light">A sailing community concept</p>
+        <h1 id="hub-title">Life afloat,<br><em>a little closer.</em></h1>
+        <p class="hero-intro" id="hub-intro">An idea for a smaller circle around the big blue. Stories from the water, the everyday in between, and room to connect.</p>
+        <a class="button button-light" href="#posts">Explore the journal <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="hero-foot"><span>Lauren Landers <span class="hero-divider" aria-hidden="true">/</span> Wild Hub design study</span><span class="art-credit">AI-generated illustrative sailing artwork; not Lauren’s footage</span></div>
+      <svg class="compass" viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="43"/><circle cx="60" cy="60" r="48"/><path d="M60 5v17m0 76v17M5 60h17m76 0h17M60 25 66 54 95 60 66 66 60 95 54 66 25 60 54 54zM26 26l14 14m40 40 14 14M26 94l14-14m40-40 14-14"/></svg>
+    </section>
+
+    <div class="page-shell">
+      <section class="identity-strip" aria-label="About this concept">
+        <div class="identity">
+          <span class="sailing-mark" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 5v29H7L24 5Zm5 9 11 20H29V14ZM7 38h34l-6 6H14l-7-6Z"/></svg></span>
+          <div><p class="eyebrow">The idea, at a glance</p><h2>Lauren Landers</h2><p>Sailing stories. Life aboard. A shared horizon.</p></div>
+        </div>
+        <button class="button button-primary" type="button" data-open-join>Explore joining <span aria-hidden="true">↗</span></button>
+      </section>
+
+      <div class="community-nav">
+        <nav class="section-nav" aria-label="Community sections">
+          <a href="#posts" aria-current="location">Journal <span>10</span></a>
+          <a href="#crew">The crew</a>
+          <a href="#about">About</a>
+        </nav>
+        <div class="view-controls"><span id="view-label">Sample display only</span><div class="segmented" role="group" aria-labelledby="view-label"><button type="button" data-view="visitor" aria-pressed="true">Visitor</button><button type="button" data-view="member" aria-pressed="false">Member</button></div></div>
+      </div>
+      <p class="view-notice" id="view-notice" aria-live="polite">Visitor sample · All ten editorial examples are available to explore.</p>
+
+      <div class="content-layout">
+        <section class="journal" id="posts" aria-labelledby="posts-title">
+          <div class="section-heading"><div><p class="eyebrow">A window into life afloat</p><h2 id="posts-title">From the journal</h2></div><span class="sample-count" id="result-count" aria-live="polite">10 editorial samples</span></div>
+          <div class="filter-row" role="group" aria-label="Filter editorial samples">
+            <button type="button" data-filter="all" aria-pressed="true">All <span>10</span></button>
+            <button type="button" data-filter="at-sea" aria-pressed="false">At sea <span>4</span></button>
+            <button type="button" data-filter="boat-life" aria-pressed="false">Boat life <span>4</span></button>
+            <button type="button" data-filter="community" aria-pressed="false">Community <span>2</span></button>
+          </div>
+          <div class="member-sample" id="member-sample" hidden><span class="member-symbol" aria-hidden="true">↗</span><div><strong>A seat in the circle</strong><p>A sample member welcome. This display does not create membership or change access.</p></div><button class="text-button" type="button" data-open-join>See how joining works <span aria-hidden="true">→</span></button></div>
+          <div class="post-grid" id="post-grid"></div>
+          <noscript><p class="no-script">Enable JavaScript to explore the ten editorial samples and the interactive preview. This is an unofficial design study; nothing is submitted or stored.</p></noscript>
+          <p class="journal-note"><span aria-hidden="true">↗</span> Ten starting points for a community, each clearly marked as a sample. Public videos open on YouTube.</p>
+        </section>
+
+        <aside class="sidebar" aria-label="Community concept details">
+          <section class="welcome-panel">
+            <p class="eyebrow">The spirit of the space</p>
+            <h2>Less noise.<br>More connection.</h2>
+            <p>A concept for gathering around the journeys, the boat jobs, and the little things that make life on the water its own kind of adventure.</p>
+            <div class="panel-rule"></div>
+            <span class="tiny-label">Find the real stories</span>
+            <div class="social-links"><a href="https://www.youtube.com/@laurenlanders/featured" target="_blank" rel="noopener noreferrer">YouTube <span aria-hidden="true">↗</span></a><a href="https://instagram.com/laurenlanders" target="_blank" rel="noopener noreferrer">Instagram <span aria-hidden="true">↗</span></a></div>
+          </section>
+
+          <section class="crew-panel" id="crew" aria-labelledby="crew-title">
+            <div class="small-heading"><h2 id="crew-title">A place for the crew</h2><span class="outline-tag">Sample</span></div>
+            <p class="panel-description">An example of a member introduction.</p>
+            <div class="founder-row"><span class="initial-avatar" aria-hidden="true">SW</span><div><h3>Spencer Wendt</h3><span>Sample founder member</span></div></div>
+            <p class="disclosure">Illustrative profile only; this does not represent actual membership or an existing connection.</p>
+            <button class="text-button" type="button" data-open-join>How introductions could work <span aria-hidden="true">↗</span></button>
+          </section>
+
+          <section class="membership-panel">
+            <span class="outline-tag">Illustrative · inactive</span>
+            <h2>Support the journey</h2>
+            <p>A possible place for creator-led membership, with the details chosen by the creator.</p>
+            <button class="text-button" id="membership-info" type="button">About this idea <span aria-hidden="true">↗</span></button>
+            <p class="disclosure">No membership offer or payments are active.</p>
+          </section>
+        </aside>
+      </div>
+
+      <section class="about-section" id="about" aria-labelledby="about-title">
+        <div><p class="eyebrow">Room for an idea</p><h2 id="about-title">A community, imagined.</h2></div>
+        <div class="about-copy"><p>A Wild Hub design study for Lauren Landers. Sample content, not an official community. The editorial ideas here are written by Wild Hub and are not authored, approved, or endorsed by Lauren.</p><p>The two public video links are attributed to Lauren Landers Sailing. The sailing artwork is AI-generated and illustrative. It does not depict her footage, vessel, or a claimed location.</p><div class="source-links"><span>Public sources</span><a href="https://laurenlanders.com/" target="_blank" rel="noopener noreferrer">Lauren’s website ↗</a><a href="https://linktr.ee/laurenlanders" target="_blank" rel="noopener noreferrer">Official links ↗</a><a href="https://www.youtube.com/@laurenlanders/featured" target="_blank" rel="noopener noreferrer">YouTube ↗</a></div></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer"><div class="footer-inner"><a class="brand" href="/#home">wild hub<span aria-hidden="true">.</span></a><p>Your circle. Your say-so.</p><a class="footer-back" href="/#home">Back to Wild Hub <span aria-hidden="true">↗</span></a></div><p class="footer-note">Unofficial concept · Preview edits stay on this page and reset when you refresh.</p></footer>
+
+  <dialog class="post-dialog" id="post-dialog" aria-labelledby="post-dialog-title">
+    <button class="dialog-close" type="button" data-close-dialog aria-label="Close post">×</button>
+    <div class="detail-art" id="detail-art"><img id="detail-image" src="./assets/sailing-hero.webp" alt="Illustrative sailing artwork; not Lauren’s footage" width="1536" height="1024"><span>AI-generated illustrative sailing artwork</span></div>
+    <div class="dialog-body"><p class="eyebrow" id="post-dialog-meta"></p><h2 id="post-dialog-title"></h2><p class="detail-caption" id="post-dialog-caption"></p><p class="detail-attribution" id="post-dialog-attribution"></p><a class="button button-primary" id="post-dialog-source" target="_blank" rel="noopener noreferrer" hidden>Watch the public video <span aria-hidden="true">↗</span></a><div class="detail-disclosure"><strong>Editorial sample</strong><p>Sample editorial copy by Wild Hub; not authored or endorsed by Lauren. This is a design example, not a published community post.</p></div></div>
+  </dialog>
+
+  <dialog class="editor-dialog" id="editor-dialog" aria-labelledby="editor-title">
+    <div class="dialog-header"><div><p class="eyebrow">Make the idea your own</p><h2 id="editor-title">Customize this preview</h2></div><button class="dialog-close" type="button" data-close-dialog aria-label="Close editor">×</button></div>
+    <p class="editor-note">Try a title, adjust a sample, or change the mood. Edits stay on this page and reset on refresh.</p>
+    <form id="editor-form">
+      <fieldset><legend>The introduction</legend><label for="edit-title">Community headline</label><input id="edit-title" name="title" type="text" maxlength="80" required><label for="edit-intro">Short introduction</label><textarea id="edit-intro" name="intro" rows="3" maxlength="240" required></textarea></fieldset>
+      <fieldset><legend>The look</legend><div class="theme-options" role="group" aria-label="Color theme"><label class="theme-option"><input type="radio" name="theme" value="ocean"><span class="color-dot ocean-dot"></span>Ocean</label><label class="theme-option"><input type="radio" name="theme" value="sand"><span class="color-dot sand-dot"></span>Sand</label><label class="theme-option"><input type="radio" name="theme" value="dusk"><span class="color-dot dusk-dot"></span>Dusk</label></div><label for="edit-layout">Journal layout</label><select id="edit-layout" name="layout"><option value="grid">Compact grid</option><option value="feed">Compact feed</option></select></fieldset>
+      <fieldset><legend>An editorial sample</legend><label for="edit-post-select">Choose a sample</label><select id="edit-post-select" name="post"></select><label for="edit-post-title">Sample title</label><input id="edit-post-title" type="text" maxlength="100" required><label for="edit-post-caption">Sample caption</label><textarea id="edit-post-caption" rows="4" maxlength="480" required></textarea><p class="field-note">Every example keeps its sample label. Public video links and attribution stay attached.</p></fieldset>
+      <div class="reset-confirm" id="reset-confirm" hidden><p><strong>Restore the original preview?</strong> This discards all edits and restores all ten samples, the Ocean theme, and the visitor display.</p><div><button class="button button-primary" type="button" id="confirm-reset">Restore original</button><button class="button button-quiet" type="button" id="cancel-reset">Keep editing</button></div></div>
+      <div class="editor-actions"><button class="text-button" id="reset-preview" type="button">Reset preview</button><div><button class="button button-quiet" type="button" data-close-dialog>Cancel</button><button class="button button-primary" type="submit">Apply to preview <span aria-hidden="true">↗</span></button></div></div>
+    </form>
+  </dialog>
+
+  <dialog class="info-dialog" id="join-dialog" aria-labelledby="join-title">
+    <button class="dialog-close" type="button" data-close-dialog aria-label="Close joining information">×</button>
+    <div class="dialog-body"><p class="eyebrow">A preview of joining</p><h2 id="join-title">A real person.<br>A thoughtful welcome.</h2><p>This concept does not accept requests or create accounts. Here’s the existing Wild Hub path a real community would use:</p><ol class="join-steps"><li><span>01</span><div><strong>Your name &amp; verified email</strong><p>Enter your name and verify access to your email address.</p></div></li><li><span>02</span><div><strong>Add your photo</strong><p>Give the host a face to go with your introduction.</p></div></li><li><span>03</span><div><strong>Request to join</strong><p>Send a request for the host to review.</p></div></li><li><span>04</span><div><strong>Host approval, then membership</strong><p>The host decides who joins. Trial and member access follow the community’s actual setup.</p></div></li></ol><label class="welcome-checkbox"><input type="checkbox" id="founder-welcome"><span>Include an optional founder welcome in this sample<small>Illustrative only. This does not connect you to Spencer or anyone else.</small></span></label><p class="welcome-status" id="welcome-status" aria-live="polite" hidden>A founder welcome is selected for this page preview only. Nothing has been requested or sent.</p><a class="button button-primary" href="/#home">Open Wild Hub <span aria-hidden="true">↗</span></a><p class="field-note">This opens Wild Hub’s real home; Lauren’s concept is not an active community.</p></div>
+  </dialog>
+
+  <dialog class="info-dialog" id="membership-dialog" aria-labelledby="membership-title"><button class="dialog-close" type="button" data-close-dialog aria-label="Close membership information">×</button><div class="dialog-body"><p class="eyebrow">An illustrative possibility</p><h2 id="membership-title">Creator-led.<br>On their terms.</h2><p>A future community could have a membership or a way to support the creator. The creator would decide the offer, access, pricing, and terms.</p><p class="detail-disclosure">This concept has no active offer, subscription, trial, checkout, or payment collection. No endorsement by Lauren is implied.</p><button class="button button-primary" type="button" data-close-dialog>Back to the concept</button></div></dialog>
+  <div class="toast" id="preview-status" role="status" aria-live="polite"></div>
+</body>
+</html>

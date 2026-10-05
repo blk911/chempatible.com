@@ -3,7 +3,7 @@
   "files": {
     "server/_wildhub-service.mjs": {
       "source": "api/_wildhub-service.mjs",
-      "sha256": "48167f769b6ce5748d44fbaf080905bc0bb9ab174d86e37bc646a2d34ab48bdc"
+      "sha256": "00da4a3e8477c0f8accbc35d6647f24d80e8bce456edee80ab849dde31cea836"
     },
     "server/_wildhub-images.mjs": {
       "source": "api/_wildhub-images.mjs",
@@ -51,11 +51,27 @@
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "69340e28254a3b3921bd309272ce83433f25f63d796df55fc6ca252c2a6cd6ee"
+      "sha256": "78dc43ef6424c1b0ab110b4d0119b69d1c74fa9334e975ea412840753d09bcdc"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "f7931185cb8820e533713d569c3f63b09c7f71506a26c2180a9113d3013bbb94"
+      "sha256": "067fdc8c056e5dc468720aa96a35859efdc240790b3721820f7c66bd10b07189"
+    },
+    "wild-hub-concepts/lauren/index.html": {
+      "source": "wild-hub-concepts/lauren/index.html",
+      "sha256": "9eba1b2900f32af4f61a52e9018421abde91817dc84575a0879795127e0d0836"
+    },
+    "wild-hub-concepts/lauren/concept.js": {
+      "source": "wild-hub-concepts/lauren/concept.js",
+      "sha256": "74daa863f6bca7f64cabc1692c49fa572ce4de43ae09c7db97460b471ccfe5d6"
+    },
+    "wild-hub-concepts/lauren/concept.css": {
+      "source": "wild-hub-concepts/lauren/concept.css",
+      "sha256": "aba96a243de0bf93882401a21d8d6580424f6ce646115b5a52af5da76938eb2a"
+    },
+    "wild-hub-concepts/lauren/assets/sailing-hero.webp": {
+      "source": "wild-hub-concepts/lauren/assets/sailing-hero.webp",
+      "sha256": "1875d57254b025346a6764b0ad5d3ddc5b30df0bfa3fa4c27c74b657699edbf4"
     },
     "wild-hub/wild-hub.css": {
       "source": "wild-hub/wild-hub.css",

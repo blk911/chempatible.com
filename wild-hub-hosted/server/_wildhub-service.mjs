@@ -6,7 +6,7 @@ export const WILD_HUB_LIMITS=Object.freeze({name:50,about:500,intro:280,caption:
 const BASE_HEADERS={'cache-control':'private, no-store','x-content-type-options':'nosniff','cross-origin-resource-policy':'same-origin','referrer-policy':'no-referrer','vary':'Cookie, Origin'};
 const READS=new Set(['me','hubs','public_hub','requests','memberships','posts','media','invite_preview','access_status','chat_messages','share_resolve','creator_summary','creator_people','creator_finance']);
 const WRITES=new Set(['auth_start','auth_verify','logout','profile_save','hub_save','request_join','request_withdraw','request_decide','membership_remove','leave','invite_create','invite_accept','post_create','post_delete','chat_send','share_create','membership_unblock','hub_photo_save']);
-const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed'],hub_save:['name','about','slug','published','publishConsent','preservePhoto','publishPhotoConsent'],hub_photo_save:['hubId','photoDataUrl','publishConsent'],membership_unblock:['hubId','userId','expectedRevision'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_create:['hubId','email'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
+const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed','publicLinks','publicLinksConsent'],hub_save:['name','about','slug','published','publishConsent','preservePhoto','publishPhotoConsent'],hub_photo_save:['hubId','photoDataUrl','publishConsent'],membership_unblock:['hubId','userId','expectedRevision'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_create:['hubId','email'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const rows=async(db,sql,params=[])=>{const result=await db.query(sql,params);return Array.isArray(result)?result:result.rows};
 const json=(value,status=200,headers={})=>Response.json({ok:true,...value},{status,headers:{...BASE_HEADERS,...headers}});
@@ -22,8 +22,38 @@ const profileComplete=user=>Boolean(user.name&&user.photo_id&&user.acknowledged_
 const userView=user=>({id:user.id,email:user.email,name:user.name,photoUrl:photoUrl(user.photo_id),verified:Boolean(user.verified_at),standing:user.standing,profileComplete:profileComplete(user)});
 const hubView=hub=>({id:hub.id,slug:hub.slug,name:hub.name,about:hub.about,published:hub.published,photoUrl:photoUrl(hub.public_photo_id)});
 const personView=user=>({id:user.id,name:user.name,photoUrl:photoUrl(user.photo_id)});
-const publicHubView=hub=>({...hubView(hub),host:{id:hub.owner_id,name:hub.public_host_name}});
+const publicHubView=hub=>({...hubView(hub),host:{id:hub.owner_id,name:hub.public_host_name},publicLinks:hub.public_links?publicLinks(hub.public_links):{}});
 const tokenValue=value=>{if(typeof value!=='string'||!/^[a-f0-9]{64}$/.test(value))notFound();return value};
+const PUBLIC_LINK_KEYS=['instagram','tiktok','youtube','website'];
+const PUBLIC_LINK_MAX=2048;
+const PUBLIC_LINK_HOSTS={instagram:['instagram.com','www.instagram.com'],tiktok:['tiktok.com','www.tiktok.com'],youtube:['youtube.com','www.youtube.com','m.youtube.com']};
+function publicLinks(value) {
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length>4||Object.keys(value).some(key=>!PUBLIC_LINK_KEYS.includes(key)))fail(400,'invalid_public_links','Use only Instagram, TikTok, YouTube and website links.');
+  const result={};
+  for(const key of PUBLIC_LINK_KEYS) {
+    if(!Object.hasOwn(value,key))continue;
+    const raw=value[key];
+    if(typeof raw!=='string'||raw.length>PUBLIC_LINK_MAX||/[\u0000-\u001f\u007f-\u009f]/u.test(raw))fail(400,'invalid_public_link',`${key}: enter a link of at most ${PUBLIC_LINK_MAX} characters without control characters.`);
+    const trimmed=raw.trim();if(!trimmed)continue;
+    let url;try{url=new URL(trimmed);if(/[\u0000-\u001f\u007f-\u009f]/u.test(decodeURIComponent(trimmed)))throw Error('control character')}catch{fail(400,'invalid_public_link',`${key}: enter a complete http:// or https:// link.`)}
+    if(!['https:','http:'].includes(url.protocol)||url.username||url.password||url.port||trimmed.includes('\\'))fail(400,'invalid_public_link',`${key}: use an http:// or https:// link without credentials, ports or control characters.`);
+    const host=url.hostname;
+    if(!/^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z][a-z0-9-]*[a-z0-9]$/i.test(host)||/\.(?:localhost|local|internal|lan|home|test|invalid)$/i.test(host))fail(400,'invalid_public_link',`${key}: use a public website address.`);
+    if(key!=='website') {
+      if(!PUBLIC_LINK_HOSTS[key].includes(host))fail(400,'invalid_public_link',`${key}: use the official ${key} website.`);
+      const path=key==='youtube'?decodeURIComponent(url.pathname):url.pathname;
+      const channel=key==='youtube'?path.match(/^(\/(?:@[^/\s%?#]{1,100}|channel\/[a-z0-9_-]{1,100}|(?:c|user)\/[a-z0-9._-]{1,100}))(?:\/(featured|videos|shorts|streams|playlists|community|about))?\/?$/iu):null;
+      const valid=key==='instagram'?/^\/[a-z0-9._]{1,30}\/?$/i.test(path)&&!/^\/(?:accounts|about|developer|explore|p|reel|reels|stories|direct)\/?$/i.test(path):key==='tiktok'?/^\/@[a-z0-9._]{1,24}\/?$/i.test(path):Boolean(channel);
+      if(!valid)fail(400,'invalid_public_link',`${key}: link to your profile or channel.`);
+      if(channel?.[2])url.pathname=channel[1];
+      // Social links identify profiles; tracking and redirect parameters are not needed.
+      url.search='';url.hash='';
+    }
+    if(url.href.length>PUBLIC_LINK_MAX)fail(400,'invalid_public_link',`${key}: the link is too long.`);
+    result[key]=url.href;
+  }
+  return result;
+}
 const sessionToken=req=>(req.headers.get('cookie')||'').match(/(?:^|;\s*)wh_session=([a-f0-9]{64})(?:;|$)/)?.[1]||null;
 
 async function boundedJson(req) {
@@ -155,6 +185,17 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
   async function savePhoto(tx,user,image,kind) {
     const id=randomUUID();await rows(tx,'INSERT INTO wh_media(id,owner_id,kind,bytes,width,height,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,user.id,kind,image.bytes,image.width,image.height,stamp()]);return id;
   }
+  async function publicLinksCapability(tx) {
+    // Catalog reads distinguish an unapplied migration from unexpected database
+    // failures. No undefined-column exception, startup DDL or broad catch fallback.
+    const found=(await rows(tx,`SELECT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_constraint c ON c.conrelid=a.attrelid WHERE a.attrelid='wh_users'::regclass AND a.attname='public_links' AND NOT a.attisdropped AND a.atttypid='jsonb'::regtype AND a.attnotnull AND c.conname='wh_users_public_links_valid' AND c.contype='c' AND c.convalidated) AS available`))[0];
+    if(typeof found?.available!=='boolean')throw Error('Invalid public links capability result');
+    return found.available;
+  }
+  async function profileLinksView(tx,user) {
+    const available=await publicLinksCapability(tx);
+    return {...userView(user),...(available?{publicLinks:publicLinks(user.public_links)}:{}),publicLinksSettings:{available,...(available?{}:{reason:'Public link settings are not available on this server yet.'})}};
+  }
   async function me(tx,user) {
     if(!user)return {user:null,hub:null,memberships:[],requests:[],inbox:{pendingRequests:0},limits:WILD_HUB_LIMITS};
     const own=(await rows(tx,'SELECT * FROM wh_hubs WHERE owner_id=$1',[user.id]))[0];
@@ -164,7 +205,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     const notices=await readWildHubNotifications(tx,requested.map(r=>r.id));
     const requests=requested.map(r=>({id:r.id,hubId:r.hub_id,slug:r.slug,hubName:r.hub_name,status:r.status,createdAt:date(r.created_at),decidedAt:r.decided_at?date(r.decided_at):null,notification:notices.get(r.id)||null}));
     const pending=(await rows(tx,`SELECT count(*)::int AS count FROM wh_requests r JOIN wh_hubs h ON h.id=r.hub_id JOIN wh_users applicant ON applicant.id=r.applicant_id WHERE h.owner_id=$1 AND r.status='pending' AND applicant.standing='active'`,[user.id]))[0].count;
-    return {user:userView(user),hub:own?hubView(own):null,memberships:projected,requests,inbox:{pendingRequests:pending},limits:WILD_HUB_LIMITS};
+    return {user:await profileLinksView(tx,user),hub:own?hubView(own):null,memberships:projected,requests,inbox:{pendingRequests:pending},limits:WILD_HUB_LIMITS};
   }
   function postView(row){return {id:row.id,caption:row.caption,photoUrl:photoUrl(row.photo_id),createdAt:date(row.created_at),author:{id:row.author_id,name:row.author_name}};}
 
@@ -244,23 +285,38 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       return json({peer:peer?{id:peer.id,name:peer.name}:null,messages:visible.reverse().map(messageView),nextCursor:more?Buffer.from(JSON.stringify({at:date(last.created_at),id:last.id})).toString('base64url'):null});
     }
     if(action==='hubs') {
-      const list=await rows(tx,`SELECT h.* FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL ORDER BY h.created_at DESC,h.id DESC LIMIT 50`);
+      const linksAvailable=await publicLinksCapability(tx);
+      const list=await rows(tx,`SELECT h.*${linksAvailable?',u.public_links':''} FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL ORDER BY h.created_at DESC,h.id DESC LIMIT 50`);
       return json({hubs:list.map(publicHubView)});
     }
     if(action==='public_hub') {
       const slug=text(url.searchParams.get('slug'),40,'Slug',3);
-      const current=(await rows(tx,`SELECT h.* FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.slug=$1 AND h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL FOR UPDATE OF h`,[slug]))[0];if(!current)notFound();
+      const linksAvailable=await publicLinksCapability(tx);
+      const current=(await rows(tx,`SELECT h.*${linksAvailable?',u.public_links':''} FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.slug=$1 AND h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL FOR UPDATE OF h`,[slug]))[0];if(!current)notFound();
       let relationship='none';
       if(user){const member=await membership(tx,current.id,user.id);const request=(await rows(tx,'SELECT status FROM wh_requests WHERE hub_id=$1 AND applicant_id=$2',[current.id,user.id]))[0];relationship=current.owner_id===user.id?'owner':member?.status==='active'?'active':member?.status==='blocked'?'blocked':request?.status==='pending'?'pending':member?.status==='removed'?'removed':member?.status==='left'?'left':request?.status==='passed'?'passed':'none'}
       return json({hub:publicHubView(current),relationship});
     }
     if(action==='profile_save') {
       const name=text(body.name,50,'Name',1);
+      let links;
+      if(body.publicLinks!==undefined||body.publicLinksConsent!==undefined) {
+        if(!await publicLinksCapability(tx))fail(503,'public_links_unavailable','Public link settings are not available on this server yet. Save your name and photo without public links.');
+        if(body.publicLinksConsent!==undefined&&typeof body.publicLinksConsent!=='boolean')fail(400,'invalid_field','Choose whether to make these links public.');
+        if(body.publicLinks===undefined)fail(400,'invalid_public_links','Include the public links to save.');
+        links=publicLinks(body.publicLinks);
+        const previous=publicLinks(user.public_links);
+        if(Object.entries(links).some(([key,value])=>previous[key]!==value)&&body.publicLinksConsent!==true)fail(400,'public_links_consent_required','Confirm these links will be visible on your public creator page.');
+      }
       if(body.agreed!==true&&!user.acknowledged_at)fail(400,'acknowledgement_required','Confirm that you are an adult and agree to share your name, photo, and introduction with the circles you choose.');
       const photoId=image?await savePhoto(tx,user,image,'profile'):user.photo_id;
       if(!photoId)fail(400,'photo_required','Add a profile photo.');
       const updated=(await rows(tx,`UPDATE wh_users SET name=$2,photo_id=$3,acknowledged_at=COALESCE(acknowledged_at,$4),acknowledgement_version=COALESCE(acknowledgement_version,'local-v1') WHERE id=$1 RETURNING *`,[user.id,name,photoId,stamp()]))[0];
-      return json({user:userView(updated)});
+      if(links!==undefined) {
+        const saved=(await rows(tx,'UPDATE wh_users SET public_links=$2::jsonb WHERE id=$1 RETURNING *',[user.id,JSON.stringify(links)]))[0];
+        return json({user:await profileLinksView(tx,saved)});
+      }
+      return json({user:await profileLinksView(tx,updated)});
     }
     if(action==='hub_save') {
       requireProfile(user);const name=text(body.name,50,'Circle name',1),about=text(body.about,500,'About'),slug=text(body.slug,40,'Slug',3);

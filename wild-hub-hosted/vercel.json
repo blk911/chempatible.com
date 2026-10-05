@@ -39,6 +39,22 @@
       "use": "@vercel/static"
     },
     {
+      "src": "wild-hub-concepts/lauren/index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub-concepts/lauren/concept.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub-concepts/lauren/concept.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub-concepts/lauren/assets/sailing-hero.webp",
+      "use": "@vercel/static"
+    },
+    {
       "src": "wild-hub/wild-hub.css",
       "use": "@vercel/static"
     },

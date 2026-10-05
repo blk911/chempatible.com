@@ -866,3 +866,15 @@ button.community-person-actions:hover{color:var(--accent)}
  .creator-chat .chat-layout{min-height:0}
 }
 .creator-content .app-form input[type=file]{min-height:44px;max-width:100%}
+
+/* Public links have one editor: the account Profile form. */
+.profile-public-links{margin:12px 0 0;padding:20px;border:1px solid var(--line);border-radius:8px;display:grid;gap:14px;min-width:0}
+.profile-public-links legend{font-size:16px;font-weight:600;padding:0 7px}
+.profile-public-links .field-note{margin:0}
+.profile-public-links input[type=url]{min-width:0;width:100%}
+.public-links{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.public-link-pill{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:9px 13px;border:1px solid var(--line);border-radius:999px;color:var(--ink);background:var(--white);font-size:12px;font-weight:600;text-decoration:none}
+.public-link-pill svg{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.public-link-pill:hover{background:#efefeb}
+.public-link-pill:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+@media(max-width:600px){.profile-public-links{padding:14px}.public-links{gap:6px}.public-link-pill{padding:9px 11px}}
