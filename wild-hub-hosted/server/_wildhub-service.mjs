@@ -4,9 +4,9 @@ import {createWildHubNotificationDispatcher,queueWildHubNotification,readWildHub
 
 export const WILD_HUB_LIMITS=Object.freeze({name:50,about:500,intro:280,caption:500,message:2000,trialDays:7,slugMin:3,slugMax:40,bodyBytes:7*1024*1024,photoBytes:IMAGE_LIMITS.bytes,photoPixels:IMAGE_LIMITS.pixels,pageSize:20,pageMax:50});
 const BASE_HEADERS={'cache-control':'private, no-store','x-content-type-options':'nosniff','cross-origin-resource-policy':'same-origin','referrer-policy':'no-referrer','vary':'Cookie, Origin'};
-const READS=new Set(['me','hubs','public_hub','requests','memberships','posts','media','invite_preview','access_status','chat_messages','share_resolve']);
-const WRITES=new Set(['auth_start','auth_verify','logout','profile_save','hub_save','request_join','request_withdraw','request_decide','membership_remove','leave','invite_create','invite_accept','post_create','post_delete','chat_send','share_create']);
-const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed'],hub_save:['name','about','slug','published','publishConsent'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_create:['hubId','email'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
+const READS=new Set(['me','hubs','public_hub','requests','memberships','posts','media','invite_preview','access_status','chat_messages','share_resolve','creator_summary','creator_people','creator_finance']);
+const WRITES=new Set(['auth_start','auth_verify','logout','profile_save','hub_save','request_join','request_withdraw','request_decide','membership_remove','leave','invite_create','invite_accept','post_create','post_delete','chat_send','share_create','membership_unblock','hub_photo_save']);
+const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed'],hub_save:['name','about','slug','published','publishConsent','preservePhoto','publishPhotoConsent'],hub_photo_save:['hubId','photoDataUrl','publishConsent'],membership_unblock:['hubId','userId','expectedRevision'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_create:['hubId','email'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const rows=async(db,sql,params=[])=>{const result=await db.query(sql,params);return Array.isArray(result)?result:result.rows};
 const json=(value,status=200,headers={})=>Response.json({ok:true,...value},{status,headers:{...BASE_HEADERS,...headers}});
@@ -43,11 +43,12 @@ async function boundedJson(req) {
  * Transaction callbacks must resolve only after COMMIT and reject after ROLLBACK.
  * mail.send is injected and must throw when a message was not accepted.
  */
-export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.now(),secureCookies=true,emailAllowed=()=>false,getClientKey=()=> 'shared',onError=()=>{},readPaidEntitlement=async()=>null,scheduleNotifications=null}={}) {
+export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.now(),secureCookies=true,emailAllowed=()=>false,getClientKey=()=> 'shared',onError=()=>{},readPaidEntitlement=async()=>null,readCreatorFinance=async()=>({available:false,reason:'Financial history is unavailable in this runtime.'}),scheduleNotifications=null}={}) {
   if(!db?.query||!db?.transaction||!mail?.send||typeof sharp!=='function'||typeof secret!=='string'||secret.length<32)throw Error('Explicit database, mail, image decoder and independent secret are required.');
   const parsedOrigin=new URL(origin);
   if(parsedOrigin.origin!==origin||(!secureCookies&&!['localhost','127.0.0.1','[::1]'].includes(parsedOrigin.hostname))||(secureCookies&&parsedOrigin.protocol!=='https:'))throw Error('Use HTTPS or an explicitly insecure loopback preview.');
   if(scheduleNotifications!==null&&typeof scheduleNotifications!=='function')throw Error('Notification scheduling must be an explicit trusted function.');
+  if(typeof readCreatorFinance!=='function')throw Error('Creator finance reads must use an explicit trusted function.');
   const notifications=createWildHubNotificationDispatcher({db,mail,origin,emailAllowed,now,onError});
   const stamp=()=>new Date(now()).toISOString();
   const hashCode=(address,code)=>createHmac('sha256',secret).update(`${address}\n${code}`).digest('hex');
@@ -111,6 +112,35 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     const cursor=url.searchParams.get('cursor');let boundary=null;
     if(cursor){if(cursor.length>300)fail(400,'invalid_cursor','Invalid page cursor.');try{boundary=JSON.parse(Buffer.from(cursor,'base64url').toString('utf8'));uuid(boundary.id);if(typeof boundary.at!=='string'||!Number.isFinite(Date.parse(boundary.at)))throw Error()}catch{fail(400,'invalid_cursor','Invalid page cursor.')}}
     return {limit,boundary};
+  }
+  const creatorCursor=row=>Buffer.from(JSON.stringify({at:date(row.sort_at),id:row.id})).toString('base64url');
+  const creatorMembership=row=>row.membership_status?{status:row.membership_status,role:row.role,access_revision:row.access_revision}:null;
+  async function creatorPerson(tx,current,row,notices,knownAccess) {
+    const status=knownAccess||await access(tx,current,row.id,creatorMembership(row));
+    // Only use media routes the host can already read in this circle. Historical
+    // rows never restore private media access after expiry, removal or blocking.
+    let photo=null,photoAvailability=row.membership_status==='active'&&!status.allowed?'access_expired':'membership_inactive';
+    if(row.membership_status==='active'&&status.allowed) {photo=row.photo_id;photoAvailability=photo?'available':'no_photo';}
+    else if(row.request_status==='pending'&&row.membership_status!=='blocked') {photo=row.applicant_photo_id;photoAvailability=photo?'available':'no_photo';}
+    return {id:row.id,name:row.membership_status==='active'?row.name:(row.applicant_name||row.name),photoUrl:photoUrl(photo),photoAvailability,role:row.role||'applicant',membershipStatus:row.membership_status||'none',membershipRevision:row.access_revision||null,createdAt:date(row.membership_created_at||row.request_created_at),updatedAt:date(row.membership_updated_at||row.request_decided_at||row.request_created_at),access:status,request:row.request_id?{id:row.request_id,intro:row.intro,status:row.request_status,createdAt:date(row.request_created_at),decidedAt:row.request_decided_at?date(row.request_decided_at):null,notification:notices.get(row.request_id)||null}:null};
+  }
+  async function creatorRows(tx,current,view,boundary,limit) {
+    const requestView=view==='requests',sort=requestView?'r.created_at':'m.updated_at';
+    return rows(tx,`SELECT u.id,u.name,u.photo_id,m.role,m.status AS membership_status,m.access_revision,m.created_at AS membership_created_at,m.updated_at AS membership_updated_at,r.id AS request_id,r.intro,r.status AS request_status,r.created_at AS request_created_at,r.decided_at AS request_decided_at,r.applicant_name,r.applicant_photo_id,${sort} AS sort_at FROM ${requestView?'wh_requests r JOIN wh_users u ON u.id=r.applicant_id LEFT JOIN wh_memberships m ON m.hub_id=r.hub_id AND m.user_id=u.id':'wh_memberships m JOIN wh_users u ON u.id=m.user_id LEFT JOIN wh_requests r ON r.hub_id=m.hub_id AND r.applicant_id=u.id'} WHERE ${requestView?'r':'m'}.hub_id=$1 AND u.id<>$2 AND u.standing='active' AND u.verified_at IS NOT NULL ${requestView?'':"AND m.status=$6"} AND ($3::timestamptz IS NULL OR (${sort},u.id)<($3::timestamptz,$4::uuid)) ORDER BY ${sort} DESC,u.id DESC LIMIT $5`,[current.id,current.owner_id,boundary?.at||null,boundary?.id||null,limit,...(requestView?[]:[['members','expired'].includes(view)?'active':view])]);
+  }
+  async function creatorSummary(tx,current) {
+    const counts={requests:0,pendingRequests:0,members:0,blocked:0,removed:0,left:0,expired:0,posts:0};
+    const requestCounts=(await rows(tx,`SELECT count(*)::int AS total,count(*) FILTER (WHERE r.status='pending')::int AS pending FROM wh_requests r JOIN wh_users u ON u.id=r.applicant_id WHERE r.hub_id=$1 AND u.id<>$2 AND u.standing='active' AND u.verified_at IS NOT NULL`,[current.id,current.owner_id]))[0];
+    counts.requests=requestCounts.total;counts.pendingRequests=requestCounts.pending;
+    const memberships=await rows(tx,`SELECT m.status,count(*)::int AS count FROM wh_memberships m JOIN wh_users u ON u.id=m.user_id WHERE m.hub_id=$1 AND u.id<>$2 AND u.standing='active' AND u.verified_at IS NOT NULL GROUP BY m.status`,[current.id,current.owner_id]);
+    for(const group of memberships)counts[group.status==='active'?'members':group.status]=group.count;
+    counts.posts=(await rows(tx,'SELECT count(*)::int AS count FROM wh_posts WHERE hub_id=$1 AND deleted_at IS NULL',[current.id]))[0].count;
+    // The trusted paid adapter owns entitlement decisions. Count actual rows in
+    // bounded keyset batches instead of inferring totals from the browser page
+    // or duplicating paid-access rules in an unrelated SQL query.
+    if(counts.members>200)counts.expired=null;
+    else {let boundary=null;for(let scanned=0;scanned<200;scanned+=100) {const batch=await creatorRows(tx,current,'members',boundary,100);for(const row of batch)if(!(await access(tx,current,row.id,creatorMembership(row))).allowed)counts.expired++;if(batch.length<100)break;const last=batch.at(-1);boundary={at:date(last.sort_at),id:last.id};}}
+    return counts;
   }
   const messageView=row=>({id:row.id,text:row.body,createdAt:date(row.created_at),sender:{id:row.sender_id,name:row.sender_name}});
   async function activate(tx,hubId,userId) {
@@ -211,7 +241,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       const {limit,boundary}=page(url);
       const list=await rows(tx,`SELECT * FROM wh_messages WHERE hub_id=$1 AND (($2::uuid IS NULL AND recipient_id IS NULL) OR ($2::uuid IS NOT NULL AND ((sender_id=$3 AND recipient_id=$2) OR (sender_id=$2 AND recipient_id=$3)))) AND ($4::timestamptz IS NULL OR (created_at,id)<($4::timestamptz,$5::uuid)) ORDER BY created_at DESC,id DESC LIMIT $6`,[current.id,peer?.id||null,user.id,boundary?.at||null,boundary?.id||null,limit+1]);
       const more=list.length>limit,visible=list.slice(0,limit),last=visible.at(-1);
-      return json({messages:visible.reverse().map(messageView),nextCursor:more?Buffer.from(JSON.stringify({at:date(last.created_at),id:last.id})).toString('base64url'):null});
+      return json({peer:peer?{id:peer.id,name:peer.name}:null,messages:visible.reverse().map(messageView),nextCursor:more?Buffer.from(JSON.stringify({at:date(last.created_at),id:last.id})).toString('base64url'):null});
     }
     if(action==='hubs') {
       const list=await rows(tx,`SELECT h.* FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL ORDER BY h.created_at DESC,h.id DESC LIMIT 50`);
@@ -221,7 +251,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       const slug=text(url.searchParams.get('slug'),40,'Slug',3);
       const current=(await rows(tx,`SELECT h.* FROM wh_hubs h JOIN wh_users u ON u.id=h.owner_id WHERE h.slug=$1 AND h.published=true AND u.standing='active' AND u.verified_at IS NOT NULL FOR UPDATE OF h`,[slug]))[0];if(!current)notFound();
       let relationship='none';
-      if(user){const member=await membership(tx,current.id,user.id);const request=(await rows(tx,'SELECT status FROM wh_requests WHERE hub_id=$1 AND applicant_id=$2',[current.id,user.id]))[0];relationship=current.owner_id===user.id?'owner':member?.status==='active'?'active':member?.status==='blocked'?'blocked':member?.status==='removed'?'removed':request?.status==='pending'?'pending':request?.status==='passed'?'passed':'none'}
+      if(user){const member=await membership(tx,current.id,user.id);const request=(await rows(tx,'SELECT status FROM wh_requests WHERE hub_id=$1 AND applicant_id=$2',[current.id,user.id]))[0];relationship=current.owner_id===user.id?'owner':member?.status==='active'?'active':member?.status==='blocked'?'blocked':request?.status==='pending'?'pending':member?.status==='removed'?'removed':member?.status==='left'?'left':request?.status==='passed'?'passed':'none'}
       return json({hub:publicHubView(current),relationship});
     }
     if(action==='profile_save') {
@@ -235,16 +265,63 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     if(action==='hub_save') {
       requireProfile(user);const name=text(body.name,50,'Circle name',1),about=text(body.about,500,'About'),slug=text(body.slug,40,'Slug',3);
       if(!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(slug))fail(400,'invalid_slug','Use 3–40 lowercase letters, numbers, or hyphens.');
+      if(body.preservePhoto!==undefined&&typeof body.preservePhoto!=='boolean')fail(400,'invalid_field','Choose whether to keep the page image.');
+      if(body.publishPhotoConsent!==undefined&&typeof body.publishPhotoConsent!=='boolean')fail(400,'invalid_field','Choose whether to publish your profile photo as the page image.');
       if(typeof body.published!=='boolean')fail(400,'invalid_field','Choose whether this circle is public.');
       if(body.published&&body.publishConsent!==true)fail(400,'publication_consent_required','Explicitly approve publishing this name, photo, and circle description.');
       const existing=(await rows(tx,'SELECT * FROM wh_hubs WHERE owner_id=$1 FOR UPDATE',[user.id]))[0];
       const collision=(await rows(tx,'SELECT id FROM wh_hubs WHERE slug=$1 AND owner_id<>$2',[slug,user.id]))[0];if(collision)fail(409,'slug_taken','Choose another circle address.');
       let publicPhoto=existing?.public_photo_id||null,hostName=existing?.public_host_name||null,consent=existing?.published_consent_at||null;
-      if(body.published) {const currentPhoto=(await rows(tx,'SELECT * FROM wh_media WHERE id=$1 AND owner_id=$2 AND kind=\'profile\'',[user.photo_id,user.id]))[0];if(!currentPhoto)fail(400,'photo_required','Add a profile photo.');publicPhoto=await savePhoto(tx,user,currentPhoto,'public');hostName=user.name;consent=stamp();}
+      if(body.published&&body.preservePhoto&&!publicPhoto&&body.publishPhotoConsent!==true)fail(400,'photo_publication_consent_required','Explicitly approve publishing your profile photo as the first public page image.');
+      if(body.published&&(!body.preservePhoto||!publicPhoto)) {const currentPhoto=(await rows(tx,'SELECT * FROM wh_media WHERE id=$1 AND owner_id=$2 AND kind=\'profile\'',[user.photo_id,user.id]))[0];if(!currentPhoto)fail(400,'photo_required','Add a profile photo.');publicPhoto=await savePhoto(tx,user,currentPhoto,'public');hostName=user.name;consent=stamp();}
+      if(body.published){hostName=user.name;consent=stamp();}
       const id=existing?.id||randomUUID();
       const current=(await rows(tx,`INSERT INTO wh_hubs(id,owner_id,slug,name,about,published,public_photo_id,public_host_name,published_consent_at,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10) ON CONFLICT(owner_id) DO UPDATE SET slug=$3,name=$4,about=$5,published=$6,public_photo_id=$7,public_host_name=$8,published_consent_at=$9,updated_at=$10 RETURNING *`,[id,user.id,slug,name,about,body.published,publicPhoto,hostName,consent,stamp()]))[0];
       await rows(tx,`INSERT INTO wh_memberships(hub_id,user_id,role,status,created_at,updated_at) VALUES($1,$2,'owner','active',$3,$3) ON CONFLICT(hub_id,user_id) DO UPDATE SET role='owner',status='active',updated_at=$3`,[current.id,user.id,stamp()]);
       return json({hub:hubView(current)});
+    }
+    if(action==='hub_photo_save') {
+      requireProfile(user);const current=await hub(tx,body.hubId);requireOwner(current,user);
+      if(!current.published)fail(409,'publication_required','Publish this circle before changing its public page image.');
+      if(body.publishConsent!==true)fail(400,'publication_consent_required','Explicitly approve publishing this page image.');
+      if(!image)fail(400,'photo_required','Add a page image.');
+      const photoId=await savePhoto(tx,user,image,'public');
+      const updated=(await rows(tx,'UPDATE wh_hubs SET public_photo_id=$2,published_consent_at=$3,updated_at=$3 WHERE id=$1 RETURNING *',[current.id,photoId,stamp()]))[0];
+      return json({hub:hubView(updated)});
+    }
+    if(action==='creator_finance') {
+      const current=await hub(tx,url.searchParams.get('hubId'));requireOwner(current,user);
+      return json({finance:await readCreatorFinance({tx,hubId:current.id,userId:user.id})});
+    }
+    if(action==='creator_summary'||action==='creator_people') {
+      const current=await hub(tx,url.searchParams.get('hubId'));requireOwner(current,user);
+      if(action==='creator_summary'){const counts=await creatorSummary(tx,current);return json({hub:hubView(current),counts,expiredCountAvailability:counts.expired===null?'unavailable':'available'});}
+      const view=url.searchParams.get('view')||'requests';if(!['requests','members','blocked','removed','left','expired'].includes(view))fail(400,'invalid_view','Choose a valid people list.');
+      const {limit,boundary}=page(url);let list=[],after=boundary,scanCursor=null;
+      if(view==='expired') {
+        // Filtering through the entitlement adapter can require several batches,
+        // but neither SQL fetches nor the accumulated response are unbounded.
+        for(let scanned=0;scanned<200&&list.length<=limit;scanned+=50) {const batch=await creatorRows(tx,current,view,after,50);for(const row of batch){const status=await access(tx,current,row.id,creatorMembership(row));if(!status.allowed)list.push({...row,knownAccess:status});if(list.length>limit)break;}if(list.length>limit||batch.length<50){scanCursor=null;break;}const last=batch.at(-1);after={at:date(last.sort_at),id:last.id};scanCursor=creatorCursor(last);}
+      } else list=await creatorRows(tx,current,view,boundary,limit+1);
+      const more=list.length>limit,visible=list.slice(0,limit),notices=await readWildHubNotifications(tx,visible.map(row=>row.request_id).filter(Boolean)),people=[];
+      for(const row of visible)people.push(await creatorPerson(tx,current,row,notices,row.knownAccess));
+      return json({people,nextCursor:more?creatorCursor(visible.at(-1)):scanCursor});
+    }
+    if(action==='membership_unblock') {
+      const current=await hub(tx,body.hubId);requireOwner(current,user);const target=uuid(body.userId);
+      if(target===current.owner_id)fail(400,'host_cannot_leave','The host cannot change their own membership.');
+      if(!Object.hasOwn(body,'expectedRevision'))fail(400,'revision_required','Refresh this membership before continuing.');
+      const expectedRevision=uuid(body.expectedRevision),member=await membership(tx,current.id,target);
+      if(!member)notFound();
+      if(member.access_revision!==expectedRevision)fail(409,'membership_changed','This membership changed. Review it again before continuing.');
+      if(member.status!=='blocked')fail(409,'cannot_unblock','Only a blocked membership can be unblocked.');
+      const targetUser=(await rows(tx,'SELECT standing,verified_at FROM wh_users WHERE id=$1',[target]))[0];
+      if(!targetUser?.verified_at||targetUser.standing!=='active')fail(403,'account_unavailable','This account cannot use Wild Hub.');
+      const revision=randomUUID();
+      // Unblocking is not admission. Do not touch trial eligibility/entitlements,
+      // old invitations, requests, shares, revocation events, or account standing.
+      await rows(tx,"UPDATE wh_memberships SET status='removed',updated_at=$3,access_revision=$4 WHERE hub_id=$1 AND user_id=$2",[current.id,target,stamp(),revision]);
+      return json({unblocked:true,membership:{hubId:current.id,userId:target,status:'removed',membershipRevision:revision}});
     }
     if(action==='request_join') {
       requireProfile(user);const current=await hub(tx,body.hubId),intro=text(body.intro,280,'Introduction',1);
@@ -254,7 +331,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(member?.status==='active')fail(409,'already_member','You are already a member.');
       const previous=(await rows(tx,'SELECT id,status FROM wh_requests WHERE hub_id=$1 AND applicant_id=$2',[current.id,user.id]))[0];
       if(previous) {
-        if(previous.status==='withdrawn'||previous.status==='approved'&&member?.status==='left') {
+        if(previous.status==='withdrawn'||['approved','passed'].includes(previous.status)&&['removed','left'].includes(member?.status)) {
           const request=(await rows(tx,`UPDATE wh_requests SET id=$6,status='pending',intro=$2,applicant_name=$3,applicant_photo_id=$4,decided_at=NULL,created_at=$5 WHERE id=$1 RETURNING id,status`,[previous.id,intro,user.name,user.photo_id,stamp(),randomUUID()]))[0];
           const jobId=await queueWildHubNotification(tx,{kind:'request',hubId:current.id,requestId:request.id,recipientId:current.owner_id,now:now(),mail});
           return {notify:{jobIds:[jobId],requestId:request.id,kind:'request',payload:{request},status:201}};
@@ -275,9 +352,9 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     }
     if(action==='requests') {
       const current=await hub(tx,url.searchParams.get('hubId'));requireOwner(current,user);
-      const list=await rows(tx,`SELECT r.id,r.intro,r.status,r.created_at,u.id AS applicant_id,CASE WHEN m.status='active' THEN u.name ELSE r.applicant_name END AS name,CASE WHEN m.status='active' THEN u.photo_id WHEN r.status='pending' AND COALESCE(m.status,'')<>'blocked' THEN r.applicant_photo_id ELSE NULL END AS photo_id FROM wh_requests r JOIN wh_users u ON u.id=r.applicant_id LEFT JOIN wh_memberships m ON m.hub_id=r.hub_id AND m.user_id=r.applicant_id WHERE r.hub_id=$1 AND u.standing='active' ORDER BY r.created_at DESC LIMIT 100`,[current.id]);
-      const notices=await readWildHubNotifications(tx,list.map(r=>r.id));
-      return json({requests:list.map(r=>({id:r.id,intro:r.intro,status:r.status,createdAt:date(r.created_at),applicant:{id:r.applicant_id,name:r.name,photoUrl:photoUrl(r.photo_id)},notification:notices.get(r.id)||null}))});
+      const list=await creatorRows(tx,current,'requests',null,100),notices=await readWildHubNotifications(tx,list.map(row=>row.request_id)),requests=[];
+      for(const row of list){const person=await creatorPerson(tx,current,row,notices);requests.push({...person.request,applicant:{id:person.id,name:person.name,photoUrl:person.photoUrl,photoAvailability:person.photoAvailability}});}
+      return json({requests});
     }
     if(action==='request_decide') {
       const id=uuid(body.requestId);if(!['approve','pass'].includes(body.decision))fail(400,'invalid_decision','Choose approve or pass.');
@@ -415,6 +492,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(requestOrigin&&requestOrigin!==origin)fail(403,'origin_rejected','This request origin is not allowed.');
       if(!READS.has(action)&&!WRITES.has(action))fail(400,'unknown_action','Unknown action.');
       if(req.method!==(READS.has(action)?'GET':'POST'))fail(405,'method_not_allowed','This method is not allowed.');
+      if(['creator_summary','creator_people','creator_finance'].includes(action)) {const allowed=action==='creator_people'?['action','hubId','view','limit','cursor']:['action','hubId'];if([...url.searchParams.keys()].some(key=>!allowed.includes(key)))fail(400,'unexpected_field','The request contains unsupported fields.');}
       if(req.method==='POST'&&requestOrigin!==origin)fail(403,'origin_required','A same-origin request is required.');
       // Client keys come only from a trusted injected adapter, never arbitrary
       // X-Forwarded-For headers. Email and actor quotas remain server-owned.
@@ -428,7 +506,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
         await rate(`write:${account?.user_id||'anonymous'}:${action}`,action==='invite_create'?20:action==='request_join'?10:action==='chat_send'?600:120,3_600_000);
         if(action==='chat_send')await rate(`chat:${account?.user_id||'anonymous'}`,60,60_000);
       }
-      let image=null;if(['profile_save','post_create'].includes(action)&&body.photoDataUrl!==undefined)image=await prepareWildHubPhoto(body.photoDataUrl,sharp);
+      let image=null;if(['profile_save','post_create','hub_photo_save'].includes(action)&&body.photoDataUrl!==undefined)image=await prepareWildHubPhoto(body.photoDataUrl,sharp);
       const result=await db.transaction(tx=>dispatch(tx,req,action,url,body,image));
       if(result.notify) {
         const notice=result.notify,task=notifications.dispatch({jobIds:notice.jobIds,limit:notice.jobIds.length});

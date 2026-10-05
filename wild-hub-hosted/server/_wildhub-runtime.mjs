@@ -7,6 +7,7 @@ import {createWildHubService} from './_wildhub-service.mjs';
 import {createWildHubHostedHandler,readWildHubHostedConfig,HOSTED_HEADERS} from './_wildhub-hosted.mjs';
 import {createWildHubStripeProvider} from './_wildhub-stripe.mjs';
 import {createWildHubBilling,createWildHubBillingStore,readWildHubPaidEntitlement} from './_wildhub-billing.mjs';
+import {createWildHubCreatorFinanceReader} from './_wildhub-creator-finance.mjs';
 
 let cached;
 export async function initializeWildHubRuntime({env,poolFactory=options=>new Pool(options),fetchImpl=fetch,schedule=waitUntil}={}) {
@@ -25,7 +26,7 @@ export async function initializeWildHubRuntime({env,poolFactory=options=>new Poo
       const provider=createWildHubStripeProvider({secretKey:config.stripeKey,webhookSecret:config.stripeWebhookSecret,expectedSandboxAccountId:config.sandboxAccount,connectedAccountIds:Object.values(config.billingConfig.hubs).map(hub=>hub.destinationAccountId),providerRequestsEnabled:true,fetchImpl});
       billing=createWildHubBilling({enabled:true,stripe:provider.stripe,store:createWildHubBillingStore({db}),config:config.billingConfig});
     }
-    const service=createWildHubService({db,mail,origin:config.origin,secret:config.secret,sharp,emailAllowed,secureCookies:true,scheduleNotifications:schedule,readPaidEntitlement:config.billingEnabled?readWildHubPaidEntitlement:async()=>null});
+    const service=createWildHubService({db,mail,origin:config.origin,secret:config.secret,sharp,emailAllowed,secureCookies:true,scheduleNotifications:schedule,readPaidEntitlement:config.billingEnabled?readWildHubPaidEntitlement:async()=>null,readCreatorFinance:createWildHubCreatorFinanceReader({billingEnabled:config.billingEnabled,billingConfig:config.billingConfig})});
     const handler=createWildHubHostedHandler({service,origin:config.origin,billing,dispatchNotifications:service.dispatchNotifications,schedule,jobsSecret:config.jobsSecret,mailDeliveryMode:'provider'});
     return {handler,close:()=>pool.end()};
   }catch(error){try{await pool.end();}catch{}throw error;}

@@ -3,7 +3,7 @@
   "files": {
     "server/_wildhub-service.mjs": {
       "source": "api/_wildhub-service.mjs",
-      "sha256": "0d98682d8414ddcda5db7f7396f5f48cc3143e3ed2ccb483653614aa09486a1d"
+      "sha256": "48167f769b6ce5748d44fbaf080905bc0bb9ab174d86e37bc646a2d34ab48bdc"
     },
     "server/_wildhub-images.mjs": {
       "source": "api/_wildhub-images.mjs",
@@ -23,7 +23,7 @@
     },
     "server/_wildhub-stripe.mjs": {
       "source": "api/_wildhub-stripe.mjs",
-      "sha256": "d62d6fb542b38fd2d993e825d7298be16f39dfff2fca94c9bebee905241be97c"
+      "sha256": "1cc5ae7501c5c90e43cb10b137a98108cc51968e7891e9225a64e5f1ddddc2dd"
     },
     "server/_wildhub-qr.mjs": {
       "source": "api/_wildhub-qr.mjs",
@@ -35,7 +35,15 @@
     },
     "server/_wildhub-runtime.mjs": {
       "source": "api/_wildhub-runtime.mjs",
-      "sha256": "d192a4f81d200dd11cedeb79b94bd18633094cd5da7d6100f1afb0e3cd0fc045"
+      "sha256": "87006f77b060ec553ee56b41ec13e338a6cab0473cf0f7953fad19cfa60f7ee1"
+    },
+    "server/_wildhub-creator-finance.mjs": {
+      "source": "api/_wildhub-creator-finance.mjs",
+      "sha256": "cf647d004afd55be572aa5f9945e8c0e053c3d2ec19aa09e378f60de080c7850"
+    },
+    "server/_wildhub-connect.mjs": {
+      "source": "api/_wildhub-connect.mjs",
+      "sha256": "6ef6aabc794b9416770f556b211f1d403ab3cb31ff18aa1792749808ce5d6f8e"
     },
     "wild-hub-app/index.html": {
       "source": "wild-hub-app/index.html",
@@ -43,11 +51,11 @@
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "27b390300d134e58e6584e7c029065491f85dc0ef0516064f4ee8510693d5453"
+      "sha256": "69340e28254a3b3921bd309272ce83433f25f63d796df55fc6ca252c2a6cd6ee"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "39c4afebe6e6affcef896fe9093ac5eb24b4ff328abaa6fc92587d6fe18efe49"
+      "sha256": "a638e132649132baf9ec0ff15683e2c01ae95a2c689a46330ba62170142fc9ee"
     },
     "wild-hub/wild-hub.css": {
       "source": "wild-hub/wild-hub.css",

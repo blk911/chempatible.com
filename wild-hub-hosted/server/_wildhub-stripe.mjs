@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import {createStripeSandboxAdapter} from './_wildhub-billing.mjs';
+import {buildWildHubConnectAccountSessionParams,readWildHubConnectClientSecret} from './_wildhub-connect.mjs';
 
 export const WILD_HUB_STRIPE_SDK_VERSION='23.0.0';
 export const WILD_HUB_STRIPE_API_VERSION='2026-09-30.endive';
@@ -79,6 +80,16 @@ export function createWildHubStripeProvider({
   const stripe=createStripeSandboxAdapter({makeClient:()=>client,secretKey,webhookSecret,platformAccountId:expectedSandboxAccountId,apiVersion:WILD_HUB_STRIPE_API_VERSION});
   return Object.freeze({
     stripe,verifySandbox,
-    diagnostics:()=>({provider:'stripe',requestsEnabled:requestsAllowed,testMode:true,verified:Boolean(verified),verifiedAt,apiVersion:WILD_HUB_STRIPE_API_VERSION,sdkVersion:WILD_HUB_STRIPE_SDK_VERSION})
+    async createAccountSession(connectedAccountId){
+      requireRequests();
+      check(destinations.has(connectedAccountId),'destination_not_allowed');
+      await ensureVerified();
+      const account=await sdk.accounts.retrieve(connectedAccountId);
+      check(account?.object==='account'&&account.id===connectedAccountId&&!account.deleted,'connect_account_unavailable');
+      const session=await sdk.accountSessions.create(buildWildHubConnectAccountSessionParams(connectedAccountId));
+      readWildHubConnectClientSecret(session,connectedAccountId);
+      return session;
+    },
+    diagnostics:()=>({provider:'stripe',requestsEnabled:requestsAllowed,testMode:true,platformAccountId:expectedSandboxAccountId,verified:Boolean(verified),verifiedAt,apiVersion:WILD_HUB_STRIPE_API_VERSION,sdkVersion:WILD_HUB_STRIPE_SDK_VERSION})
   });
 }
