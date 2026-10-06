@@ -51,11 +51,11 @@
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "ed98f9c427fb2cab7b646bd97fc1161c9b5ae76ed54396453fa5be4404d8b968"
+      "sha256": "b79940fd5300403a12a2c74495b5ee93f623e8fb5989d40bf8e7f5bf320baeb4"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "a7e66dd419a7f8df2f3aa958506bd3b4075c93ae49516a50094dd00252fbca75"
+      "sha256": "e4e67edfd2041026109c63899765577d03879878c941a627102a5bf681839d6c"
     },
     "wild-hub-concepts/lauren/index.html": {
       "source": "wild-hub-concepts/lauren/index.html",

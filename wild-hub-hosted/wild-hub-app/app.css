@@ -885,7 +885,7 @@ button.community-person-actions:hover{color:var(--accent)}
 .review-bar>span:first-child{letter-spacing:.1em;font-size:10px;font-weight:600;color:var(--ink)}
 .review-bar i{background:var(--accent)}
 .site-header{padding-top:12px;padding-bottom:12px}
-.bside-brand{letter-spacing:-1.25px;font-size:27px;font-weight:700;gap:10px}
+.bside-brand{min-height:44px;letter-spacing:-1.25px;font-size:27px;font-weight:700;gap:10px}
 .bside-brand svg{width:30px;height:30px;flex:none}
 .bside-brand svg rect{fill:var(--accent)}
 .bside-brand svg path{fill:var(--white)}
@@ -923,12 +923,12 @@ button.community-person-actions:hover{color:var(--accent)}
 .bside-hero-visual figcaption{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:15px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
 .bside-hero-visual figcaption>span:first-child{font-size:14px;color:var(--ink);letter-spacing:-.02em}
 .bside-image-mark{position:absolute;right:22px;top:-25px;display:flex;align-items:center;justify-content:center;gap:6px;transform:rotate(7deg);width:72px;height:72px;background:var(--accent);color:#fff;font-size:42px;line-height:1;letter-spacing:-.06em;border:1px solid #d3dbef;border-radius:5px;font-weight:600;box-shadow:0 6px 18px #18212a12}
-.bside-image-mark>span{font-size:18px;margin-top:-17px;font-weight:400;letter-spacing:0}
+.bside-image-mark>.arrow-icon{margin-top:-17px}
 .bside-service-line{display:grid;grid-template-columns:1.4fr repeat(3,1fr);align-items:center;gap:22px;margin-top:20px;padding:24px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .bside-service-line>p{font-size:13px;line-height:1.55}
 .bside-service-line strong{font-weight:500;color:var(--ink)}
 .bside-service-line>span{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500;letter-spacing:-.02em;line-height:1.4}
-.bside-service-line>span:before{content:'↗';color:var(--accent);font-size:19px}
+.bside-service-line>span>.arrow-icon{color:var(--accent)}
 .bside-inside{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;gap:80px;padding:56px 0}
 .bside-inside-copy{min-width:0;max-width:460px}
 .bside-home h2{font-size:43px;line-height:1.06;letter-spacing:-.055em;font-weight:500}
