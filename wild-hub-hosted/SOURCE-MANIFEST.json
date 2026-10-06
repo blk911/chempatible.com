@@ -3,7 +3,7 @@
   "files": {
     "server/_wildhub-service.mjs": {
       "source": "api/_wildhub-service.mjs",
-      "sha256": "3ad9a634eafee5bda4a710a353ca4cf89320de68afc89f604fa0f37b1c243809"
+      "sha256": "fe93c18b166a30611fb6e14462b51c98ec3a23c0049ec9b8f21ce68d95060bd5"
     },
     "server/_wildhub-images.mjs": {
       "source": "api/_wildhub-images.mjs",
@@ -11,11 +11,11 @@
     },
     "server/_wildhub-adapters.mjs": {
       "source": "api/_wildhub-adapters.mjs",
-      "sha256": "f1033d784cfe75c8f9a74d56d4f49f78e09b5edae5753c660b7f9fd88c76c1ca"
+      "sha256": "c3b7b15dd3243bec38c757ce0719d7ae713e9aaf30387f523c3d13e77bee8937"
     },
     "server/_wildhub-notifications.mjs": {
       "source": "api/_wildhub-notifications.mjs",
-      "sha256": "eadaff2d721618f752862aa812f36b33876087a214726cfd747f2527930a47dd"
+      "sha256": "a6fa6de10f1d861226068740370cd30a443c4e15296c2e29dac7c46c2952e7ee"
     },
     "server/_wildhub-billing.mjs": {
       "source": "api/_wildhub-billing.mjs",
@@ -31,11 +31,11 @@
     },
     "server/_wildhub-hosted.mjs": {
       "source": "api/_wildhub-hosted.mjs",
-      "sha256": "de419cfa53679f5df1e107da664f78d5366ebf24034538dfe376500032fc7216"
+      "sha256": "80befb8bebd055611b001beab4bc2fe36ac1a79c34fcd037c3a6c7b06f4859ac"
     },
     "server/_wildhub-runtime.mjs": {
       "source": "api/_wildhub-runtime.mjs",
-      "sha256": "7d48373b3b23290289b6892c18e4f0c67c79c26b6c2adf619e8538b469780e92"
+      "sha256": "f6da0e47183270248cdf12f1370475fc37d361984b06bf8a0a491a4915b99b0d"
     },
     "server/_wildhub-creator-finance.mjs": {
       "source": "api/_wildhub-creator-finance.mjs",
@@ -47,11 +47,11 @@
     },
     "wild-hub-app/index.html": {
       "source": "wild-hub-app/index.html",
-      "sha256": "e996832d8cfdb2a25f974053e87d4728125cfe813f0ed2ef09ed80c59158631d"
+      "sha256": "609ff3eb44bce92c3577b3b0911a2442c7f7a58ec13ed6ecef1094758daf869f"
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "b79940fd5300403a12a2c74495b5ee93f623e8fb5989d40bf8e7f5bf320baeb4"
+      "sha256": "f2a4aac18ffca19821e0dbd287adecacc1da9652e2f1ff91286faece27177fe7"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",

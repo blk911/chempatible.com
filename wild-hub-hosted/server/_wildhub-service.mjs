@@ -214,7 +214,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     const code=String(randomInt(100000,1_000_000)),digest=hashCode(address,code),created=stamp();
     await rows(db,`INSERT INTO wh_codes(email,code_hash,expires_at,attempts,ready,created_at) VALUES($1,$2,$3,0,false,$4) ON CONFLICT(email) DO UPDATE SET code_hash=$2,expires_at=$3,attempts=0,ready=false,created_at=$4`,[address,digest,new Date(now()+600_000).toISOString(),created]);
     try {await mail.send({to:address,subject:`${code} is your BsideVibes code`,text:`Your BsideVibes code is ${code}. It expires in 10 minutes.`,kind:'otp',code});}
-    catch {await rows(db,'DELETE FROM wh_codes WHERE email=$1 AND code_hash=$2',[address,digest]);return error(503,'mail_unavailable','The code could not be delivered. Wait one minute and try again.');}
+    catch(issue) {await rows(db,'DELETE FROM wh_codes WHERE email=$1 AND code_hash=$2',[address,digest]);if(issue?.code==='mail_budget_exceeded')return error(429,'rate_limited','Email sending is temporarily limited. Please try again later.',{'retry-after':String(issue.retryAfter)});return error(503,'mail_unavailable','The code could not be delivered. Wait one minute and try again.');}
     await rows(db,'UPDATE wh_codes SET ready=true WHERE email=$1 AND code_hash=$2',[address,digest]);
     return json({sent:true});
   }
@@ -575,7 +575,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       const {id,token,address,hubName,hostName}=result.sendInvite;
       const link=new URL(`/#invite/${token}`,origin).href;
       try {await mail.send({to:address,subject:`${hostName} invited you to ${hubName} on BsideVibes`,text:`${hostName} invited you to ${hubName} on BsideVibes. Sign in with this email and explicitly accept to join. The invitation expires in seven days.\n${link}`,kind:'invite',token,url:link});}
-      catch {await rows(db,'DELETE FROM wh_invites WHERE id=$1 AND ready=false',[id]);return error(503,'mail_unavailable','The invitation could not be delivered. You can try again.');}
+      catch(issue) {await rows(db,'DELETE FROM wh_invites WHERE id=$1 AND ready=false',[id]);if(issue?.code==='mail_budget_exceeded')return error(429,'rate_limited','Email sending is temporarily limited. Please try again later.',{'retry-after':String(issue.retryAfter)});return error(503,'mail_unavailable','The invitation could not be delivered. You can try again.');}
       await rows(db,'UPDATE wh_invites SET ready=true WHERE id=$1 AND revoked_at IS NULL',[id]);
       return json({sent:true,inviteId:id});
     } catch(e) {

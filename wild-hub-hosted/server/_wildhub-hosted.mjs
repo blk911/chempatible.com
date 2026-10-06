@@ -33,8 +33,10 @@ export function readWildHubHostedConfig(env={}) {
   if(!password||password.includes('\0'))throw Error('An explicit independent database password is required.');
   if(!/^[a-z_][a-z0-9_]{2,62}$/.test(env.WH_DB_NAME||'')||!/^wild_hub_[a-z0-9_]+$/.test(env.WH_DB_ROLE||'')||decodeURIComponent(databaseUrl.pathname.slice(1))!==env.WH_DB_NAME||decodeURIComponent(databaseUrl.username)!==env.WH_DB_ROLE)throw Error('Wild Hub database identity is incomplete.');
   if(!/^wild-hub-[a-z0-9-]{8,80}$/.test(env.WH_ISOLATION_ID||'')||!/^.{64,}$/.test(env.WH_SESSION_SECRET||''))throw Error('Wild Hub isolation settings are incomplete.');
-  const recipients=(env.WH_TEST_EMAILS||'').split(',').map(v=>v.trim().toLowerCase());
-  if(recipients.length!==2||new Set(recipients).size!==2||recipients.some(v=>!email.test(v))||!email.test(env.WH_MAIL_FROM||'')||!/^SG\.[\w-]+\.[\w-]+$/.test(env.WH_SENDGRID_KEY||''))throw Error('Wild Hub test mail configuration is incomplete.');
+  const registrationMode=env.WH_REGISTRATION_MODE===undefined?'allowlist':env.WH_REGISTRATION_MODE;
+  if(!['allowlist','open-beta'].includes(registrationMode))throw Error('Invalid registration mode.');
+  const recipients=registrationMode==='allowlist'?(env.WH_TEST_EMAILS||'').split(',').map(v=>v.trim().toLowerCase()):[];
+  if(registrationMode==='allowlist'&&(recipients.length!==2||new Set(recipients).size!==2||recipients.some(v=>!email.test(v)))||!email.test(env.WH_MAIL_FROM||'')||!/^SG\.[\w-]+\.[\w-]+$/.test(env.WH_SENDGRID_KEY||''))throw Error('Wild Hub mail configuration is incomplete.');
   if(env.WH_BILLING_ENABLED&&!['true','false'].includes(env.WH_BILLING_ENABLED))throw Error('Invalid sandbox mode.');
   let billingConfig=null;
   if(env.WH_BILLING_ENABLED==='true'){
@@ -43,7 +45,7 @@ export function readWildHubHostedConfig(env={}) {
     if(billingConfig?.mode!=='test'||billingConfig.origin!==origin.origin||billingConfig.platformAccountId!==env.WH_STRIPE_SANDBOX_ACCOUNT||!billingConfig.hubs||Object.keys(billingConfig.hubs).length!==1)throw Error('Sandbox settings do not match the approved test service.');
   }
   if(env.WH_JOBS_SECRET&&env.WH_JOBS_SECRET.length<64)throw Error('Independent jobs secret is incomplete.');
-  return Object.freeze({origin:origin.origin,dbHost:databaseUrl.hostname,dbPassword:password,database:env.WH_DB_NAME,role:env.WH_DB_ROLE,isolationId:env.WH_ISOLATION_ID,secret:env.WH_SESSION_SECRET,recipients:Object.freeze(recipients),mailFrom:env.WH_MAIL_FROM,sendgridKey:env.WH_SENDGRID_KEY,billingEnabled:Boolean(billingConfig),billingConfig,stripeKey:env.WH_STRIPE_KEY,stripeWebhookSecret:env.WH_STRIPE_WEBHOOK_SECRET,sandboxAccount:env.WH_STRIPE_SANDBOX_ACCOUNT,jobsSecret:env.WH_JOBS_SECRET||null});
+  return Object.freeze({origin:origin.origin,dbHost:databaseUrl.hostname,dbPassword:password,database:env.WH_DB_NAME,role:env.WH_DB_ROLE,isolationId:env.WH_ISOLATION_ID,secret:env.WH_SESSION_SECRET,registrationMode,recipients:Object.freeze(recipients),mailFrom:env.WH_MAIL_FROM,sendgridKey:env.WH_SENDGRID_KEY,billingEnabled:Boolean(billingConfig),billingConfig,stripeKey:env.WH_STRIPE_KEY,stripeWebhookSecret:env.WH_STRIPE_WEBHOOK_SECRET,sandboxAccount:env.WH_STRIPE_SANDBOX_ACCOUNT,jobsSecret:env.WH_JOBS_SECRET||null});
 }
 
 async function boundedBytes(request,maximum) {
@@ -64,8 +66,9 @@ function sameSecret(provided,expected) {
 /** Service and billing are injected only after database isolation succeeds.
  * Jobs are bounded, server-only work. Failures never undo member revocation.
  */
-export function createWildHubHostedHandler({service,origin,billing=null,dispatchNotifications=null,schedule=()=>{},jobsSecret=null,mailDeliveryMode='provider',onError=()=>{}}={}) {
+export function createWildHubHostedHandler({service,origin,billing=null,dispatchNotifications=null,schedule=()=>{},jobsSecret=null,mailDeliveryMode='provider',registrationMode='allowlist',onError=()=>{}}={}) {
   if(typeof service!=='function'||new URL(origin).origin!==origin||!origin.startsWith('https://'))throw Error('Verified HTTPS service required.');
+  if(!['allowlist','open-beta'].includes(registrationMode))throw Error('Invalid registration mode.');
   async function jobs(){
     const result={};
     if(dispatchNotifications)try{result.mail=await dispatchNotifications({limit:10});}catch{onError('notification_job_failed');}
@@ -94,7 +97,7 @@ export function createWildHubHostedHandler({service,origin,billing=null,dispatch
       if(request.method==='POST'&&!webhook&&!jobRoute&&(request.headers.get('origin')!==origin||request.headers.get('sec-fetch-site')==='cross-site'))return fail(403,'origin_mismatch','This request needs the same BsideVibes test page.');
       if(url.pathname==='/api/wildhub-config'){
         if(request.method!=='GET')return fail(405,'method_not_allowed','Method not allowed.');
-        return response({environment:'isolated-test',emailMode:mailDeliveryMode,billingEnabled:Boolean(billing),testMode:true,videoEnabled:false,bodyBytes:HOSTED_BODY_BYTES});
+        return response({environment:'isolated-test',emailMode:mailDeliveryMode,registrationMode,billingEnabled:Boolean(billing),testMode:true,videoEnabled:false,bodyBytes:HOSTED_BODY_BYTES});
       }
       if(url.pathname==='/api/wildhub-qr')return secured(await renderWildHubQr(request,{origin}));
       if(jobRoute){

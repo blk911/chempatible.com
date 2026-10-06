@@ -85,6 +85,12 @@ export function createWildHubNotificationDispatcher({db,mail,origin,emailAllowed
       const accepted=await mail.send(job.message);
       if(accepted?.accepted===false)throw Object.assign(new Error('Mail was not accepted.'),{delivery:'not_accepted'});
     } catch(error) {
+      if(error?.code==='mail_budget_exceeded'&&error.delivery==='not_accepted'&&Number.isInteger(error.retryAfter)&&error.retryAfter>=1&&error.retryAfter<=86400){
+        // No provider attempt occurred. Keep the notification for the budget
+        // reset without burning its bounded provider-retry allowance.
+        await rows(db,"UPDATE wh_notifications SET status='retry',attempts=GREATEST(attempts-1,0),next_attempt_at=$3,last_error_code='mail_budget_limited',lease_until=NULL,updated_at=$4 WHERE id=$1 AND lease_id=$2 AND status IN ('processing','uncertain')",[job.id,job.leaseId,iso(now()+error.retryAfter*1000),iso(now())]);
+        return 'retrying';
+      }
       const knownRejected=error?.delivery==='not_accepted';
       const status=knownRejected?(job.attempts>=5?'failed':'retry'):'uncertain';
       await rows(db,`UPDATE wh_notifications SET status=$3,next_attempt_at=$4,last_error_code=$5,lease_until=NULL,updated_at=$6 WHERE id=$1 AND lease_id=$2 AND status IN ('processing','uncertain')`,[job.id,job.leaseId,status,iso(now()+Math.min(3_600_000,60_000*2**(job.attempts-1))),knownRejected?'provider_not_accepted':'delivery_unknown',iso(now())]);

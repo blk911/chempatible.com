@@ -1,16 +1,49 @@
-// Explicit future-hosting adapters. Neither is constructed by the local runner
-// or hosted entrypoint, and neither reads environment variables or creates keys.
-const address=value=>typeof value==='string'&&/^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(value)&&!/[\r\n]/.test(value);
+// Explicit hosted adapters receive validated configuration. They never read
+// ambient environment variables or create credentials.
+import {createHash} from 'node:crypto';
+const address=value=>typeof value==='string'&&value.length<=254&&/^[^\s@<>]+@[^\s@<>]+\.[a-z]{2,}$/i.test(value)&&!/[\r\n]/.test(value);
 
-export function createWildHubMailAdapter({sendgridKey,from,recipients,fetchImpl}={}) {
-  if(typeof sendgridKey!=='string'||sendgridKey.length<20||!address(from)||!Array.isArray(recipients)||!recipients.length||recipients.some(value=>!address(value))||typeof fetchImpl!=='function')throw Error('Explicit scoped mail credential, verified sender, approved recipients and transport are required.');
+export const OPEN_BETA_MAIL_LIMITS=Object.freeze({globalMinute:20,globalDay:500,recipientDay:20});
+export function createWildHubRegistrationPolicy({mode='allowlist',recipients=[]}={}) {
+  if(!['allowlist','open-beta'].includes(mode)||!Array.isArray(recipients)||recipients.some(value=>!address(value))||mode==='allowlist'&&!recipients.length)throw Error('An explicit registration policy is required.');
   const allowed=new Set(recipients.map(value=>value.toLowerCase()));
+  return Object.freeze({mode,allows:value=>address(value)&&(mode==='open-beta'||allowed.has(value.toLowerCase()))});
+}
+
+/** Reserve all send-attempt budgets before provider I/O. Failed/uncertain sends
+ * remain charged. Fixed transaction lock order enforces shared limits across
+ * instances; rejected reservations roll back without consuming slots. */
+export function createWildHubMailBudget({db,now=()=>Date.now(),limits=OPEN_BETA_MAIL_LIMITS}={}) {
+  if(typeof db?.transaction!=='function'||typeof now!=='function'||!limits||Object.keys(limits).some(key=>!Object.hasOwn(OPEN_BETA_MAIL_LIMITS,key)))throw Error('A durable email budget is required.');
+  const ceilings=Object.freeze({...OPEN_BETA_MAIL_LIMITS,...limits});
+  if(Object.values(ceilings).some(value=>!Number.isInteger(value)||value<1||value>1_000_000))throw Error('Invalid email budget.');
+  return async message=>{
+    if(!address(message?.to)||!['otp','invite','request','approval'].includes(message?.kind))throw Error('A valid email recipient and purpose are required.');
+    const instant=now();if(!Number.isSafeInteger(instant)||instant<0)throw Error('Invalid email budget clock.');
+    // Community activity cannot consume a person's sign-in allowance. Both
+    // categories still share the fixed provider-wide minute and daily budget.
+    const category=message.kind==='otp'?'otp':'community';
+    const buckets=[['mail:global-day',86_400_000,ceilings.globalDay],['mail:global-minute',60_000,ceilings.globalMinute],[`mail:recipient-${category}-day:`+message.to.toLowerCase(),86_400_000,ceilings.recipientDay]];
+    await db.transaction(async tx=>{
+      for(const [key,period,maximum]of buckets){
+        const bucket=Math.floor(instant/period),digest=createHash('sha256').update(key).digest('hex');
+        const result=await tx.query('INSERT INTO wh_rate_limits(key,bucket,count) VALUES($1,$2,1) ON CONFLICT(key,bucket) DO UPDATE SET count=wh_rate_limits.count+1 WHERE wh_rate_limits.count<$3 RETURNING count',[digest,bucket,maximum]);
+        if(!(Array.isArray(result)?result:result.rows)?.length)throw Object.assign(Error('Email sending is temporarily limited.'),{code:'mail_budget_exceeded',delivery:'not_accepted',retryAfter:Math.max(1,Math.ceil(((bucket+1)*period-instant)/1000))});
+      }
+    });
+  };
+}
+
+export function createWildHubMailAdapter({sendgridKey,from,recipients,registrationMode='allowlist',beforeSend=null,fetchImpl}={}) {
+  if(typeof sendgridKey!=='string'||sendgridKey.length<20||!address(from)||!Array.isArray(recipients)||typeof fetchImpl!=='function'||beforeSend!==null&&typeof beforeSend!=='function'||registrationMode==='open-beta'&&typeof beforeSend!=='function')throw Error('Explicit scoped mail credential, verified sender, recipient policy, budget and transport are required.');
+  const policy=createWildHubRegistrationPolicy({mode:registrationMode,recipients});
   const failure=(message,delivery)=>Object.assign(new Error(message),{delivery});
   return Object.freeze({
     deliveryMode:'provider',supportsIdempotency:false,
     async send(message) {
-      if(!address(message?.to)||!allowed.has(message.to.toLowerCase())||!['otp','invite','request','approval'].includes(message.kind)||typeof message.subject!=='string'||message.subject.length>200||/[\r\n]/.test(message.subject)||typeof message.text!=='string'||message.text.length>20000)throw failure('Mail is outside the approved test scope.','not_accepted');
+      if(!policy.allows(message?.to)||!['otp','invite','request','approval'].includes(message.kind)||typeof message.subject!=='string'||message.subject.length>200||/[\r\n]/.test(message.subject)||typeof message.text!=='string'||message.text.length>20000)throw failure('Mail is outside the approved scope.','not_accepted');
       if(['request','approval'].includes(message.kind)&&(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(message.notificationId||'')||message.idempotencyKey!==`wh-notification-${message.notificationId}`))throw failure('Mail is outside the approved test scope.','not_accepted');
+      if(beforeSend)try{await beforeSend({to:message.to.toLowerCase(),kind:message.kind});}catch(issue){const rejected=failure('Email sending is temporarily unavailable.','not_accepted');if(issue?.code==='mail_budget_exceeded'&&Number.isInteger(issue.retryAfter)&&issue.retryAfter>=1&&issue.retryAfter<=86400)Object.assign(rejected,{code:issue.code,retryAfter:issue.retryAfter});throw rejected;}
       let response;
       try {
         response=await fetchImpl('https://api.sendgrid.com/v3/mail/send',{
