@@ -23,11 +23,11 @@
     },
     "server/_wildhub-stripe.mjs": {
       "source": "api/_wildhub-stripe.mjs",
-      "sha256": "1cc5ae7501c5c90e43cb10b137a98108cc51968e7891e9225a64e5f1ddddc2dd"
+      "sha256": "40bb98ad53e51c3477775cbbf8fd3ef89dd93efad467676da09d84baa19827f9"
     },
     "server/_wildhub-qr.mjs": {
       "source": "api/_wildhub-qr.mjs",
-      "sha256": "237e9ae190a21d3bdde3b622ca66d361356b3a6543293b4d07613b0ee9086aac"
+      "sha256": "2689396b57ca863b309d8db20b3eb2b02d0d3158d3b103edadade5154f76ee13"
     },
     "server/_wildhub-hosted.mjs": {
       "source": "api/_wildhub-hosted.mjs",
@@ -47,7 +47,7 @@
     },
     "wild-hub-app/index.html": {
       "source": "wild-hub-app/index.html",
-      "sha256": "f440562e261adc6c6efa72747891e94e55cbdeb5210f7a835f779a156d27a575"
+      "sha256": "e996832d8cfdb2a25f974053e87d4728125cfe813f0ed2ef09ed80c59158631d"
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
@@ -55,11 +55,11 @@
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "e4e67edfd2041026109c63899765577d03879878c941a627102a5bf681839d6c"
+      "sha256": "46fd42c42b1614bf596374d7c639d828fe8721cb1668ee2fd958f7b60fa8b572"
     },
     "wild-hub-concepts/lauren/index.html": {
       "source": "wild-hub-concepts/lauren/index.html",
-      "sha256": "4872d1b305fb54eb7bf1749c5b4652cd87b27dddab6f1b20941c032de7e1a707"
+      "sha256": "22ed8ec4ce196cb6254eed72c8894265ac551928b69bc5be1f5ebdfb0a096318"
     },
     "wild-hub-concepts/lauren/concept.js": {
       "source": "wild-hub-concepts/lauren/concept.js",
@@ -67,7 +67,7 @@
     },
     "wild-hub-concepts/lauren/concept.css": {
       "source": "wild-hub-concepts/lauren/concept.css",
-      "sha256": "15e77fc8dea3b4c4d06b1ba5351fac54ca6cda6a9094363ca16e0d0bb83295dd"
+      "sha256": "2fc230dcd1edfb0a34f95149b089e361565bc1006c1beeb1557feb675b97cb10"
     },
     "wild-hub-concepts/lauren/assets/sailing-hero.webp": {
       "source": "wild-hub-concepts/lauren/assets/sailing-hero.webp",
@@ -79,7 +79,7 @@
     },
     "wild-hub/assets/mark.svg": {
       "source": "wild-hub/assets/mark.svg",
-      "sha256": "4ffeba8d9014119ff96eb92124b4c67dc0d9aa10111f9a9a0ae60422537d75a0"
+      "sha256": "9334a49f175936fb00d16a3c951265bb900d47acbf4540a733f7ef821233b234"
     },
     "wild-hub/assets/editorial.jpg": {
       "source": "wild-hub/assets/editorial.jpg",

@@ -12,7 +12,7 @@ export async function renderWildHubQr(request,{origin}={}) {
     target=new URL(value);
     if(target.origin!==origin||target.username||target.password||target.pathname!=='/'||target.search||
       !/^#(?:hub\/[a-z0-9][a-z0-9-]{1,38}[a-z0-9]|share\/[a-f0-9]{64})$/.test(target.hash))throw Error();
-  } catch {return new Response('Choose a Wild Hub request link.',{status:400,headers})}
+  } catch {return new Response('Choose a BsideVibes request link.',{status:400,headers})}
   const svg=await QRCode.toString(target.href,{type:'svg',errorCorrectionLevel:'M',margin:4,width:320,color:{dark:'#171717',light:'#ffffff'}});
   return new Response(request.method==='HEAD'?null:svg,{headers:{...headers,'content-type':'image/svg+xml; charset=utf-8','content-security-policy':"default-src 'none'; sandbox",'cross-origin-resource-policy':'same-origin'}});
 }

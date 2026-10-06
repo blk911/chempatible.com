@@ -1055,3 +1055,15 @@ button.community-person-actions:hover{color:var(--accent)}
  .bside-service-line{gap:13px 7px}
  .bside-service-line>span{font-size:11px;gap:4px}
 }
+
+/* Keep notes and conversation details quiet, with a little more contrast. */
+:root{--note-ink:#4c5660}
+.field-note,.small-note,
+.community-compose .field-note,.composer-actions p,.chat-form .composer-actions .small-note,
+.joinCard .registration-test-note,
+.auth-details,.support-offline,.host-sidepanel .support-offline,
+.entitlement-note p,.billing-notice,.delivery-status,
+.post-caption,.post-footer>span,
+.chat-meta time,.chat-heading p,.chat-heading small,.chat-person small,.chat-person p,
+.bside-home .bside-entry-note,.bside-home .bside-sample-note,
+.bside-sample-caption>p,.bside-sample-heading>div>span,.bside-sample-conversation>div>span{color:var(--note-ink)}

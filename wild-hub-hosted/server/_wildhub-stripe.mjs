@@ -37,7 +37,7 @@ export function createWildHubStripeProvider({
   };
   const sdk=new Stripe(secretKey,{
     apiVersion:WILD_HUB_STRIPE_API_VERSION,maxNetworkRetries:0,timeout:10000,
-    telemetry:false,appInfo:{name:'Wild Hub isolated sandbox',version:'1'},
+    telemetry:false,appInfo:{name:'BsideVibes isolated sandbox',version:'1'},
     httpClient:Stripe.createFetchHttpClient(transport)
   });
   let verified=null,verification=null,verifiedAt=null;
