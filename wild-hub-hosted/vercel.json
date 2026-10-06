@@ -73,7 +73,7 @@
   ],
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/((?!wild-hub-concepts/lauren/index[.]html$).*)",
       "headers": [
         {
           "key": "cache-control",
@@ -106,6 +106,43 @@
         {
           "key": "content-security-policy",
           "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        }
+      ]
+    },
+    {
+      "source": "/wild-hub-concepts/lauren/index.html",
+      "headers": [
+        {
+          "key": "cache-control",
+          "value": "private, no-store"
+        },
+        {
+          "key": "x-content-type-options",
+          "value": "nosniff"
+        },
+        {
+          "key": "x-frame-options",
+          "value": "DENY"
+        },
+        {
+          "key": "x-robots-tag",
+          "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "referrer-policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "cross-origin-resource-policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "permissions-policy",
+          "value": "camera=(self), microphone=(), geolocation=(), payment=()"
+        },
+        {
+          "key": "content-security-policy",
+          "value": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https://i.ytimg.com; font-src 'self'; frame-src https://www.youtube-nocookie.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         }
       ]
     }
