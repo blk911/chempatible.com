@@ -39,6 +39,6 @@ export async function wildHubFetch(request) {
     if(!cached)cached=initializeWildHubRuntime({env:process.env}).catch(error=>{cached=null;throw error;});
     return await (await cached).handler(request);
   }catch {
-    return Response.json({ok:false,error:{code:'not_configured',message:'The isolated Wild Hub test service is being configured.'}},{status:503,headers:HOSTED_HEADERS});
+    return Response.json({ok:false,error:{code:'not_configured',message:'The isolated BsideVibes test service is being configured.'}},{status:503,headers:HOSTED_HEADERS});
   }
 }

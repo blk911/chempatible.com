@@ -94,7 +94,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     // User keys never change here. NO KEY UPDATE still serializes profile and
     // standing changes, while allowing FK checks from host moderation/outbox.
     if(token)user=(await rows(tx,`SELECT u.* FROM wh_sessions s JOIN wh_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.expires_at>$2 AND u.verified_at IS NOT NULL FOR UPDATE OF s FOR NO KEY UPDATE OF u`,[sha(token),stamp()]))[0]||null;
-    if(user&&user.standing!=='active')fail(403,'account_unavailable','This account cannot use Wild Hub.');
+    if(user&&user.standing!=='active')fail(403,'account_unavailable','This account cannot use BsideVibes.');
     if(!user&&required)fail(401,'sign_in_required','Sign in to continue.');
     return user;
   }
@@ -213,7 +213,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
     allowedEmail(address);await rate(`otp:${address}`,1,60_000);await rate(`otp-day:${address}`,20,86_400_000);
     const code=String(randomInt(100000,1_000_000)),digest=hashCode(address,code),created=stamp();
     await rows(db,`INSERT INTO wh_codes(email,code_hash,expires_at,attempts,ready,created_at) VALUES($1,$2,$3,0,false,$4) ON CONFLICT(email) DO UPDATE SET code_hash=$2,expires_at=$3,attempts=0,ready=false,created_at=$4`,[address,digest,new Date(now()+600_000).toISOString(),created]);
-    try {await mail.send({to:address,subject:`${code} is your Wild Hub code`,text:`Your Wild Hub code is ${code}. It expires in 10 minutes.`,kind:'otp',code});}
+    try {await mail.send({to:address,subject:`${code} is your BsideVibes code`,text:`Your BsideVibes code is ${code}. It expires in 10 minutes.`,kind:'otp',code});}
     catch {await rows(db,'DELETE FROM wh_codes WHERE email=$1 AND code_hash=$2',[address,digest]);return error(503,'mail_unavailable','The code could not be delivered. Wait one minute and try again.');}
     await rows(db,'UPDATE wh_codes SET ready=true WHERE email=$1 AND code_hash=$2',[address,digest]);
     return json({sent:true});
@@ -229,7 +229,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       await rows(tx,'UPDATE wh_codes SET attempts=attempts+1 WHERE email=$1',[address]);
       if(!timingSafeEqual(Buffer.from(challenge.code_hash,'hex'),Buffer.from(hashCode(address,body.code),'hex')))return error(400,'invalid_code','The code is incorrect or expired.');
       let user=(await rows(tx,'SELECT * FROM wh_users WHERE email=$1 FOR NO KEY UPDATE',[address]))[0];
-      if(user&&user.standing!=='active')return error(403,'account_unavailable','This account cannot use Wild Hub.');
+      if(user&&user.standing!=='active')return error(403,'account_unavailable','This account cannot use BsideVibes.');
       if(!user)user=(await rows(tx,'INSERT INTO wh_users(id,email,verified_at,created_at) VALUES($1,$2,$3,$3) RETURNING *',[randomUUID(),address,stamp()]))[0];
       await rows(tx,'DELETE FROM wh_codes WHERE email=$1',[address]);
       const prior=sessionToken(req);if(prior)await rows(tx,'UPDATE wh_sessions SET revoked_at=$2 WHERE token_hash=$1',[sha(prior),stamp()]);
@@ -372,7 +372,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(member.access_revision!==expectedRevision)fail(409,'membership_changed','This membership changed. Review it again before continuing.');
       if(member.status!=='blocked')fail(409,'cannot_unblock','Only a blocked membership can be unblocked.');
       const targetUser=(await rows(tx,'SELECT standing,verified_at FROM wh_users WHERE id=$1',[target]))[0];
-      if(!targetUser?.verified_at||targetUser.standing!=='active')fail(403,'account_unavailable','This account cannot use Wild Hub.');
+      if(!targetUser?.verified_at||targetUser.standing!=='active')fail(403,'account_unavailable','This account cannot use BsideVibes.');
       const revision=randomUUID();
       // Unblocking is not admission. Do not touch trial eligibility/entitlements,
       // old invitations, requests, shares, revocation events, or account standing.
@@ -574,7 +574,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(!result.sendInvite)return result;
       const {id,token,address,hubName,hostName}=result.sendInvite;
       const link=new URL(`/#invite/${token}`,origin).href;
-      try {await mail.send({to:address,subject:`${hostName} invited you to ${hubName}`,text:`${hostName} invited you to ${hubName}. Sign in with this email and explicitly accept to join. The invitation expires in seven days.\n${link}`,kind:'invite',token,url:link});}
+      try {await mail.send({to:address,subject:`${hostName} invited you to ${hubName} on BsideVibes`,text:`${hostName} invited you to ${hubName} on BsideVibes. Sign in with this email and explicitly accept to join. The invitation expires in seven days.\n${link}`,kind:'invite',token,url:link});}
       catch {await rows(db,'DELETE FROM wh_invites WHERE id=$1 AND ready=false',[id]);return error(503,'mail_unavailable','The invitation could not be delivered. You can try again.');}
       await rows(db,'UPDATE wh_invites SET ready=true WHERE id=$1 AND revoked_at IS NULL',[id]);
       return json({sent:true,inviteId:id});
@@ -582,7 +582,7 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(e.status&&e.code)return error(e.status,e.code,e.message,e.status===429?{'retry-after':'60'}:{});
       if(e.code==='23505')return error(409,'conflict','That item already exists. Refresh and try again.');
       onError(e);
-      return error(503,'service_unavailable','Wild Hub is temporarily unavailable.');
+      return error(503,'service_unavailable','BsideVibes is temporarily unavailable.');
     }
   }
   handle.dispatchNotifications=notifications.dispatch;

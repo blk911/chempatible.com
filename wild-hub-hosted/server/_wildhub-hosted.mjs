@@ -88,10 +88,10 @@ export function createWildHubHostedHandler({service,origin,billing=null,dispatch
   return async request=>{
     try {
       const url=new URL(request.url);
-      if(url.origin!==origin)return fail(403,'origin_mismatch','Use the approved Wild Hub test address.');
+      if(url.origin!==origin)return fail(403,'origin_mismatch','Use the approved BsideVibes test address.');
       if(!['GET','HEAD','POST'].includes(request.method))return fail(405,'method_not_allowed','Method not allowed.');
       const webhook=url.pathname==='/api/wildhub-webhook',jobRoute=url.pathname==='/api/wildhub-jobs';
-      if(request.method==='POST'&&!webhook&&!jobRoute&&(request.headers.get('origin')!==origin||request.headers.get('sec-fetch-site')==='cross-site'))return fail(403,'origin_mismatch','This request needs the same Wild Hub test page.');
+      if(request.method==='POST'&&!webhook&&!jobRoute&&(request.headers.get('origin')!==origin||request.headers.get('sec-fetch-site')==='cross-site'))return fail(403,'origin_mismatch','This request needs the same BsideVibes test page.');
       if(url.pathname==='/api/wildhub-config'){
         if(request.method!=='GET')return fail(405,'method_not_allowed','Method not allowed.');
         return response({environment:'isolated-test',emailMode:mailDeliveryMode,billingEnabled:Boolean(billing),testMode:true,videoEnabled:false,bodyBytes:HOSTED_BODY_BYTES});
@@ -133,7 +133,7 @@ export function createWildHubHostedHandler({service,origin,billing=null,dispatch
       const safeCodes=new Set(['approved_members_only','account_unavailable','hub_unavailable','admission_changed','idempotency_conflict','checkout_closed','subscription_already_pending','plan_not_allowed','invalid_input','invalid_request_key','unexpected_field','invalid_id','invalid_signature','webhook_body_size','event_replay_mismatch','live_mode_forbidden']);
       if(error.status===413)return fail(413,'body_too_large','This test upload is too large. Choose a smaller photo.');
       if(safeCodes.has(error.code))return fail(['invalid_signature','invalid_id','invalid_input','invalid_request_key','unexpected_field','webhook_body_size'].includes(error.code)?400:409,error.code,'This action could not be completed. Refresh your community status and try again.');
-      onError('hosted_request_failed');return fail(503,'service_unavailable','Wild Hub is temporarily unavailable. Try again shortly.');
+      onError('hosted_request_failed');return fail(503,'service_unavailable','BsideVibes is temporarily unavailable. Try again shortly.');
     }
   };
 }

@@ -16,7 +16,7 @@ export function createWildHubMailAdapter({sendgridKey,from,recipients,fetchImpl}
         response=await fetchImpl('https://api.sendgrid.com/v3/mail/send',{
           method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
           headers:{authorization:`Bearer ${sendgridKey}`,'content-type':'application/json'},
-          body:JSON.stringify({personalizations:[{to:[{email:message.to.toLowerCase()}],...(['request','approval'].includes(message.kind)?{custom_args:{wild_hub_notification:message.notificationId}}:{})}],from:{email:from,name:'Wild Hub'},subject:message.subject,content:[{type:'text/plain',value:message.text}],tracking_settings:{click_tracking:{enable:false,enable_text:false},open_tracking:{enable:false}}})
+          body:JSON.stringify({personalizations:[{to:[{email:message.to.toLowerCase()}],...(['request','approval'].includes(message.kind)?{custom_args:{wild_hub_notification:message.notificationId}}:{})}],from:{email:from,name:'BsideVibes'},subject:message.subject,content:[{type:'text/plain',value:message.text}],tracking_settings:{click_tracking:{enable:false,enable_text:false},open_tracking:{enable:false}}})
         });
       } catch {throw failure('The mail provider did not confirm acceptance.','uncertain');}
       // 202 confirms provider acceptance, not inbox delivery. Never surface

@@ -3,7 +3,7 @@
   "files": {
     "server/_wildhub-service.mjs": {
       "source": "api/_wildhub-service.mjs",
-      "sha256": "00da4a3e8477c0f8accbc35d6647f24d80e8bce456edee80ab849dde31cea836"
+      "sha256": "3ad9a634eafee5bda4a710a353ca4cf89320de68afc89f604fa0f37b1c243809"
     },
     "server/_wildhub-images.mjs": {
       "source": "api/_wildhub-images.mjs",
@@ -11,11 +11,11 @@
     },
     "server/_wildhub-adapters.mjs": {
       "source": "api/_wildhub-adapters.mjs",
-      "sha256": "e4d984c0b520ffd89d6e3fc8a88debf2057dc5b2625098e78fff57ea3b8d48ec"
+      "sha256": "f1033d784cfe75c8f9a74d56d4f49f78e09b5edae5753c660b7f9fd88c76c1ca"
     },
     "server/_wildhub-notifications.mjs": {
       "source": "api/_wildhub-notifications.mjs",
-      "sha256": "212d60adeb378f7e66f9460297a9d79098aa030401361447dfb1247c0d90a2bb"
+      "sha256": "eadaff2d721618f752862aa812f36b33876087a214726cfd747f2527930a47dd"
     },
     "server/_wildhub-billing.mjs": {
       "source": "api/_wildhub-billing.mjs",
@@ -31,11 +31,11 @@
     },
     "server/_wildhub-hosted.mjs": {
       "source": "api/_wildhub-hosted.mjs",
-      "sha256": "9540813b6c7c17660a1f33927505874d47b7f9b894492f54844b8069fc53025e"
+      "sha256": "de419cfa53679f5df1e107da664f78d5366ebf24034538dfe376500032fc7216"
     },
     "server/_wildhub-runtime.mjs": {
       "source": "api/_wildhub-runtime.mjs",
-      "sha256": "87006f77b060ec553ee56b41ec13e338a6cab0473cf0f7953fad19cfa60f7ee1"
+      "sha256": "7d48373b3b23290289b6892c18e4f0c67c79c26b6c2adf619e8538b469780e92"
     },
     "server/_wildhub-creator-finance.mjs": {
       "source": "api/_wildhub-creator-finance.mjs",
@@ -47,23 +47,23 @@
     },
     "wild-hub-app/index.html": {
       "source": "wild-hub-app/index.html",
-      "sha256": "bf96a7daae2aa21212076838e14277613f3c611e1e42c5372110a1fe2b369cb1"
+      "sha256": "f440562e261adc6c6efa72747891e94e55cbdeb5210f7a835f779a156d27a575"
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "78dc43ef6424c1b0ab110b4d0119b69d1c74fa9334e975ea412840753d09bcdc"
+      "sha256": "ed98f9c427fb2cab7b646bd97fc1161c9b5ae76ed54396453fa5be4404d8b968"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "067fdc8c056e5dc468720aa96a35859efdc240790b3721820f7c66bd10b07189"
+      "sha256": "a7e66dd419a7f8df2f3aa958506bd3b4075c93ae49516a50094dd00252fbca75"
     },
     "wild-hub-concepts/lauren/index.html": {
       "source": "wild-hub-concepts/lauren/index.html",
-      "sha256": "2664efc0d738ff91fe7ce5aa946640c151986c75e9c093eb6c7fc90132236ea5"
+      "sha256": "4872d1b305fb54eb7bf1749c5b4652cd87b27dddab6f1b20941c032de7e1a707"
     },
     "wild-hub-concepts/lauren/concept.js": {
       "source": "wild-hub-concepts/lauren/concept.js",
-      "sha256": "63cd14daec24239d397c6e446d0cb200f7ac19a718a74ae476129ae37fe53af0"
+      "sha256": "2035b2f8d03dbdb44b8e9a9e71e05ddb7b8a533641862150af0a581327c80d3d"
     },
     "wild-hub-concepts/lauren/concept.css": {
       "source": "wild-hub-concepts/lauren/concept.css",
@@ -84,6 +84,18 @@
     "wild-hub/assets/editorial.jpg": {
       "source": "wild-hub/assets/editorial.jpg",
       "sha256": "4a2b9c66619473bba68af3754057dab61ffe4fe673d2dc494aa4c6c5fccddadf"
+    },
+    "wild-hub/assets/bside-mark.svg": {
+      "source": "wild-hub/assets/bside-mark.svg",
+      "sha256": "9334a49f175936fb00d16a3c951265bb900d47acbf4540a733f7ef821233b234"
+    },
+    "wild-hub/assets/bside-community.webp": {
+      "source": "wild-hub/assets/bside-community.webp",
+      "sha256": "ad9fc0990ef044a692235683ab61efb17c81e009fbdd607041a009710dff6633"
+    },
+    "wild-hub/assets/bside-creator.webp": {
+      "source": "wild-hub/assets/bside-creator.webp",
+      "sha256": "c30055a0603b65acaf954c3d519480b5ba7994c3f64886cbccc5fffc6b68bf0f"
     }
   }
 }

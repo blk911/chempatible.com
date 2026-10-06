@@ -181,6 +181,14 @@
   }
 
   function setThumbnail(image, media, container, eager = false) {
+    // Give each selection its own image: queued events from an older poster
+    // must never reach the handlers or failure state of the current selection.
+    const previous = image;
+    image = create('img');
+    if (previous.id) image.id = previous.id;
+    previous.onload = null;
+    previous.onerror = null;
+    previous.replaceWith(image);
     container.classList.remove('image-unavailable');
     container.querySelector('.thumbnail-fallback')?.remove();
     image.alt = media.title;
@@ -193,12 +201,27 @@
     const fallback = media.thumbnailFallbackUrl;
     const preferred = approvedThumbnail(media.thumbnailUrl, media.id) ? media.thumbnailUrl : fallback;
     let triedFallback = preferred === fallback;
+    let requestedUrl = preferred;
+    let loaded = false;
+    let failed = false;
+    const isCurrent = () => image.parentElement === container && image.src === requestedUrl;
+    image.onload = () => {
+      if (!isCurrent() || !image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0
+        || image.currentSrc !== requestedUrl || !approvedThumbnail(image.currentSrc, media.id)) return;
+      loaded = true;
+      image.onerror = null;
+      container.classList.remove('image-unavailable');
+      container.querySelector('.thumbnail-fallback')?.remove();
+    };
     image.onerror = () => {
+      if (!isCurrent() || loaded || failed) return;
       if (!triedFallback && approvedThumbnail(fallback, media.id)) {
         triedFallback = true;
-        image.src = fallback;
+        requestedUrl = fallback;
+        image.src = requestedUrl;
         return;
       }
+      failed = true;
       image.onerror = null;
       container.classList.add('image-unavailable');
       const note = create('span', 'thumbnail-fallback');

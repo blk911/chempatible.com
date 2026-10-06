@@ -67,6 +67,18 @@
       "use": "@vercel/static"
     },
     {
+      "src": "wild-hub/assets/bside-mark.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/bside-community.webp",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wild-hub/assets/bside-creator.webp",
+      "use": "@vercel/static"
+    },
+    {
       "src": "robots.txt",
       "use": "@vercel/static"
     }
@@ -149,7 +161,7 @@
   ],
   "routes": [
     {
-      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/robots\\.txt)$",
+      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/wild-hub/assets/bside-mark\\.svg|/wild-hub/assets/bside-community\\.webp|/wild-hub/assets/bside-creator\\.webp|/robots\\.txt)$",
       "methods": [
         "GET",
         "HEAD"
@@ -167,7 +179,7 @@
       "status": 307
     },
     {
-      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/robots\\.txt)$",
+      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/wild-hub/assets/bside-mark\\.svg|/wild-hub/assets/bside-community\\.webp|/wild-hub/assets/bside-creator\\.webp|/robots\\.txt)$",
       "methods": [
         "GET",
         "HEAD"
