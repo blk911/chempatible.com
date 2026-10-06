@@ -147,6 +147,44 @@
       ]
     }
   ],
+  "routes": [
+    {
+      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/robots\\.txt)$",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "has": [
+        {
+          "type": "host",
+          "value": "^wild-hub-preview-git-feature-wild-3fccef-jsws-projects-217e294d\\.vercel\\.app$"
+        }
+      ],
+      "headers": {
+        "Location": "https://bsidevibes.com$1",
+        "Cache-Control": "private, no-store"
+      },
+      "status": 307
+    },
+    {
+      "src": "^(/|/wild-hub-app/index\\.html|/wild-hub-app/app\\.js|/wild-hub-app/app\\.css|/wild-hub-concepts/lauren/index\\.html|/wild-hub-concepts/lauren/concept\\.js|/wild-hub-concepts/lauren/concept\\.css|/wild-hub-concepts/lauren/assets/sailing-hero\\.webp|/wild-hub/wild-hub\\.css|/wild-hub/assets/mark\\.svg|/wild-hub/assets/editorial\\.jpg|/robots\\.txt)$",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "has": [
+        {
+          "type": "host",
+          "value": "^www\\.bsidevibes\\.com$"
+        }
+      ],
+      "headers": {
+        "Location": "https://bsidevibes.com$1",
+        "Cache-Control": "private, no-store"
+      },
+      "status": 307
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/wildhub",

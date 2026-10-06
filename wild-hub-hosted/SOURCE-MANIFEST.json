@@ -31,7 +31,7 @@
     },
     "server/_wildhub-hosted.mjs": {
       "source": "api/_wildhub-hosted.mjs",
-      "sha256": "3ec26672c82f821ad2c97cfc147740630b091a7ca50b57ea31f44ed7add3929e"
+      "sha256": "9540813b6c7c17660a1f33927505874d47b7f9b894492f54844b8069fc53025e"
     },
     "server/_wildhub-runtime.mjs": {
       "source": "api/_wildhub-runtime.mjs",

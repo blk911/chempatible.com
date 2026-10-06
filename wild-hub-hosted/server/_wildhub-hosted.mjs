@@ -3,6 +3,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {renderWildHubQr} from './_wildhub-qr.mjs';
 
 export const WILD_HUB_HOSTED_PROJECT='prj_74yUHa6mrd6AZBII9pdAg6cOjKPN';
+export const WILD_HUB_CANONICAL_ORIGIN='https://bsidevibes.com';
 export const HOSTED_BODY_BYTES=4*1024*1024;
 export const HOSTED_HEADERS=Object.freeze({
   'cache-control':'private, no-store',
@@ -24,7 +25,9 @@ export function readWildHubHostedConfig(env={}) {
   if(env.WH_MODE!=='isolated-test'||env.VERCEL_PROJECT_ID!==WILD_HUB_HOSTED_PROJECT)throw Error('Wild Hub project is not enabled.');
   let origin,databaseUrl;
   try {origin=new URL(env.WH_ORIGIN);databaseUrl=new URL(env.WH_DATABASE_URL);}catch {throw Error('Wild Hub configuration is incomplete.');}
-  if(origin.protocol!=='https:'||origin.origin!==env.WH_ORIGIN||origin.username||origin.password||!origin.hostname.endsWith('.vercel.app'))throw Error('Wild Hub needs its approved HTTPS preview origin.');
+  // Configuration selects ONE origin; accepting the chosen apex here does not
+  // make it an additional request origin or relax any handler/service gate.
+  if(origin.protocol!=='https:'||origin.origin!==env.WH_ORIGIN||origin.username||origin.password||origin.port||!origin.hostname.endsWith('.vercel.app')&&env.WH_ORIGIN!==WILD_HUB_CANONICAL_ORIGIN)throw Error('Wild Hub needs its approved exact HTTPS origin.');
   if(!['postgres:','postgresql:'].includes(databaseUrl.protocol)||!databaseUrl.hostname.endsWith('.neon.tech')||databaseUrl.hostname!==env.WH_DB_HOST||databaseUrl.hash||databaseUrl.port&&databaseUrl.port!=='5432'||databaseUrl.searchParams.getAll('sslmode').length!==1||databaseUrl.searchParams.get('sslmode')!=='require'||[...databaseUrl.searchParams.keys()].some(key=>!['sslmode','channel_binding'].includes(key))||databaseUrl.searchParams.getAll('channel_binding').length>1||databaseUrl.searchParams.has('channel_binding')&&databaseUrl.searchParams.get('channel_binding')!=='require')throw Error('Wild Hub needs its isolated TLS database.');
   let password;try{password=decodeURIComponent(databaseUrl.password);}catch{throw Error('Invalid database credential.');}
   if(!password||password.includes('\0'))throw Error('An explicit independent database password is required.');
