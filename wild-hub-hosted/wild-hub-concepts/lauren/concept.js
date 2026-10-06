@@ -148,7 +148,7 @@
   const mediaById = new Map(catalog.map(item => [item.id, item]));
   const idPattern = /^[A-Za-z0-9_-]{11}$/;
   const defaultTitle = 'Lauren Landers Sailing';
-  const defaultIntro = 'Ocean passages, boat projects, and life aboard Soul de La Mar with Lauren and her cat, Mako. A closer look at a life shaped by the sea.';
+  const defaultIntro = 'The stories between the videos. A closer circle around life aboard Soul de La Mar.';
   const defaults = () => ({ title: defaultTitle, intro: defaultIntro, theme: 'ocean', layout: 'grid', filter: 'all', featured: 'gsVVXtGATMc' });
   let state = defaults();
   let supportChoice = 'one-time';
