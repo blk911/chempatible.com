@@ -55,3 +55,6 @@
 !/api/_reward-auth.mjs
 
 !/api/reward-requests.mjs
+
+!/api/wildcards.mjs
+!/api/_wildcard-questions.mjs
