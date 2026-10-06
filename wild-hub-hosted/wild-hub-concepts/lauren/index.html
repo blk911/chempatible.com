@@ -35,23 +35,33 @@
   <main>
     <section class="hero" aria-labelledby="hub-title">
       <div class="hero-copy">
-        <p class="eyebrow hero-kicker"><span class="sail-icon" aria-hidden="true">◬</span> Soul de La Mar · Life aboard</p>
-        <h1 id="hub-title">Lauren Landers<br><em>Sailing</em></h1>
-        <h2 class="bside-invitation" id="bside-invitation">Come aboard<br><em>my B-side.</em></h2>
-        <p id="hub-intro" class="hero-intro">The stories between the videos. A closer circle around life aboard Soul de La Mar.</p>
-        <div class="bside-benefits" aria-labelledby="bside-benefits-note">
-          <p class="bside-benefits-note" id="bside-benefits-note">Proposed benefits · For Lauren’s review</p>
-          <ul class="bside-benefit-list">
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM9 5v14m6-10 3 3-3 3M4 9h5M4 15h5"/></svg><span>Creator’s cuts</span></li>
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v13H3zM7 7V4h10v3M7 12h10m-10 4h6"/></svg><span>Private group page</span></li>
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2Zm3 5h8m-8 4h5"/></svg><span>Private chat</span></li>
-            <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3-5 3 3 5 2-1v11h8V10l2 1 3-5-5-3a4 4 0 0 1-8 0Z"/></svg><span>Member merch discounts</span></li>
-          </ul>
-        </div>
-        <div class="bside-actions">
-          <button class="button bside-join" id="hero-join" type="button" data-open-join aria-haspopup="dialog" aria-controls="join-dialog" aria-describedby="bside-benefits-note"><span>Join my B-side</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
-          <button class="hero-support" id="hero-support" type="button" data-open-support="one-time" aria-haspopup="dialog" aria-controls="support-dialog"><span>Or support once</span><svg class="support-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
-        </div>
+        <article class="invitation-card" aria-labelledby="bside-invitation" aria-describedby="bside-benefits-note">
+          <div class="invitation-opening">
+            <p class="eyebrow hero-kicker"><span class="sail-icon" aria-hidden="true">◬</span> Soul de La Mar · Life aboard</p>
+            <h1 id="hub-title">Lauren Landers<br><em>Sailing</em></h1>
+            <h2 class="bside-invitation" id="bside-invitation">Come aboard<br><em>my B-side.</em></h2>
+            <p id="hub-intro" class="hero-intro">The stories between the videos. A place in the crew.</p>
+          </div>
+          <div class="bside-benefits" role="group" aria-label="Reasons to join my B-side" aria-describedby="bside-benefits-note">
+            <ul class="bside-benefit-list">
+              <li><h3>Creator’s cuts</h3><p>Extra edits and behind-the-scenes moments.</p></li>
+              <li><h3>Private group page</h3><p>Sea stories, shared updates, familiar faces.</p></li>
+              <li><h3>Private chat</h3><p>A quieter place to talk with the crew.</p></li>
+              <li><h3>Member merch discounts</h3><p>A little thank-you on merch you love.</p></li>
+            </ul>
+          </div>
+          <footer class="invitation-footer">
+            <div class="bside-actions" role="group" aria-label="Join or support the journey">
+              <button class="button bside-join" id="hero-join" type="button" data-open-join aria-haspopup="dialog" aria-controls="join-dialog" aria-describedby="bside-benefits-note"><span>Join my B-side</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+              <p class="bside-support-label" id="bside-support-label">Or help keep the journey going</p>
+              <div class="bside-support-options" role="group" aria-labelledby="bside-support-label">
+                <button class="hero-support" id="hero-support" type="button" data-open-support="one-time" aria-haspopup="dialog" aria-controls="support-dialog"><span>One-time support</span><svg class="support-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+                <button class="hero-support" id="hero-support-monthly" type="button" data-open-support="monthly" aria-haspopup="dialog" aria-controls="support-dialog"><span>Monthly support</span><svg class="support-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+              </div>
+            </div>
+            <p class="bside-benefits-note" id="bside-benefits-note">Invitation &amp; benefits proposed for Lauren’s review</p>
+          </footer>
+        </article>
         <div class="hero-actions"><button class="hero-watch" id="hero-play" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg><span>Play featured video</span></button><a class="hero-browse" href="#watch">Explore <span aria-hidden="true">↓</span></a></div>
       </div>
       <div class="hero-media">
