@@ -151,6 +151,7 @@
   const defaultIntro = 'Ocean passages, boat projects, and life aboard Soul de La Mar with Lauren and her cat, Mako. A closer look at a life shaped by the sea.';
   const defaults = () => ({ title: defaultTitle, intro: defaultIntro, theme: 'ocean', layout: 'grid', filter: 'all', featured: 'gsVVXtGATMc' });
   let state = defaults();
+  let supportChoice = 'one-time';
   let currentMediaId = null;
   let lastSectionHash = window.location.hash;
   let toastTimer;
@@ -372,12 +373,31 @@
 
   function openDialog(dialog) {
     if (dialog.open) return;
+    const active = document.activeElement;
+    const activeDialog = active?.closest('dialog[open]');
+    const opener = activeDialog ? returnFocus.get(activeDialog) : active;
     document.querySelectorAll('dialog[open]').forEach(open => closeDialog(open));
-    returnFocus.set(dialog, document.activeElement);
+    returnFocus.set(dialog, opener);
     if (typeof dialog.showModal === 'function') dialog.showModal();
     else dialog.setAttribute('open', '');
     document.body.classList.add('dialog-open');
     dialog.querySelector('button, a[href], input, textarea, select')?.focus();
+  }
+
+  function selectSupport(choice) {
+    if (!['one-time', 'monthly'].includes(choice)) return false;
+    supportChoice = choice;
+    document.querySelectorAll('[data-support-choice]').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.supportChoice === choice));
+    });
+    $('support-selection-title').textContent = choice === 'monthly' ? 'Support me monthly' : 'Send a little support';
+    $('support-selection-detail').textContent = choice === 'monthly' ? 'Monthly support' : 'A one-time contribution';
+    return true;
+  }
+
+  function openSupport(choice = supportChoice) {
+    if (!selectSupport(choice)) return;
+    openDialog($('support-dialog'));
   }
 
   function openMedia(id, playRequested = false) {
@@ -446,6 +466,8 @@
     }
     if (button.hasAttribute('data-close-dialog')) closeDialog(button.closest('dialog'));
     if (button.hasAttribute('data-open-join')) openDialog($('join-dialog'));
+    if (button.hasAttribute('data-open-support')) openSupport(button.dataset.openSupport || supportChoice);
+    if (button.hasAttribute('data-support-choice') && $('support-dialog').open) selectSupport(button.dataset.supportChoice);
   });
 
   window.addEventListener('hashchange', () => syncSectionNavigation(true));
