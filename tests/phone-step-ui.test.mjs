@@ -68,7 +68,7 @@ test('Step 2 unlock captures a private number without requiring a Vibe connectio
   assert.equal(f.posts().at(-1).body.action,'confirmProfilePhone');assert.equal(f.posts().at(-1).body.phoneRevision,0);
   assert.equal(f.posts().filter(c=>c.body.action==='offerPhone').length,0);
   assert.match(f.d.querySelector('#rewardProfilePhoneStatus').textContent,/saved privately.*No phone offer/);
-  assert.equal(f.d.querySelector('.rewardNextStep .rewardPrimary').textContent,'Next: Step 3 · Play five →');
+  assert.equal(f.d.querySelector('.rewardNextStep .rewardPrimary').textContent,'Next: Duhwildcards →');
   assert.equal(f.server.accounts.owner.grants,1);
   for(const storage of [f.w.localStorage,f.w.sessionStorage])assert.ok(!JSON.stringify({...storage}).includes('555'),'phone is not persisted in browser storage');
   assert.ok(!JSON.stringify(f.w.eval('s')).includes('555'),'private number is not copied into persisted walkthrough state');
@@ -118,7 +118,7 @@ test('polling retains dirty input, focus and cursor and completed-step browsing 
   f.d.querySelector('[data-reward-step="2"]').click();assert.equal(f.d.querySelector('#rewardProfilePhone').value,'+1 555 444 1234');
   assert.equal(f.d.querySelector('.rewardQuestions'),null,'completed steps show reward context, not replay questions');
   f.d.querySelector('[data-reward-step="1"]').click();assert.match(f.d.querySelector('#rewardTitle').textContent,/Send a vibe unlocked/);assert.equal(f.d.querySelector('.rewardQuestions'),null);
-  f.d.querySelector('[data-reward-step="5"]').click();assert.equal(f.d.querySelector('.rewardQuestions'),null);assert.match(f.d.querySelector('.rewardConsent').textContent,/Step 3 first/);
+  f.d.querySelector('[data-reward-step="5"]').click();assert.equal(f.d.querySelector('.rewardQuestions'),null);assert.match(f.d.querySelector('.rewardConsent').textContent,/First unlock Duhwildcards at Step 3/);
   await f.w.rewardAction('complete');assert.equal(f.posts().length,0,'locked and prior steps cannot grant rewards');
   f.d.querySelector('[data-reward-step="3"]').click();assert.equal(f.d.querySelector('.rewardQuestions input[value="0"]').checked,true);
   f.w.closeInvite();assert.equal(f.d.activeElement.dataset.rewardLevel,'2','close returns to the page opener across breadcrumb navigation');

@@ -106,7 +106,7 @@ test('reward header and question controls keep shrinkable tracks and touch targe
   f.w.openRewardLevel(3);const dialog=assertDialog(f.d);
   assert.equal(dialog.querySelectorAll('.rewardPrimary').length,1,'round has one prominent action');
   assert.equal(dialog.querySelector('.rewardDetails').open,false,'secondary explanation starts collapsed');
-  assert.equal(dialog.querySelector('.rewardTarget b').textContent,'Duhwildcards');
+  assert.equal(dialog.querySelector('#rewardTitle').textContent,'Duhwildcards · Step 3');
   const progress=dialog.querySelector('progress#rewardProgress');assert.ok(progress);
   assert.equal(progress.max,5);assert.equal(progress.value,0);
   assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');
@@ -118,6 +118,7 @@ test('reward header and question controls keep shrinkable tracks and touch targe
    assert.equal(style(slots).display,'grid');assert.match(style(slots).gridTemplateColumns,/minmax\(0,\s*1fr\)/);
    for(const button of ladder.querySelectorAll('button'))assert.ok(parseFloat(style(button).minHeight)>=44,`${width}px reward controls retain 44px height`);
    for(const slot of ladder.querySelectorAll('.rewardSlot')){assert.equal(parseFloat(style(slot).minWidth),0);assert.equal(style(slot.querySelector('b')).overflowWrap,'anywhere','long labels can wrap at narrow widths and increased text size')}
+   for(const text of ladder.querySelectorAll('.rewardSlotBenefit,.rewardSlotStatus')){assert.equal(style(text).maxWidth,'100%');assert.equal(style(text).overflowWrap,'anywhere');assert.notEqual(style(text).whiteSpace,'nowrap');assert.notEqual(style(text).overflow,'hidden');assert.notEqual(style(text).textOverflow,'ellipsis')}
    if(width<=520){assert.equal(style(ladder.querySelector('.rewardNext .rewardButton')).width,'100%');assert.equal(style(ladder.querySelector('.rewardLadderHeading')).flexWrap,'wrap')}
    assert.match(style(dialog).maxHeight,/d?vh/);assert.equal(style(dialog).overflow,'auto');
    assert.ok(parseFloat(style(dialog.querySelector('.close')).minHeight)>=44);

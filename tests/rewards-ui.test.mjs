@@ -64,7 +64,7 @@ function answer(f,level,value){for(const q of REWARD_ROUNDS.find(r=>r.level===le
 function hold(f,match){const h=deferred();f.server.hold={...h,match};return h}
 
 test('header has five functional slots and exact CTA; optional games are secondary',async()=>{
- const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader');assert.equal(header.querySelector('.ctaPrompt').textContent,'Caught their vibe?');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.deepEqual([...header.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['Email','Cell','Duhwildcards','Be discovered','Your 15 seconds']);assert.equal(header.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(header.querySelectorAll('.rewardSlot.current').length,1);assert.equal(header.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/Finish Second 5/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
+ const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader');assert.equal(header.querySelector('.ctaPrompt').textContent,'Caught their vibe?');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.deepEqual([...header.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['Email','Cell','Duhwildcards','Be discovered','Your 15 seconds']);assert.equal(header.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(header.querySelectorAll('.rewardSlot.current').length,1);assert.equal(header.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/First unlock Mutual phone exchange/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
 });
 test('first five uses existing flow and friend-only pages remain usable',async()=>{
  const f=await fixture({level:0});try{f.w.openRewardLevel(1);assert.ok(f.d.querySelector('.quickChoices'));f.w.goHome();f.w.selectChempat(friend);assert.ok(f.d.querySelector('#message'));assert.equal(f.d.querySelector('.rewardConnection'),null)}finally{f.close()}
@@ -183,7 +183,7 @@ test('a historical outgoing request without an eligible photo still offers Cance
 });
 
 test('polished rounds keep every original choice, show live progress, and emphasize one next action',async()=>{
- const f=await fixture({level:2});try{f.w.openRewardLevel(3);const round=REWARD_ROUNDS.find(r=>r.level===3);assert.equal(f.d.querySelector('.rewardTarget b').textContent,'Duhwildcards');const progress=f.d.querySelector('#rewardProgress');assert.equal(progress.max,5);assert.equal(progress.value,0);assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),"rewardAction('complete')");assert.equal(f.d.querySelector('.rewardDetails').open,false);for(const [i,q] of round.questions.entries()){assert.equal(f.d.querySelectorAll('.rewardQuestions legend')[i].textContent,`${i+1}. ${q.text}`);assert.deepEqual([...f.d.querySelectorAll(`input[name="reward-${i}"]+span`)].map(el=>el.textContent),q.choices.map(c=>c.label))}const input=f.d.querySelector('.rewardQuestions input');input.click();input.focus();assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);await f.w.loadRewards(true);assert.equal(f.d.querySelector('#rewardProgress'),progress);assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);answer(f,3);assert.equal(progress.value,5);await f.w.rewardAction('complete');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardDetails').open,false);assert.match(f.d.querySelector('.rewardDetails').textContent,/Each person gets 3 cards per connection/)}finally{f.close()}
+ const f=await fixture({level:2});try{f.w.openRewardLevel(3);const round=REWARD_ROUNDS.find(r=>r.level===3);assert.equal(f.d.querySelector('#rewardTitle').textContent,'Duhwildcards · Step 3');const progress=f.d.querySelector('#rewardProgress');assert.equal(progress.max,5);assert.equal(progress.value,0);assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),"rewardAction('complete')");assert.equal(f.d.querySelector('.rewardDetails').open,false);for(const [i,q] of round.questions.entries()){assert.equal(f.d.querySelectorAll('.rewardQuestions legend')[i].textContent,`${i+1}. ${q.text}`);assert.deepEqual([...f.d.querySelectorAll(`input[name="reward-${i}"]+span`)].map(el=>el.textContent),q.choices.map(c=>c.label))}const input=f.d.querySelector('.rewardQuestions input');input.click();input.focus();assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);await f.w.loadRewards(true);assert.equal(f.d.querySelector('#rewardProgress'),progress);assert.equal(progress.value,1);assert.equal(f.d.activeElement,input);answer(f,3);assert.equal(progress.value,5);await f.w.rewardAction('complete');assert.equal(f.d.querySelectorAll('.rewardModal .rewardPrimary').length,1);assert.equal(f.d.querySelector('.rewardDetails').open,false);assert.match(f.d.querySelector('.rewardDetails').textContent,/Each person gets 3 cards per connection/)}finally{f.close()}
 });
 test('directory settings are compact and collapsed controls never enter the modal focus loop',async()=>{
  const f=await fixture({level:5});try{f.server.profiles=[{id:'avery',name:'Avery',videoAvailable:true}];f.w.openRewardDirectory();await flush();let own=f.d.querySelector('.rewardDirectoryOwn');assert.equal(own.tagName,'DETAILS');assert.equal(own.open,false);const hiddenButton=own.querySelector('button');assert.equal(f.w.visibleModalControl(hiddenButton),false);assert.equal(f.w.visibleModalControl(own.querySelector('summary')),true);const clip=f.d.querySelector('.rewardDirectoryGrid video');assert.equal(f.w.visibleModalControl(clip),false);own.querySelector('summary').click();await flush();assert.equal(own.open,true);assert.equal(f.w.visibleModalControl(hiddenButton),true);await f.w.loadRewardDirectory(true);own=f.d.querySelector('.rewardDirectoryOwn');assert.equal(own.open,true,'refresh preserves the expanded management choice');own.querySelector('summary').click();await flush();const close=f.d.querySelector('.rewardModal .close'),visible=[...f.d.querySelectorAll('.rewardModal button:not(:disabled),.rewardModal input:not(:disabled),.rewardModal summary,.rewardModal video[controls]')].filter(f.w.visibleModalControl);close.focus();f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true}));assert.equal(f.d.activeElement,visible.at(-1));assert.notEqual(f.d.activeElement,clip)}finally{f.close()}
@@ -219,12 +219,14 @@ test('reward-first tiles explain all rewards without posting or changing consent
    assert.equal(card.querySelector('h2').textContent,'Make your next move');
    assert.deepEqual([...card.querySelectorAll('.rewardSlot b')].map(el=>el.textContent),labels);
    assert.equal(card.querySelectorAll('.rewardSlotMark svg').length,5);
+   assert.deepEqual([...card.querySelectorAll('.rewardSlotBenefit')].map(el=>el.textContent),['Invite by email','Both choose to share','3 each per connection','Opt-in name & photo','Private until you publish']);
+   for(const [index,slot] of [...card.querySelectorAll('.rewardSlot')].entries()){const status=index<level?'Earned':index===level?'Next':'Locked';assert.equal(slot.querySelector('.rewardSlotStatus').textContent,status);assert.ok(slot.getAttribute('aria-label').includes(status));assert.ok(slot.getAttribute('aria-label').includes(slot.querySelector('.rewardSlotBenefit').textContent))}
    assert.equal(card.querySelectorAll('.unlocked .rewardSlotState svg').length,level);
    assert.equal(card.querySelectorAll('.locked .rewardSlotState svg').length,Math.max(0,4-level));
    const primary=card.querySelector('.rewardPrimary');
-   assert.equal(primary.textContent,level<5?'Unlock my next move →':'My rewards');
+   assert.equal(primary.textContent,level<5?'Play five →':'My rewards');
    assert.equal(primary.getAttribute('onclick'),`openRewardLevel(${Math.min(5,level+1)})`);
-   if(level===1)assert.match(card.querySelector('.rewardNext').textContent,/Five quick picks unlock phone sharing/);
+   if(level===1)assert.match(card.querySelector('.rewardNext').textContent,/5 picks left to unlock mutual phone exchange/);
    const before=f.state();
    for(let tile=1;tile<=5;tile++){
     const button=f.d.querySelector(`[data-reward-level="${tile}"]`);button.focus();button.click();
@@ -243,6 +245,80 @@ test('Email reward tile explains first, then uses the same First 5 flow as the p
   assert.match(f.d.querySelector('.rewardExplanation').textContent,/email address stays private/);
   f.d.querySelector('.rewardModal .rewardPrimary').click();
   assert.ok(f.d.querySelector('.quickChoices'));
+  assert.equal(f.posts().length,0);
+ }finally{f.close()}
+});
+
+test('next reward counts saved and local choices without earning an unfinished round',async()=>{
+ const round=REWARD_ROUNDS.find(r=>r.level===3),f=await fixture({level:2,answers:{[round.questions[0].id]:0,[round.questions[1].id]:2}});
+ try{
+  const next=()=>f.d.querySelector('.rewardNext'),tile=()=>f.d.querySelector('[data-reward-level="3"]');
+  assert.match(next().textContent,/3 picks left to unlock 3 Duhwildcards each per connection/);
+  assert.equal(next().querySelector('button').textContent,'Continue →');
+  next().querySelector('button').click();
+  assert.equal(f.d.querySelectorAll('.rewardQuestions input:checked').length,2);
+  for(const q of round.questions.slice(2,4))f.w.chooseRewardAnswer(q.id,0);
+  assert.match(next().textContent,/1 pick left/);
+  f.w.chooseRewardAnswer(round.questions[4].id,0);
+  assert.match(next().textContent,/Five picked\. Review and unlock/);
+  assert.equal(next().querySelector('button').textContent,'Review & unlock →');
+  assert.equal(tile().querySelector('.rewardSlotStatus').textContent,'Next');
+  assert.equal(f.d.querySelectorAll('.rewardSlot.unlocked').length,2);
+  f.w.closeInvite();next().querySelector('button').click();
+  assert.equal(f.d.querySelectorAll('.rewardQuestions input:checked').length,5,'review resumes the local draft');
+  await f.w.rewardAction('save');f.w.closeInvite();await f.w.loadRewards(true);
+  assert.match(next().textContent,/Review and unlock/,'saving all choices does not finish the round');
+  next().querySelector('button').click();f.server.failPost=true;await f.w.rewardAction('complete');
+  assert.match(f.d.querySelector('#rewardError').textContent,/interrupted/);
+  assert.equal(tile().querySelector('.rewardSlotStatus').textContent,'Next','an unsuccessful unlock cannot earn the tile');
+  f.server.failPost=false;await f.w.rewardAction('complete');
+  assert.equal(tile().querySelector('.rewardSlotStatus').textContent,'Earned');
+  assert.match(next().textContent,/5 picks left to unlock opt-in member discovery/);
+ }finally{f.close()}
+});
+
+test('unknown, loading, unavailable and missing-round progress never invent remaining picks',async()=>{
+ const f=await fixture({level:2});try{
+  f.w.eval('rewardsData=null;rewardDrafts.clear();paintRewards()');
+  const next=()=>f.d.querySelector('.rewardNext');
+  assert.equal(f.d.querySelectorAll('.rewardSlot.pending').length,5);
+  assert.ok([...f.d.querySelectorAll('.rewardSlotStatus')].every(el=>el.textContent==='Checking'));
+  assert.doesNotMatch(next().textContent,/\d.*picks? left|Five picked|Review & unlock/);
+  const h=hold(f,url=>url==='/api/rewards'),loading=f.w.loadRewards(true);
+  assert.doesNotMatch(next().textContent,/\d.*picks? left|Five picked/);
+  h.resolve();await loading;
+  assert.match(next().textContent,/5 picks left/);
+  f.w.eval('rewardsData=null;rewardDrafts.clear()');f.server.failGet=true;await f.w.loadRewards(true);
+  assert.doesNotMatch(next().textContent,/\d.*picks? left|Five picked/);
+  assert.equal(f.d.querySelectorAll('.rewardSlot.unlocked').length,0);
+  f.server.failGet=false;await f.w.loadRewards(true);
+  for(const questions of [[],Array(5).fill(null),Array.from({length:5},(_,i)=>({id:'q'+i,choices:null})),Array.from({length:5},(_,i)=>({id:'q'+i,choices:[null]}))]){
+   f.w.eval(`rewardsData.rounds=[{level:3,questions:${JSON.stringify(questions)}}];paintRewards()`);
+   assert.match(next().textContent,/Open it to check your progress/);
+   assert.doesNotMatch(next().textContent,/\d.*picks? left|Five picked/);
+   next().querySelector('button').click();
+   assert.equal(f.d.querySelector('.rewardQuestions'),null);
+   assert.match(f.d.querySelector('.rewardModal').textContent,/Loading your five questions/);
+   assert.ok([...f.d.querySelectorAll('.rewardModal button')].some(button=>button.textContent==='Try again'));
+   f.w.closeInvite();
+  }
+ }finally{f.close()}
+});
+
+test('First 5 remaining picks use current answers but cannot mark an unconfirmed reward earned',async()=>{
+ const f=await fixture({level:0});try{
+  f.w.eval('s.member.answers=[0,1];paintRewards()');
+  assert.match(f.d.querySelector('.rewardNext').textContent,/3 picks left to unlock email Vibe invitations/);
+  f.w.eval('s.member.answers=[0,1,0,1,0];paintRewards()');
+  assert.match(f.d.querySelector('.rewardNext').textContent,/Five picked\. Check saved progress/);
+  assert.equal(f.d.querySelector('.rewardNext button').getAttribute('onclick'),'loadRewards(true)');
+  f.d.querySelector('[data-reward-level="1"]').click();
+  assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),'loadRewards(true)');
+  f.w.openRewardTile(5);f.d.querySelector('.rewardModal .rewardPrimary').click();
+  assert.equal(f.d.querySelector('.rewardModal .rewardPrimary').getAttribute('onclick'),'loadRewards(true)','a later locked tile also returns to the saved-progress check');
+  assert.equal(f.state().modal,'reward');
+  assert.equal(f.d.querySelector('[data-reward-level="1"] .rewardSlotStatus').textContent,'Next');
+  assert.equal(f.d.querySelectorAll('.rewardSlot.unlocked').length,0);
   assert.equal(f.posts().length,0);
  }finally{f.close()}
 });
