@@ -58,3 +58,6 @@
 
 !/api/wildcards.mjs
 !/api/_wildcard-questions.mjs
+
+!/api/game-pieces.mjs
+!/api/_game-pieces.mjs

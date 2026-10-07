@@ -5,6 +5,13 @@ import {deploymentMode} from './_deployment.mjs';
 import {REWARDS,REWARD_ROUNDS,getRewardRound,validRewardAnswers} from './_reward-rounds.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const validId=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
+// A member-confirmed contact number, not an SMS ownership verification.
+// Only the member's own legacy contact may prefill this private profile.
+function profilePhone(value){
+ if(typeof value!=='string'||value.length>64||/[^+0-9 ()\-.]/.test(value))return null;
+ const phone=value.replace(/[ ()\-.]/g,'');
+ return /^\+[1-9][0-9]{6,14}$/.test(phone)?phone:null;
+}
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
 const level=`greatest(coalesce(r.completed_level,0),CASE WHEN jsonb_array_length(m.answers)>=10 THEN 2 WHEN jsonb_array_length(m.answers)>=5 THEN 1 ELSE 0 END)`;
 const ACTOR=`SELECT m.id,m.name,m.answers AS base_answers,coalesce(r.answers,'{}'::jsonb) AS answers,coalesce(r.revision,0) AS revision,${level} AS level FROM members m LEFT JOIN member_reward_state r ON r.member_id=m.id WHERE m.session_hash=$1 AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
@@ -19,16 +26,23 @@ const STATUS_PAIR=PAIR.replace(active,activeStatus);
 const locks=`SELECT id FROM members WHERE session_hash=$1 OR id IN(SELECT i.sender_member_id FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE (SELECT id FROM members WHERE session_hash=$1) IN(i.sender_member_id,c.prospect_member_id) UNION SELECT c.prospect_member_id FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE (SELECT id FROM members WHERE session_hash=$1) IN(i.sender_member_id,c.prospect_member_id)) ORDER BY id FOR UPDATE`;
 const connectionLocks=`SELECT c.invitation_hash FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE (SELECT id FROM members WHERE session_hash=$1) IN(i.sender_member_id,c.prospect_member_id) ORDER BY c.invitation_hash FOR UPDATE OF c`;
 async function view(sql,session,id){
- const own=(await sql.query(`WITH owner AS (${ACTOR}) SELECT owner.*,coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.token_hash,'upgraded',p.other_level>=3,'ownUpgraded',p.own_level>=3,'otherUpgraded',p.other_level>=3)) FROM (${STATUS_PAIR.replace('WHERE i.token_hash=$2 AND','WHERE')}) p),'[]'::jsonb) AS connections FROM owner`,[session]))[0];if(!own)return null;
+ const own=(await sql.query(`WITH owner AS (${ACTOR}) SELECT owner.*,m.contact AS legacy_contact,f.phone AS profile_phone,f.confirmed_at AS phone_confirmed_at,coalesce(f.revision,0) AS phone_revision,coalesce((SELECT jsonb_agg(jsonb_build_object('id',p.token_hash,'upgraded',p.other_level>=3,'ownUpgraded',p.own_level>=3,'otherUpgraded',p.other_level>=3)) FROM (${STATUS_PAIR.replace('WHERE i.token_hash=$2 AND','WHERE')}) p),'[]'::jsonb) AS connections FROM owner JOIN members m ON m.id=owner.id LEFT JOIN member_phone_profile f ON f.member_id=owner.id`,[session]))[0];if(!own)return null;
  const answers={...own.answers};if(own.base_answers.length>=10)own.base_answers.slice(5,10).forEach((v,i)=>{answers['base-'+(i+6)]=v});
  const result={level:own.level,rounds:REWARD_ROUNDS,answers,draftRevision:own.revision,nextLevel:own.level<5?own.level+1:null,nextReward:REWARDS[own.level]||null};
+ result.phoneProfile={phone:own.profile_phone??profilePhone(own.legacy_contact),confirmedAt:own.phone_confirmed_at??null,revision:own.phone_revision};
  result.connections=own.connections;
  if(id){
-  const rows=await sql.query(`WITH eligible AS (${PAIR}) SELECT e.*,o.phone AS own_phone,x.phone AS other_phone FROM eligible e LEFT JOIN reward_phone_offers o ON o.invitation_hash=e.token_hash AND o.member_id=e.actor LEFT JOIN reward_phone_offers x ON x.invitation_hash=e.token_hash AND x.member_id=e.other`,[session,id]);
+  const rows=await sql.query(`WITH eligible AS (${PAIR}) SELECT e.*,o.phone AS own_phone,x.phone AS other_phone,EXISTS(SELECT 1 FROM member_phone_profile f WHERE f.member_id=e.actor AND f.confirmed_at IS NOT NULL) AS own_profile_confirmed,EXISTS(SELECT 1 FROM member_phone_profile f WHERE f.member_id=e.other AND f.confirmed_at IS NOT NULL) AS other_profile_confirmed FROM eligible e LEFT JOIN reward_phone_offers o ON o.invitation_hash=e.token_hash AND o.member_id=e.actor LEFT JOIN reward_phone_offers x ON x.invitation_hash=e.token_hash AND x.member_id=e.other`,[session,id]);
   if(!rows[0])return null;const c=rows[0],eligible=c.channel!=='friend'&&c.own_level>=2&&c.other_level>=2,shared=eligible&&!!c.own_phone&&!!c.other_phone;
-  result.connection={id,upgraded:c.other_level>=3,ownUpgraded:c.own_level>=3,otherUpgraded:c.other_level>=3,phone:{eligible,ownEligible:c.channel!=='friend'&&c.own_level>=2,otherEligible:c.channel!=='friend'&&c.other_level>=2,ownOffered:eligible&&!!c.own_phone,otherOffered:eligible&&!!c.other_phone,shared,...(eligible&&c.own_phone?{ownPhone:c.own_phone}:{}),...(shared?{otherPhone:c.other_phone}:{})}};
+  result.connection={id,upgraded:c.other_level>=3,ownUpgraded:c.own_level>=3,otherUpgraded:c.other_level>=3,phone:{eligible,ownEligible:c.channel!=='friend'&&c.own_level>=2,otherEligible:c.channel!=='friend'&&c.other_level>=2,ownOffered:eligible&&!!c.own_phone,otherOffered:eligible&&!!c.other_phone,ownProfileConfirmed:eligible&&c.own_profile_confirmed===true,otherProfileConfirmed:eligible&&c.other_profile_confirmed===true,shared,...(eligible&&c.own_phone?{ownPhone:c.own_phone}:{}),...(shared?{otherPhone:c.other_phone}:{})}};
  }
  return result;
+}
+async function phoneRequests(sql,session){
+ // Explicit incoming offers only. This summary never returns phone values,
+ // profile readiness, names or messages, and never records receipt/acceptance.
+ const row=(await sql.query(`WITH owner AS (${ACTOR}) SELECT coalesce((SELECT jsonb_agg(jsonb_build_object('connectionId',e.token_hash,'offeredAt',o.offered_at) ORDER BY o.offered_at DESC,e.token_hash) FROM (${PAIR.replace('WHERE i.token_hash=$2 AND','WHERE')}) e JOIN reward_phone_offers o ON o.invitation_hash=e.token_hash AND o.member_id=e.other WHERE e.channel<>'friend' AND e.own_level>=2 AND e.other_level>=2 AND NOT EXISTS(SELECT 1 FROM reward_phone_offers own_offer WHERE own_offer.invitation_hash=e.token_hash AND own_offer.member_id=e.actor)),'[]'::jsonb) AS phone_requests FROM owner`,[session]))[0];
+ return row?{phoneRequests:row.phone_requests}:null;
 }
 const upgradeWrite=saved=>`WITH eligible AS (${ACTOR}),saved AS (${saved}),actor AS (SELECT e.id,e.name FROM eligible e JOIN saved s ON s.member_id=e.id), connections AS (
  SELECT i.token_hash,a.id,a.name FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash JOIN actor a ON a.id IN(i.sender_member_id,c.prospect_member_id) WHERE ${activeStatus}
@@ -58,7 +72,11 @@ async function handler(req){
   if(!expectedRewardMember(req,actor.id))return reply({error:'Your signed-in account changed. Refresh your page before continuing.',sessionExpired:true},403);
   sql=bindRewardMember(sql,actor.id);
   if(req.method==='GET'){
-   const id=new URL(req.url).searchParams.get('connection');if(id&&!validId(id))return reply({error:'Invalid connection.'},400);
+   const url=new URL(req.url),id=url.searchParams.get('connection');if(id&&!validId(id))return reply({error:'Invalid connection.'},400);
+   if(url.searchParams.get('phoneRequests')==='1'){
+    if(id)return reply({error:'Choose the phone requests summary or a connection.'},400);
+    const data=await phoneRequests(sql,session);return data?reply(data):reply({error:'Your sign-in or account standing changed. Refresh your page before continuing.',sessionExpired:true},403);
+   }
    const data=await view(sql,session,id);return data?reply(data):reply({error:'This connection is unavailable.'},404);
   }
   const origin=req.headers.get('origin');if(origin&&origin!==new URL(req.url).origin)return reply({error:'Open your member page to make this change.'},403);
@@ -66,6 +84,19 @@ async function handler(req){
   let body;try{body=await readBody(req)}catch(error){return reply({error:error.status===413?'Request too large.':'Invalid request.'},error.status||400)}
   if(!body||typeof body!=='object'||Array.isArray(body))return reply({error:'Invalid request.'},400);
   const {action}=body;
+  if(action==='confirmProfilePhone'){
+   const phone=profilePhone(body.phone);
+   if(!phone||!Number.isInteger(body.phoneRevision)||body.phoneRevision<0||body.phoneRevision>2147483646||Object.keys(body).some(key=>!['action','phone','phoneRevision'].includes(key)))return reply({error:'Enter your phone number with + and country code, then confirm the current profile.'},400);
+   if(actor.level<2)return reply({error:'Complete Step 2 before confirming your private phone number.'},403);
+   // Lock the originally authorized member, then recheck the bound session,
+   // standing and earned level. This never changes pair offers or reward state.
+   const write=`WITH eligible AS (${ACTOR}) INSERT INTO member_phone_profile(member_id,phone,confirmed_at,revision) SELECT id,$2,now(),1 FROM eligible WHERE level>=2 AND ($3::integer=0 OR EXISTS(SELECT 1 FROM member_phone_profile WHERE member_id=eligible.id)) ON CONFLICT(member_id) DO UPDATE SET phone=excluded.phone,confirmed_at=now(),revision=member_phone_profile.revision+1,updated_at=now() WHERE member_phone_profile.revision=$3 RETURNING member_id`;
+   const results=await sql.transaction(tx=>[tx.query('SELECT id FROM members WHERE id=$1::uuid ORDER BY id FOR UPDATE',[actor.id]),tx.query(ACTOR,[session]),tx.query(write,[session,phone,body.phoneRevision])],{isolationLevel:'ReadCommitted'});
+   if(!results[1].length)return reply({error:'Your sign-in or account standing changed. Refresh your page before continuing.',sessionExpired:true},403);
+   if(results[1][0].level<2)return reply({error:'Complete Step 2 before confirming your private phone number.'},403);
+   if(!results[2].length)return reply({error:'Your saved phone number changed. Reload it and review before confirming again.',phoneConflict:true},409);
+   const data=await view(sql,session);return data?reply(data):reply({error:'Your sign-in or account standing changed. Refresh your page before continuing.',sessionExpired:true},403);
+  }
   if(['offerPhone','withdrawPhone'].includes(action)){
    const id=body.connectionId;if(!validId(id))return reply({error:'Choose an active connection.'},400);
    const phone=typeof body.phone==='string'?body.phone.replace(/[ ()\-.]/g,''):'';

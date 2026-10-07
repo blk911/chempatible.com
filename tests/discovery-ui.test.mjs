@@ -25,6 +25,10 @@ async function fixture({rows=[row(),row('beta')],pieces=[],games=[],saved,actor=
  const server={rows:clone(rows),pieces:clone(pieces),pairs:new Map(rows.map(r=>[r.id,clone(games)])),calls:[],drafts:new Map(),failGet:false,failPost:false,hold:null};
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  w.fetch=async(url,options={})=>{
+  if(url==='/api/wildcards?summary=1')return response({connections:[]});
+  if(url.startsWith('/api/game-pieces?'))return response({pieces:[],pendingCount:0,nextCursor:null});
+  if(url==='/api/rewards?phoneRequests=1')return response({phoneRequests:[]});
+  if(url.startsWith('/api/wildcards?connection='))return response({connectionId:new URL(url,'https://fixture.example.test').searchParams.get('connection'),eligible:false,limit:3,remaining:0,usedQuestionIds:[],categories:[],cards:[],answerMaxLength:1000});
   const requestOwner=w.eval('activeMemberId()');const body=options.body?JSON.parse(options.body):null;server.calls.push({url,body});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(url==='/api/connection?inbox=1')return response({connections:server.rows});

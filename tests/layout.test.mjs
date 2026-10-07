@@ -38,7 +38,9 @@ try{
  const rootIds=[...d.querySelectorAll('#root [id]')].map(el=>el.id);assert.equal(new Set(rootIds).size,rootIds.length,'dashboard has no duplicate IDs');
  assert.doesNotMatch(memberHeader.textContent,/Your first five are ready to share/);
  assert.equal(memberHeader.querySelector('.friendShareButton'),null,'friend action no longer crowds the member header');
- assert.equal(memberHeader.nextElementSibling.className,'socialWorkspace');
+ assert.equal(memberHeader.nextElementSibling.id,'gamePieceFeed','shared game pieces sit between the profile and workspace');
+ assert.equal(memberHeader.nextElementSibling.nextElementSibling.className,'socialWorkspace');
+ assert.equal(d.querySelectorAll('#root #gamePieceFeed').length,1,'there is one shared game-piece feed');
  // JSDOM has no viewport layout engine. Activate the matching media rules
  // explicitly so computed styles still catch mobile flex-axis regressions.
  const cssSource=d.createElement('style');cssSource.textContent=fs.readFileSync(new URL('../site.css',import.meta.url),'utf8');d.head.append(cssSource);

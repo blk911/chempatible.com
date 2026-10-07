@@ -7,6 +7,8 @@ import {WILDCARD_LIMIT,WILDCARD_CATEGORIES,getWildcardQuestion} from './_wildcar
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const validId=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
 const validRequest=s=>typeof s==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(s);
+const ANSWER_MAX_LENGTH=1000;
+const validAnswer=value=>typeof value==='string'&&value.trim().length>0&&value.trim().length<=ANSWER_MAX_LENGTH&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
 const level=`greatest(coalesce(r.completed_level,0),CASE WHEN jsonb_array_length(m.answers)>=10 THEN 2 WHEN jsonb_array_length(m.answers)>=5 THEN 1 ELSE 0 END)`;
 const AUTH=`SELECT m.id,${level} AS level FROM members m LEFT JOIN member_reward_state r ON r.member_id=m.id WHERE m.session_hash=$1 AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
@@ -24,19 +26,81 @@ const PAIR=`SELECT i.token_hash,i.sender_member_id,c.prospect_member_id,e.id AS 
  AND (i.intended_member_id IS NOT NULL OR i.intended_email IS NULL OR EXISTS(SELECT 1 FROM members target WHERE target.id=e.id AND lower(target.contact)=lower(i.intended_email)))))
  AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=i.sender_member_id AND b.blocked_id=c.prospect_member_id) OR (b.blocked_id=i.sender_member_id AND b.blocker_id=c.prospect_member_id))
  AND NOT EXISTS(SELECT 1 FROM connection_visibility v WHERE v.invitation_hash=i.token_hash AND (v.frozen_at IS NOT NULL OR v.trashed_at IS NOT NULL))
+ AND NOT EXISTS(SELECT 1 FROM connection_wildcard_answers a WHERE a.invitation_hash=i.token_hash AND (a.sender_member_id<>i.sender_member_id OR a.prospect_member_id<>c.prospect_member_id))
  AND (SELECT count(*) FROM members p WHERE p.id IN(i.sender_member_id,c.prospect_member_id) AND p.email_verified_at IS NOT NULL AND p.blocked_at IS NULL AND (p.suspended_until IS NULL OR p.suspended_until<=now()))=2`;
 const pairBound=(sender,prospect)=>`${PAIR} AND i.sender_member_id=$${sender}::uuid AND c.prospect_member_id=$${prospect}::uuid`;
-const snapshotQuery=(pair=PAIR,withRequest=false)=>`WITH eligible AS (${pair}) SELECT e.level,
+// Only snapshots captured at the original ask can authorize a structured card.
+// A mutable current pair cannot retroactively identify an old ask's recipient.
+const cardsQuery=`SELECT jsonb_agg(jsonb_build_object(
+ 'questionId',w.question_id,'categoryId',w.message->>'wildcardCategoryId',
+ 'direction',CASE WHEN w.member_id=e.actor THEN 'outgoing' ELSE 'incoming' END,
+ 'status',CASE WHEN a.answered_at IS NULL THEN 'waiting' ELSE 'answered' END,
+ 'canAnswer',a.member_id=e.actor AND a.answered_at IS NULL,
+ 'ask',jsonb_build_object('id',w.message->>'id','text',w.message->>'text','at',w.message->>'at','by',w.message->>'by'),
+ 'reply',CASE WHEN a.message IS NULL THEN NULL ELSE jsonb_build_object('id',a.message->>'id','text',a.message->>'text','at',a.message->>'at','by',a.message->>'by') END
+ ) ORDER BY w.created_at,w.question_id)
+ FROM connection_wildcard_asks w JOIN connection_wildcard_answers a USING(invitation_hash,question_id)
+ WHERE w.invitation_hash=e.token_hash AND a.sender_member_id=e.sender_member_id AND a.prospect_member_id=e.prospect_member_id
+ AND w.member_id IN(e.sender_member_id,e.prospect_member_id) AND a.member_id<>w.member_id
+ AND w.message->>'by'=CASE WHEN w.member_id=e.sender_member_id THEN 'member' ELSE 'prospect' END`;
+const snapshotQuery=(pair=PAIR,withRequest=false,withAnswer=false)=>`WITH eligible AS (${pair}) SELECT e.level,
  (SELECT count(*)::integer FROM connection_wildcard_asks w WHERE w.invitation_hash=$2 AND w.member_id=e.actor) AS used,
- coalesce((SELECT jsonb_agg(w.question_id ORDER BY w.created_at,w.question_id) FROM connection_wildcard_asks w WHERE w.invitation_hash=$2),'[]'::jsonb) AS used_question_ids
+ coalesce((SELECT jsonb_agg(w.question_id ORDER BY w.created_at,w.question_id) FROM connection_wildcard_asks w WHERE w.invitation_hash=$2),'[]'::jsonb) AS used_question_ids,
+ coalesce((${cardsQuery}),'[]'::jsonb) AS cards,
+ (SELECT count(*)::integer FROM connection_wildcard_asks w WHERE w.invitation_hash=$2 AND NOT EXISTS(SELECT 1 FROM connection_wildcard_answers a WHERE a.invitation_hash=w.invitation_hash AND a.question_id=w.question_id)) AS legacy_ask_count
  ${withRequest?`,(SELECT jsonb_build_object('questionId',w.question_id,'message',w.message) FROM connection_wildcard_asks w WHERE w.invitation_hash=$2 AND w.member_id=e.actor AND w.request_id=$3) AS request`:''}
+ ${withAnswer?`,(SELECT jsonb_build_object('questionId',a.question_id,'message',a.message) FROM connection_wildcard_answers a WHERE a.invitation_hash=$2 AND a.member_id=e.actor AND a.request_id=$3) AS answer_request`:''}
  FROM eligible e`;
+const summaryQuery=`WITH eligible AS (${PAIR.replace('i.token_hash=$2 AND ','')})
+ SELECT e.token_hash AS id,
+ count(*) FILTER(WHERE a.answered_at IS NULL AND a.member_id=e.actor)::integer AS pending_incoming,
+ count(*) FILTER(WHERE a.answered_at IS NULL AND w.member_id=e.actor)::integer AS pending_outgoing
+ FROM eligible e JOIN connection_wildcard_answers a ON a.invitation_hash=e.token_hash
+ JOIN connection_wildcard_asks w USING(invitation_hash,question_id)
+ WHERE a.sender_member_id=e.sender_member_id AND a.prospect_member_id=e.prospect_member_id
+ AND w.member_id IN(e.sender_member_id,e.prospect_member_id) AND a.member_id<>w.member_id
+ AND w.message->>'by'=CASE WHEN w.member_id=e.sender_member_id THEN 'member' ELSE 'prospect' END
+ GROUP BY e.token_hash ORDER BY e.token_hash`;
 function snapshot(row,id){
  const eligible=row.level>=3,usedQuestionIds=row.used_question_ids;
  return {connectionId:id,eligible,limit:WILDCARD_LIMIT,remaining:eligible?Math.max(0,WILDCARD_LIMIT-row.used):0,usedQuestionIds,
+  cards:row.cards,answerMaxLength:ANSWER_MAX_LENGTH,legacyAskCount:row.legacy_ask_count,
   // Keep stable positions so the picker can mask used questions in place. The
   // server ledger remains authoritative even if a client submits a masked ID.
   categories:eligible?WILDCARD_CATEGORIES:[]};
+}
+const lockedTransaction=(sql,session,id,pair,write,args,read,readArgs)=>sql.transaction(tx=>[
+ tx.query(`SELECT id FROM members WHERE id IN($3::uuid,$4::uuid) OR id IN(SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR session_hash=$1 ORDER BY id FOR UPDATE`,[session,id,pair.sender_member_id,pair.prospect_member_id]),
+ tx.query(`SELECT invitation_hash FROM connection_state WHERE invitation_hash=$1 FOR UPDATE`,[id]),
+ tx.query(write,args),tx.query(read,readArgs)
+],{isolationLevel:'ReadCommitted'});
+async function answerWildcard(sql,session,actor,id,questionId,requestId,answer,pair){
+ const args=[session,id,questionId,requestId,answer,pair.sender_member_id,pair.prospect_member_id,`wildcard-answer:${hash(`${id}:${actor.id}:${requestId}`)}`];
+ const write=`WITH eligible AS (${pairBound(6,7)}),emitted AS (
+  UPDATE connection_wildcard_answers a SET request_id=$4,answered_at=now(),
+   message=jsonb_build_object('by',e.side,'text',$5::text,'id',$8::text,'at',now(),'wildcardAnswerTo',$3::text)
+  FROM eligible e,connection_wildcard_asks w
+  WHERE a.invitation_hash=$2 AND a.question_id=$3 AND a.member_id=e.actor AND a.answered_at IS NULL
+  AND a.sender_member_id=e.sender_member_id AND a.prospect_member_id=e.prospect_member_id
+  AND w.invitation_hash=a.invitation_hash AND w.question_id=a.question_id AND w.member_id<>e.actor
+  AND w.member_id IN(e.sender_member_id,e.prospect_member_id)
+  AND w.message->>'by'=CASE WHEN w.member_id=e.sender_member_id THEN 'member' ELSE 'prospect' END
+  AND NOT EXISTS(SELECT 1 FROM connection_wildcard_answers used WHERE used.invitation_hash=$2 AND used.member_id=e.actor AND used.request_id=$4)
+  RETURNING a.invitation_hash,a.message
+ ) UPDATE connection_state c SET messages=c.messages||jsonb_build_array(emitted.message),updated_at=now()
+ FROM emitted WHERE c.invitation_hash=emitted.invitation_hash RETURNING emitted.message`;
+ const results=await lockedTransaction(sql,session,id,pair,write,args,snapshotQuery(pairBound(4,5),false,true),[session,id,requestId,pair.sender_member_id,pair.prospect_member_id]);
+ const row=results[3][0];
+ if(!row)return reply({error:'This connection or sign-in changed. Return to your page.'},409);
+ const data=snapshot(row,id),card=data.cards.find(card=>card.questionId===questionId);
+ if(!card)return reply({...data,error:'That wildcard is unavailable for an answer.'},404);
+ if(card.direction!=='incoming')return reply({...data,error:'Only the person who received this wildcard can answer it.'},403);
+ if(row.answer_request){
+  if(row.answer_request.questionId!==questionId||row.answer_request.message.text!==answer)return reply({...data,error:'That answer request already belongs to another reply. Refresh your cards.',requestConflict:true},409);
+  return reply({...data,message:row.answer_request.message,replayed:results[2].length===0});
+ }
+ if(card.status==='answered')return reply({...data,error:'This wildcard has already been answered.',answerExists:true},409);
+ return reply({...data,error:'Your wildcards changed. Refresh and try again.'},409);
 }
 async function readBody(req){
  const limit=4096,declared=req.headers.get('content-length');
@@ -60,7 +124,12 @@ async function handler(req){
   if(!expectedRewardMember(req,actor.id))return reply({error:'Your signed-in account changed. Refresh your page before continuing.',sessionExpired:true},403);
   sql=bindRewardMember(sql,actor.id);
   if(req.method==='GET'){
-   const id=new URL(req.url).searchParams.get('connection');
+   const params=new URL(req.url).searchParams;
+   if(params.get('summary')==='1'){
+    const rows=await sql.query(summaryQuery,[session]);
+    return reply({connections:rows.map(row=>({id:row.id,pendingIncoming:row.pending_incoming,pendingOutgoing:row.pending_outgoing}))});
+   }
+   const id=params.get('connection');
    if(!validId(id))return reply({error:'Choose an active connection.'},400);
    const row=(await sql.query(snapshotQuery(),[session,id]))[0];
    return row?reply(snapshot(row,id)):reply({error:'Wildcards are unavailable for this connection.'},404);
@@ -70,9 +139,11 @@ async function handler(req){
   let body;try{body=await readBody(req)}catch(error){return reply({error:error.status===413?'Request too large.':'Invalid request.'},error.status||400)}
   if(!body||typeof body!=='object'||Array.isArray(body))return reply({error:'Invalid request.'},400);
   const {connectionId:id,questionId,requestId}=body,question=getWildcardQuestion(questionId);
-  if(body.action!=='ask'||!validId(id)||!question||!validRequest(requestId))return reply({error:'Choose a wildcard question and try again.'},400);
+  if(!['ask','answer'].includes(body.action)||!validId(id)||!question||!validRequest(requestId))return reply({error:'Choose a wildcard question and try again.'},400);
+  if(body.action==='answer'&&!validAnswer(body.answer))return reply({error:`Write an answer between 1 and ${ANSWER_MAX_LENGTH} characters using plain text.`},400);
   const pair=(await sql.query(PAIR,[session,id]))[0];
   if(!pair)return reply({error:'Wildcards are unavailable for this connection.'},404);
+  if(body.action==='answer')return await answerWildcard(sql,session,actor,id,questionId,requestId,body.answer.trim(),pair);
   const args=[session,id,questionId,requestId,question.text,question.categoryId,pair.sender_member_id,pair.prospect_member_id,`wildcard:${hash(`${id}:${actor.id}:${requestId}`)}`];
   // The slot CHECK and unique slot key independently bound every member to three
   // asks. The connection question key applies to both people. Connection locks
@@ -84,15 +155,14 @@ async function handler(req){
    FROM eligible e WHERE e.level>=3
    AND (SELECT count(*) FROM connection_wildcard_asks w WHERE w.invitation_hash=$2 AND w.member_id=e.actor)<3
    AND NOT EXISTS(SELECT 1 FROM connection_wildcard_asks w WHERE w.invitation_hash=$2 AND (w.question_id=$3 OR (w.member_id=e.actor AND w.request_id=$4)))
-   ON CONFLICT DO NOTHING RETURNING invitation_hash,message
+   ON CONFLICT DO NOTHING RETURNING invitation_hash,question_id,member_id,message
+  ),registered AS (
+   INSERT INTO connection_wildcard_answers(invitation_hash,question_id,sender_member_id,prospect_member_id,member_id)
+   SELECT w.invitation_hash,w.question_id,e.sender_member_id,e.prospect_member_id,CASE WHEN w.member_id=e.sender_member_id THEN e.prospect_member_id ELSE e.sender_member_id END
+   FROM emitted w JOIN eligible e ON e.token_hash=w.invitation_hash RETURNING invitation_hash,question_id
   ) UPDATE connection_state c SET messages=c.messages||jsonb_build_array(emitted.message),updated_at=now()
-  FROM emitted WHERE c.invitation_hash=emitted.invitation_hash RETURNING emitted.message`;
-  const results=await sql.transaction(tx=>[
-   tx.query(`SELECT id FROM members WHERE id IN($3::uuid,$4::uuid) OR id IN(SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR session_hash=$1 ORDER BY id FOR UPDATE`,[session,id,pair.sender_member_id,pair.prospect_member_id]),
-   tx.query(`SELECT invitation_hash FROM connection_state WHERE invitation_hash=$1 FOR UPDATE`,[id]),
-   tx.query(write,args),
-   tx.query(snapshotQuery(pairBound(4,5),true),[session,id,requestId,pair.sender_member_id,pair.prospect_member_id])
-  ],{isolationLevel:'ReadCommitted'});
+  FROM emitted JOIN registered USING(invitation_hash,question_id) WHERE c.invitation_hash=emitted.invitation_hash RETURNING emitted.message`;
+  const results=await lockedTransaction(sql,session,id,pair,write,args,snapshotQuery(pairBound(4,5),true),[session,id,requestId,pair.sender_member_id,pair.prospect_member_id]);
   const row=results[3][0];
   if(!row)return reply({error:'This connection or sign-in changed. Return to your page.'},409);
   const data=snapshot(row,id);

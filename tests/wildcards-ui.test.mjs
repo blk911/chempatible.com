@@ -25,6 +25,9 @@ async function fixture({level=3,rows=[row(),row(b)],saved,actor='member',catalog
  const snapshot=id=>{const pair=server.pairs.get(id);return {connectionId:id,eligible:server.eligible&&server.level>=3,limit:3,remaining:server.eligible&&server.level>=3?pair.remaining:0,usedQuestionIds:pair.usedQuestionIds,categories:server.eligible&&server.level>=3?catalog:[]}};
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  w.fetch=async(url,options={})=>{
+  if(url==='/api/wildcards?summary=1')return response({connections:[]});
+  if(url.startsWith('/api/game-pieces?'))return response({pieces:[],pendingCount:0});
+  if(url==='/api/rewards?phoneRequests=1')return response({phoneRequests:[]});
   const body=options.body?JSON.parse(options.body):null;server.calls.push({url,body,options});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(url==='/api/connection?inbox=1')return response({connections:server.rows});
@@ -195,7 +198,7 @@ test('ended connection, server eligibility loss and expired authentication fail 
  const f=await fixture();try{
   await open(f);f.server.eligible=false;await f.w.loadWildcards(a,true);assert.equal(f.d.querySelector('#connectionWildcards').hidden,true);assert.equal(f.d.querySelector('.wildcardCategories'),null);f.w.chooseWildcardCategory('future');await f.w.askWildcard();assert.equal(f.posts().length,0);
   f.server.eligible=true;await f.w.loadWildcards(a,true);f.w.closeInvite();await open(f);f.w.eval(`s.inbox.find(c=>c.id==='${a}').status='ended';render(true)`);await flush();assert.equal(f.state().modal,'');assert.equal(f.d.querySelector('.wildcardModal'),null);
-  await open(f,b);const original=f.w.fetch;f.w.fetch=(url,options)=>url.startsWith('/api/wildcards')?Promise.resolve(response({error:'Please sign in again.'},401)):original(url,options);await f.w.loadWildcards(b,true);assert.equal(f.d.querySelector('.wildcardCategories'),null);assert.match(f.d.querySelector('#wildcardError').textContent,/sign in/);assert.equal(f.posts().length,0);
+  await open(f,b);const original=f.w.fetch;f.w.fetch=(url,options)=>url.startsWith('/api/wildcards')?Promise.resolve(response({error:'Please sign in again.'},401)):original(url,options);await f.w.loadWildcards(b,true);assert.equal(f.d.querySelector('.wildcardCategories'),null);assert.match(f.w.eval('rewardsAuthError'),/sign in/);assert.equal(f.d.querySelector('.wildcardModal'),null);assert.equal(f.w.eval('wildcardPairs.size'),0);assert.equal(f.posts().length,0);
  }finally{f.close()}
 });
 

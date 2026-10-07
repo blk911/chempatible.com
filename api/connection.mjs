@@ -68,6 +68,13 @@ function metadata(row,side,member){
 function historyView(row,side,member){
  return {id:row.id||row.token_hash,kind:friend(row)?'friend':'vibe',channel:row.channel,side,invitedAt:row.created_at||null,status:publicStatus(row),recipient_name:side==='member'?row.recipient_name:'',prospect_name:row.prospect_name,...(side==='prospect'?{sender_name:row.sender_name,name:row.sender_name}:{}),...metadata(row,side,member)};
 }
+// Reuse the established inbox projection for separately authorized, bounded
+// game-piece hydration. Authorization belongs to the calling SELECT; this
+// serializer never returns the raw database row or widens reveal/chat gates.
+export function connectionInboxView(row,member){
+ const side=row.prospect_member_id===member?'prospect':'member';
+ return {...inboxView(row,side),...metadata(row,side,member)};
+}
 async function privateMetadata(sql,row,side,member){
  if(!member)return row;
  const rows=await sql`SELECT v.frozen_at,v.action,v.action_at,v.trashed_at,v.restored_at,(SELECT b.created_at FROM member_blocks b WHERE b.blocker_id=${member} AND b.blocked_id=${side==='member'?(row.prospect_member_id||row.intended_member_id):row.sender_member_id}) AS blocked_at,EXISTS(SELECT 1 FROM member_blocks b WHERE b.blocker_id=${member} AND b.blocked_id=${side==='member'?(row.prospect_member_id||row.intended_member_id):row.sender_member_id}) AS blocked_by_me,EXISTS(SELECT 1 FROM activity a WHERE a.connection_id=${row.token_hash} AND a.kind='email_shared') AS history_email_shared FROM (SELECT 1) unused LEFT JOIN connection_visibility v ON v.member_id=${member} AND v.invitation_hash=${row.token_hash}`;

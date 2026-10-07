@@ -19,6 +19,10 @@ async function fixture({level=1,otherLevel=2,actor='member',status='chat',answer
  const data=(connection)=>({level:server.level,rounds:REWARD_ROUNDS,answers:{...(server.level>=2?Object.fromEntries(Array.from({length:5},(_,i)=>['base-'+(i+6),0])):{}),...server.answers},draftRevision:server.revision,nextLevel:server.level<5?server.level+1:null,nextReward:'Next reward',connections:server.rows.map(c=>({id:c.id,upgraded:server.otherLevel>=3,ownUpgraded:server.level>=3,otherUpgraded:server.otherLevel>=3})),...(connection?{connection:{id:connection,upgraded:server.otherLevel>=3,ownUpgraded:server.level>=3,phone:{eligible:server.level>=2&&server.otherLevel>=2,ownEligible:server.level>=2,otherEligible:server.otherLevel>=2,ownOffered:!!server.ownPhone,otherOffered:server.otherOffered,shared:!!server.ownPhone&&server.otherOffered,...(server.ownPhone?{ownPhone:server.ownPhone}:{}),...(server.ownPhone&&server.otherOffered?{otherPhone:'+15551234567'}:{})}}}:{})});
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  w.fetch=async(url,options={})=>{
+  if(url==='/api/wildcards?summary=1')return response({connections:[]});
+  if(url.startsWith('/api/game-pieces?'))return response({pieces:[],pendingCount:0});
+  if(url==='/api/rewards?phoneRequests=1')return response({phoneRequests:[]});
+  if(url.startsWith('/api/wildcards?connection='))return response({connectionId:new URL(url,'https://fixture.example.test').searchParams.get('connection'),eligible:false,limit:3,remaining:0,usedQuestionIds:[],categories:[],cards:[],answerMaxLength:1000});
   const binary=options.body instanceof w.File,body=options.body&&!binary?JSON.parse(options.body):binary?{upload:true}:null;server.calls.push({url,body,headers:options.headers||{}});
   if(url==='/api/connection?inbox=1')return response({connections:server.rows});
   if(url.startsWith('/api/discovery'))return url.includes('pieces=1')?response({pieces:[]}):response({modules:[],games:[],pieces:[]});
@@ -199,7 +203,8 @@ test('member discovery copy accurately names the authenticated audience without 
  }finally{f.close()}
  const privacy=fs.readFileSync(new URL('../privacy.html',import.meta.url),'utf8');
  assert.doesNotMatch(privacy,/review member directory|signed-in review members|development reward game|We don’t ask for phone numbers/);
- assert.match(privacy,/phone number only if you choose an optional, connection-specific phone exchange/);
+ assert.match(privacy,/optional phone number you save privately to your profile or offer in a connection-specific phone exchange/);
+ assert.match(privacy,/Confirming a saved number records your confirmation, not SMS verification; saving it does not share it/);
  assert.match(privacy,/first-five sets are shared only when the recipient accepts/);
  assert.match(privacy,/Accepting does not share contact details or open Private Chat/);
  assert.match(privacy,/signed-in, verified members in good standing who have unlocked Level 4/);
