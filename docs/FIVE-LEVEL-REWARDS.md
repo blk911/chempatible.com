@@ -24,9 +24,9 @@ remain available under their existing rules.
    separate choice to show it with an opted-in directory profile
 
 Levels 3–5 are original choices, not shortened validated instruments or scored
-psychological classifications. The full optional questionnaires and original
-reflection pieces remain available secondarily under More reflections and
-inside active connection games. They neither gate nor advance these levels.
+psychological classifications. Full optional questionnaires remain inside
+active Vibe connection games. Their saved results appear under My game results.
+They neither gate nor advance these levels.
 
 ## Data and consent
 

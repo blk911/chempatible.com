@@ -63,7 +63,7 @@ test('reinvite confirmation follows the five-second lifecycle',async()=>{
  const f=fixture();try{f.w.openReinvite('history');await flush();await f.w.sendReinvite();assert.match(f.notice().textContent,/New Vibe invitation sent/);assert.equal(f.saved().notice,'');f.clock.tick(5000);assert.equal(f.notice(),null)}finally{f.close()}
 });
 
-for(const selector of ['.chempatPerson','.secretsButton','.privateChatButton','.trashLink','.navHome','.socialSecrets summary','.freezeConnection','#message'])test(`next selection ${selector} clears the success before its timer`,async()=>{
+for(const selector of ['.chempatPerson','.secretsButton','.privateChatButton','.trashLink','.navHome','.socialSecrets summary','.connectionMenuTrigger','#message'])test(`next selection ${selector} clears the success before its timer`,async()=>{
  const f=fixture();try{await action(f);f.clock.tick(20);f.d.querySelector(selector).click();assert.equal(f.notice(),null);assert.equal(f.state().notice,'');assert.equal(f.clock.active().filter(t=>t.delay===5000).length,0);await flush()}finally{f.close()}
 });
 

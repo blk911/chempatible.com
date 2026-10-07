@@ -8,8 +8,9 @@ The five-level game uses saved First 5 / Second 5 answers, then
 three original five-question rounds. Rewards offer invitations, mutual phone
 exchange, individual connection status, opt-in authenticated member discovery,
 and a private-first 15-second MP4 introduction. Nothing is automatically listed
-or shared, and existing chat remains available. Full optional questionnaires
-remain separate under More reflections. See `docs/FIVE-LEVEL-REWARDS.md` for
+or shared, and existing chat remains available. Optional questionnaires remain
+inside connection games; their saved results appear under My game results.
+See `docs/FIVE-LEVEL-REWARDS.md` for
 consent, video limits, additive migrations, test scope, and rollback. Reward, directory and
 in-app request endpoints support verified isolated development and explicitly
 configured trusted production. All member authorization, consent and lifecycle

@@ -48,6 +48,7 @@ try{
  // JSDOM hard-codes summary display as list-item, so verify its authored
  // flex layout through CSSOM and all other disclosure styles below.
  assert.equal(cssRules.find(rule=>rule.selectorText==='.earnedPieceResult summary').style.display,'flex');
+ assert.equal(cssRules.find(rule=>rule.selectorText==='.dashboardDisclosure>summary').style.display,'flex');
  const readyProbe=d.createElement('div');readyProbe.innerHTML=w.renderVibeReady();d.body.append(readyProbe);
  const cssAtWidth=(rules,width,containerWidth=width<=700?width-34:Math.max(280,(Math.min(width,1100)-50)*.35)-2,rootSize=16)=>rules.map(rule=>{
   if(rule.constructor.name==='CSSContainerRule'){
@@ -109,6 +110,14 @@ try{
   if(width>700){
    assert.equal(workspace.gridTemplateColumns,'minmax(280px,35%) minmax(0,1fr)',`${width}px: sidebar has room for names and the conversation takes only the remaining width`);
   }else assert.equal(workspace.display,'block','phone dashboard keeps its existing single-column layout');
+  for(const disclosure of d.querySelectorAll('#root .dashboardDisclosure')){
+   const summary=disclosure.querySelector(':scope > summary'),copy=summary.querySelector('.dashboardDisclosureCopy'),note=summary.querySelector('.dashboardDisclosureNote'),chevron=summary.querySelector('svg');
+   assert.ok(parseFloat(w.getComputedStyle(summary).minHeight)>=44,`${width}px: every disclosure has a full summary hit target`);
+   assert.equal(w.getComputedStyle(disclosure).padding,'0px','closed rows have no old section padding');
+   assert.equal(w.getComputedStyle(copy).display,'flex');assert.equal(w.getComputedStyle(copy).flexWrap,'wrap');assert.equal(parseFloat(w.getComputedStyle(copy).minWidth),0);
+   assert.equal(w.getComputedStyle(note).overflowWrap,'anywhere');assert.notEqual(w.getComputedStyle(note).whiteSpace,'nowrap');assert.notEqual(w.getComputedStyle(note).textOverflow,'ellipsis');
+   assert.equal(w.getComputedStyle(chevron).width,'16px');assert.equal(w.getComputedStyle(chevron).flexShrink,'0');
+  }
   const actions=d.querySelector('.socialMemberAction'),prompt=actions.querySelector('.ctaPrompt'),friendButton=d.querySelector('#root .connectionsHeading .friendShareButton');
   assert.ok(friendButton,'friend invitation sits beside the Connections heading');
   assert.equal(friendButton.previousElementSibling.textContent,'Connections');
@@ -240,11 +249,11 @@ try{
   const action=expected[side][status];if(action)assert.ok(panel().textContent.includes(action),`${side}/${status} keeps next action ${action}`);
   else assert.equal(d.querySelector('.focusNextActions'),null,`${side}/${status} is waiting`);
  }
- // Safety actions are available through a labelled, keyboard-native menu.
- seed();const menu=d.querySelector('.connectionMenu');assert.ok(menu.querySelector('summary[aria-label="Connection options for Morgan"]'));
- assert.equal(menu.querySelectorAll('button').length,1);assert.match(menu.textContent,/Report/);d.querySelector('.freezeConnection').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'freeze');
+ // Safety actions are available through one labelled menu button.
+ seed();const menu=d.querySelector('.connectionMenu');assert.ok(menu.querySelector('button[aria-label="Connection options for Morgan"][aria-haspopup="menu"]'));
+ assert.equal(menu.querySelectorAll('[role=menuitem]').length,2);assert.match(menu.textContent,/Report/);d.querySelector('.connectionMenuTrigger').click();d.querySelector('[data-action=freeze]').click();assert.equal(w.eval('s.endTarget.id'),sent.id);assert.equal(w.eval('s.endTarget.kind'),'freeze');
  w.eval('closeInvite()');assert.equal(w.eval('s.inbox[0].status'),'chat','cancel does not end the connection');
- d.querySelector('.connectionMenu button:last-child').click();assert.equal(w.eval('s.endTarget.kind'),'report');w.eval('closeInvite()');
+ d.querySelector('.connectionMenuTrigger').click();d.querySelector('[data-action=report]').click();assert.equal(w.eval('s.endTarget.kind'),'report');w.eval('closeInvite()');
  // Token-based prospect pages retain their original incoming pair while selecting outgoing.
  w.eval(`s={...blank(),view:'dashboard',actor:'prospect',member:{name:'Original Sender',photo:'${photo}',answers:Array(10).fill(0)},prospect:{name:'Taylor',photo:'${photo}',email:'private-owner@example.com',answers:Array(10).fill(0)},prospectId:'owner',phase:'chat',messages:[],invitedAt:'2026-09-20T08:00:00Z',outgoing:[{id:'outgoing',name:'Outgoing Friend',photo:'${otherPhoto}',answers:Array(10).fill(2),status:'email',invitedAt:'2026-09-23T08:00:00Z',sharedEmail:'shared-outgoing@example.com',email:'private-recipient@example.com',messages:[]}]};render()`);
  choose('outgoing');assert.equal(d.querySelector('#connectionName').textContent,'Outgoing');assert.equal(d.querySelector('.sharedContact').textContent,'shared-outgoing@example.com');assert.doesNotMatch(header().textContent,/Original|private-recipient/);

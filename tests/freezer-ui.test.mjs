@@ -40,7 +40,8 @@ function fixture(rows=[row()],{token=false,cursor=null}={}){
    if(server.failSend){server.failSend=false;throw Error('The invitation response was interrupted. Try again.')}
    return response({ok:true,id:server.reinvites.get(body.requestId),kind:c.kind});
   }
-  if(body.action==='freeze'){const pending=c.status==='invited';Object.assign(c,{status:'ended',location:'freezer',freezerAction:pending?'cancel':'freeze',freezerActionAt:actedAt,endedAt:actedAt,canFreeze:false,canTrash:true,canReinvite:c.canBlock||!!c.historyEmail,messages:[]})}
+  if(body.action==='cancel'&&(c.status!=='invited'||!c.canCancel))return response({error:'This invitation was already accepted or is no longer pending.'},409);
+  if(['freeze','cancel'].includes(body.action)){const pending=c.status==='invited';Object.assign(c,{status:'ended',location:'freezer',freezerAction:pending?'cancel':'freeze',freezerActionAt:actedAt,endedAt:actedAt,canFreeze:false,canCancel:false,canTrash:true,canReinvite:c.canBlock||!!c.historyEmail,messages:[]})}
   else if(body.action==='trash')Object.assign(c,{location:'trash',trashedAt:actedAt,canTrash:false,canRestore:true});
   else if(body.action==='restore')Object.assign(c,{location:'freezer',trashedAt:null,canTrash:true,canRestore:false});
   else if(body.action==='block'){for(const candidate of server.rows){const trash=candidate.location==='trash';Object.assign(candidate,{status:'ended',location:trash?'trash':'freezer',freezerAction:'block',freezerActionAt:actedAt,endedAt:actedAt,blockedAt:actedAt,blockedByMe:true,canBlock:false,canUnblock:true,canReinvite:false,canTrash:!trash,canFreeze:false,messages:[]})}}
@@ -56,21 +57,126 @@ const archive=f=>f.d.querySelector('.socialFreezer');
 const buttons=node=>[...node.querySelectorAll('button')].map(b=>b.textContent);
 const actions=f=>f.server.calls.filter(c=>c.body).map(c=>c.body.action);
 const openTrash=async f=>{f.w.toggleTrash();await flush()};
+const menuTrigger=f=>f.d.querySelector('#connectionPanel .connectionMenuTrigger');
+const openMenu=f=>{menuTrigger(f).click();return f.d.querySelector('body > .connectionMenuPanel')};
+const key=(f,target,name,extra={})=>{const event=new f.w.KeyboardEvent('keydown',{key:name,bubbles:true,cancelable:true,...extra});target.dispatchEvent(event);return event};
+
+test('ellipsis opening, repeated clicks, outside click and Escape never change a connection or its draft',()=>{
+ const f=fixture();try{
+  const trigger=menuTrigger(f),input=f.d.querySelector('#message');input.value='Unsent draft';input.focus();
+  const panel=openMenu(f);assert.equal(trigger.textContent,'⋯');assert.equal(trigger.getAttribute('aria-expanded'),'true');assert.equal(trigger.getAttribute('aria-haspopup'),'menu');assert.equal(panel.getAttribute('aria-labelledby'),trigger.id);assert.equal(panel.parentElement,f.d.body);assert.equal(f.d.activeElement.dataset.action,'freeze');assert.equal(input.value,'Unsent draft');assert.deepEqual(actions(f),[]);
+  trigger.click();assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.equal(panel.hidden,true);assert.equal(f.d.activeElement,trigger);
+  trigger.click();key(f,f.d.activeElement,'Escape');assert.equal(panel.hidden,true);assert.equal(f.d.activeElement,trigger);
+  trigger.click();f.d.body.click();assert.equal(panel.hidden,true);assert.equal(f.d.activeElement,trigger);
+  trigger.click();input.focus();assert.equal(panel.hidden,true);assert.equal(f.d.activeElement,input);
+  f.w.eval('render()');assert.equal(f.d.querySelector('#message').value,'Unsent draft');assert.equal(f.server.rows[0].status,'chat');assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+test('keyboard menu navigation wraps and leaves the menu on Tab without firing actions',()=>{
+ const f=fixture();try{
+  const trigger=menuTrigger(f);trigger.focus();assert.equal(key(f,trigger,'ArrowDown').defaultPrevented,true);assert.equal(f.d.activeElement.dataset.action,'freeze');
+  for(const [pressed,action] of [['ArrowUp','report'],['ArrowDown','freeze'],['End','report'],['Home','freeze'],['ArrowDown','block']]){assert.equal(key(f,f.d.activeElement,pressed).defaultPrevented,true);assert.equal(f.d.activeElement.dataset.action,action)}
+  key(f,f.d.activeElement,'Tab');assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.equal(f.d.activeElement,trigger);
+  key(f,trigger,'ArrowUp');assert.equal(f.d.activeElement.dataset.action,'report');key(f,f.d.activeElement,'Tab',{shiftKey:true});assert.equal(f.d.activeElement,trigger);assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+for(const action of ['freeze','block','report'])test(`${action} opens its existing confirmation, traps focus and returns focus on dismissal`,()=>{
+ const f=fixture();try{
+  f.d.querySelector('#message').value='Keep my draft';const trigger=menuTrigger(f),panel=openMenu(f);panel.querySelector(`[data-action=${action}]`).click();
+  assert.equal(f.state().endTarget.kind,action);assert.equal(panel.hidden,true);const modal=f.d.querySelector('.endModal');assert.equal(f.d.activeElement,modal.querySelector('.close'));assert.deepEqual(actions(f),[]);
+  const buttons=modal.querySelectorAll('button'),last=buttons[buttons.length-1];last.focus();assert.equal(key(f,last,'Tab').defaultPrevented,true);assert.equal(f.d.activeElement,buttons[0]);assert.equal(key(f,buttons[0],'Tab',{shiftKey:true}).defaultPrevented,true);assert.equal(f.d.activeElement,last);
+  key(f,last,'Escape');assert.equal(f.state().modal,'');assert.equal(f.d.activeElement,trigger);assert.equal(f.d.querySelector('#message').value,'Keep my draft');assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+test('pending menu respects strict server capabilities and never exposes active history controls',()=>{
+ const f=fixture([row('pending','friend','member',{status:'invited',canCancel:true,canBlock:true,canReport:false})]);try{
+  assert.deepEqual(buttons(openMenu(f)),['Cancel invitation','Block']);assert.doesNotMatch(f.d.querySelector('.activeConnectionActions').textContent,/Trash|Invite again|Unblock/);
+  f.w.eval("s.friends[0].canCancel='true';s.friends[0].canBlock=false;s.friends[0].canReport=false;render()");assert.deepEqual(buttons(openMenu(f)),['Freeze connection']);
+  f.w.eval("s.friends[0].status='ended';s.friends[0].location='freezer';s.friends[0].canTrash=true;render()");assert.equal(f.d.querySelector('body > .connectionMenuPanel'),null);assert.equal(menuTrigger(f),null);
+ }finally{f.close()}
+});
+
+test('only one menu opens when a pending QR and a selected connection both have options',()=>{
+ const f=fixture([row(),row('qr','vibe','member',{status:'invited',channel:'qr',claimed:false,canCancel:true,canBlock:false,canReport:false})]);try{
+  const triggers=f.d.querySelectorAll('.connectionMenuTrigger');assert.equal(triggers.length,2);triggers[0].click();triggers[1].click();assert.equal(triggers[0].getAttribute('aria-expanded'),'false');assert.equal(triggers[1].getAttribute('aria-expanded'),'true');assert.equal(f.d.querySelectorAll('body > .connectionMenuPanel:not([hidden])').length,1);assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+test('polling invalidates old options, preserves the draft and focuses the current trigger',async()=>{
+ const f=fixture();try{
+  f.d.querySelector('#message').value='Keep while polling';const panel=openMenu(f),oldAction=panel.querySelector('[data-action=block]');f.server.rows[0].canBlock=false;await f.w.refreshLive();
+  assert.equal(f.d.querySelector('body > .connectionMenuPanel'),null);assert.equal(f.d.activeElement,menuTrigger(f));assert.equal(f.d.querySelector('#message').value,'Keep while polling');oldAction.click();assert.equal(f.state().modal,'');assert.deepEqual(actions(f),[]);assert.deepEqual(buttons(openMenu(f)),['Freeze connection','Report']);
+  Object.assign(f.server.rows[0],{status:'ended',location:'freezer',canFreeze:false,canTrash:true});await f.w.refreshLive();assert.equal(menuTrigger(f),null);assert.equal(f.d.querySelector('body > .connectionMenuPanel'),null);
+ }finally{f.close()}
+});
+
+test('polling an accepted invitation dismisses Cancel and keeps focus on its current options',async()=>{
+ const f=fixture([row('pending','friend','member',{status:'invited',canCancel:true,canReport:false})]);try{
+  const oldAction=openMenu(f).querySelector('[data-action=cancel]');Object.assign(f.server.rows[0],{status:'chat',canCancel:false,canReport:true});await f.w.refreshLive();assert.equal(f.d.activeElement,menuTrigger(f));assert.equal(menuTrigger(f).getAttribute('aria-expanded'),'false');oldAction.click();assert.equal(f.state().modal,'');assert.deepEqual(actions(f),[]);assert.deepEqual(buttons(openMenu(f)),['Freeze connection','Block','Report']);
+ }finally{f.close()}
+});
+
+test('opening after polling while typing rebuilds options from the latest permissions without replacing the draft',async()=>{
+ const f=fixture();try{
+  const input=f.d.querySelector('#message');input.value='Still typing';input.focus();f.server.rows[0].canBlock=false;await f.w.refreshLive();assert.equal(f.d.querySelector('#message'),input);assert.equal(f.d.activeElement,input);
+  assert.deepEqual(buttons(openMenu(f)),['Freeze connection','Report']);assert.equal(f.d.querySelector('#message'),input);assert.equal(input.value,'Still typing');assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+for(const initiallyOpen of [false,true])test(`repeated message polls preserve focus on options (${initiallyOpen?'menu open':'trigger only'})`,async()=>{
+ const f=fixture();try{
+  if(initiallyOpen)openMenu(f);else menuTrigger(f).focus();
+  for(let index=0;index<2;index++){f.server.rows[0].messages.push({by:'prospect',text:`New message ${index}`});await f.w.refreshLive();assert.equal(f.d.activeElement,menuTrigger(f));assert.equal(menuTrigger(f).getAttribute('aria-expanded'),'false');assert.equal(f.d.querySelector('body > .connectionMenuPanel'),null)}
+  assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+for(const change of ['selection','route','account','modal'])test(`${change} closes the menu and cannot activate its stale options`,()=>{
+ const f=fixture([row(),row('other','friend')]);try{
+  const oldAction=openMenu(f).querySelector('[data-action=block]');
+  if(change==='selection')f.w.selectChempat('other');else if(change==='route')f.w.navigate('profile');else if(change==='account')f.w.eval("s.account={...s.account,id:'different-account'};render()");else f.w.confirmLogout();
+  const modal=f.state().modal;oldAction.click();assert.equal(f.d.querySelector('body > .connectionMenuPanel'),null);assert.equal(f.state().modal,modal);assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
+
+for(const polled of [false,true])test(`cancel cannot end a newly accepted invitation (${polled?'poll observed':'server race'})`,async()=>{
+ const f=fixture([row('pending','friend','member',{status:'invited',canCancel:true,canBlock:false,canReport:false})]);try{
+  openMenu(f).querySelector('[data-action=cancel]').click();assert.equal(f.state().endTarget.kind,'cancel');assert.match(f.d.querySelector('.endModal').textContent,/old link will stop working/);assert.doesNotMatch(f.d.querySelector('.endModal').textContent,/where you can invite again/);
+  Object.assign(f.server.rows[0],{status:'chat',canCancel:false,canBlock:true,canReport:true});if(polled)await f.w.refreshLive();await f.w.confirmEnd();assert.equal(f.server.rows[0].status,'chat');assert.deepEqual(actions(f),polled?[]:['cancel']);assert.match(f.d.querySelector('#endError').textContent,polled?/connection changed/:/already accepted/);assert.equal(f.state().modal,'end');
+ }finally{f.close()}
+});
+
+test('incoming game pieces wait while a connection menu is open',()=>{
+ const f=fixture();try{assert.equal(f.w.safeGamePieceArrival(),true);openMenu(f);assert.equal(f.w.safeGamePieceArrival(),false);key(f,f.d.activeElement,'Escape');assert.equal(f.w.safeGamePieceArrival(),true)}finally{f.close()}
+});
+
+for(const width of [320,375,700,1280])test(`menu geometry stays within the ${width}px viewport and flips above near its bottom`,()=>{
+ const f=fixture();try{
+  Object.defineProperty(f.w,'innerWidth',{value:width,configurable:true});Object.defineProperty(f.w,'innerHeight',{value:480,configurable:true});const trigger=menuTrigger(f),panel=f.d.querySelector('.connectionMenuPanel');
+  trigger.getBoundingClientRect=()=>({left:width-56,right:width-12,top:420,bottom:464,width:44,height:44});panel.getBoundingClientRect=()=>({width:200,height:154});openMenu(f);
+  assert.equal(f.w.getComputedStyle(trigger).minHeight,'44px');assert.equal(f.w.getComputedStyle(trigger).minWidth,'44px');assert.equal(f.w.getComputedStyle(panel.querySelector('button')).minHeight,'44px');assert.equal(f.w.getComputedStyle(panel).position,'fixed');assert.equal(panel.parentElement,f.d.body);
+  const left=parseFloat(panel.style.left),top=parseFloat(panel.style.top);assert.ok(left>=8&&left+200<=width-8);assert.ok(top>=8&&top+154<420);assert.equal(panel.style.maxWidth,`${width-16}px`);
+  trigger.getBoundingClientRect=()=>({left:4,right:48,top:10,bottom:54,width:44,height:44});f.w.dispatchEvent(new f.w.Event('resize'));assert.equal(panel.style.left,'8px');assert.equal(panel.style.top,'59px');assert.deepEqual(actions(f),[]);
+ }finally{f.close()}
+});
 
 for(const kind of ['vibe','friend'])for(const side of ['member','prospect'])test(`${kind}/${side}: Freezer immediately ends contact and provides no return path`,async()=>{
  const f=fixture([row('pair',kind,side)]);
  try{
-  assert.equal(f.d.querySelector('.freezeConnection').textContent,'Freezer');assert.deepEqual(buttons(f.d.querySelector('.connectionMenu')),['Report']);assert.doesNotMatch(f.d.querySelector('.activeConnectionActions').textContent,/Unmatch|Block|Cancel/);
+  assert.equal(f.d.querySelector('.freezeConnection'),null);assert.deepEqual(buttons(f.d.querySelector('.connectionMenuPanel')),['Freeze connection','Block','Report']);assert.doesNotMatch(f.d.querySelector('.activeConnectionActions').textContent,/Unmatch|Trash|Invite again/);
   f.d.querySelector('#message').value='Private draft';f.open('pair','freeze');assert.match(f.d.querySelector('.endModal').textContent,/ends the connection immediately for both/);await f.w.confirmEnd();
-  assert.equal(f.server.rows[0].status,'ended');assert.equal(f.d.querySelector('.inlineComposer'),null);assert.equal(f.d.querySelectorAll('.chempatContact').length,0);assert.match(archive(f).textContent,/Frozen/);assert.doesNotMatch(f.d.querySelector('#root').textContent,/Return to connections|Resend|Unmatch/);
+  assert.equal(f.server.rows[0].status,'ended');assert.equal(archive(f).open,true,'the successfully frozen record is visible');assert.equal(f.d.querySelector('.inlineComposer'),null);assert.equal(f.d.querySelectorAll('.chempatContact').length,0);assert.match(archive(f).textContent,/Frozen/);assert.doesNotMatch(f.d.querySelector('#root').textContent,/Return to connections|Resend|Unmatch/);
   f.open('pair','unfreeze');assert.equal(f.state().modal,'');await f.w.refreshLive();assert.equal(f.d.querySelector('.inlineChat'),null);assert.deepEqual(actions(f),['freeze']);
   assert.deepEqual([...archive(f).querySelectorAll('time')].map(n=>n.dateTime),[sentAt,actedAt]);
  }finally{f.close()}
 });
 
-for(const kind of ['vibe','friend'])test(`${kind}: pending Freezer cancels; unknown Mystery Guest only has Trash`,async()=>{
- const f=fixture([row('pending',kind,'member',{status:'invited',prospect_name:'',recipient_name:'',prospect_photo:'',canBlock:false,canReport:false})]);
- try{assert.equal(f.d.querySelector('#connectionName').textContent,'Mystery Guest');assert.equal(f.d.querySelector('.connectionMenu'),null);f.open('pending','freeze');assert.match(f.d.querySelector('.endModal').textContent,/old link will stop working/);await f.w.confirmEnd();assert.match(archive(f).textContent,/Cancelled/);assert.deepEqual(buttons(archive(f)),['Trash']);for(const action of ['block','unblock','reinvite','unfreeze','cancel']){f.open('pending',action);assert.equal(f.state().modal,'')}assert.equal(archive(f).querySelector('img'),null)}finally{f.close()}
+for(const kind of ['vibe','friend'])test(`${kind}: pending cancellation keeps unknown Mystery Guest in recoverable history`,async()=>{
+ const f=fixture([row('pending',kind,'member',{status:'invited',prospect_name:'',recipient_name:'',prospect_photo:'',canCancel:true,canBlock:false,canReport:false})]);
+ try{assert.equal(f.d.querySelector('#connectionName').textContent,'Mystery Guest');assert.deepEqual(buttons(f.d.querySelector('.connectionMenuPanel')),['Cancel invitation']);f.d.querySelector('.connectionMenuTrigger').click();f.d.querySelector('[data-action=cancel]').click();assert.match(f.d.querySelector('.endModal').textContent,/old link will stop working/);await f.w.confirmEnd();assert.equal(archive(f).open,true,'a cancelled invitation is visible');assert.match(archive(f).textContent,/Cancelled/);assert.deepEqual(buttons(archive(f)),['Trash']);for(const action of ['block','unblock','reinvite','unfreeze','cancel']){f.open('pending',action);assert.equal(f.state().modal,'')}assert.equal(archive(f).querySelector('img'),null)}finally{f.close()}
 });
 
 test('capabilities and historically shared identity come only from the server',()=>{
@@ -80,7 +186,7 @@ test('capabilities and historically shared identity come only from the server',(
 
 test('Trash is a small bottom control; restore returns only to Freezer and keeps the block',async()=>{
  const f=fixture([frozen('pair','friend',{blockedByMe:true,blockedAt:actedAt,canBlock:false,canUnblock:true,canReinvite:false})]);
- try{assert.equal(f.d.querySelector('.socialTrash'),null);assert.equal(f.d.querySelector('.socialFreezer').nextElementSibling.className,'trashEntry');f.open('pair','trash');assert.match(f.d.querySelector('.endModal').textContent,/recoverable Trash/);await f.w.confirmEnd();assert.equal(archive(f).querySelector('.freezerItem'),null);await openTrash(f);assert.match(f.d.querySelector('.socialTrash').textContent,/Blocked by you/);assert.deepEqual(buttons(f.d.querySelector('.socialTrash')),['Restore to Freezer']);f.open('pair','restore');assert.match(f.d.querySelector('.endModal').textContent,/never reopens chat/);await f.w.confirmEnd();assert.equal(f.d.querySelector('.socialTrash .freezerItem'),null);assert.match(archive(f).textContent,/Blocked by you/);assert.equal(f.d.querySelector('.inlineComposer'),null);assert.equal(f.d.querySelectorAll('.chempatContact').length,0);assert.equal(f.server.rows[0].blockedByMe,true);assert.doesNotMatch(f.d.querySelector('#root').textContent,/Delete forever|Empty Trash|Permanently delete/)}finally{f.close()}
+ try{assert.equal(f.d.querySelector('.socialTrash'),null);assert.equal(f.d.querySelector('.socialFreezer').nextElementSibling.className,'trashEntry');f.open('pair','trash');assert.match(f.d.querySelector('.endModal').textContent,/recoverable Trash/);await f.w.confirmEnd();assert.equal(archive(f).querySelector('.freezerItem'),null);await openTrash(f);assert.match(f.d.querySelector('.socialTrash').textContent,/Blocked by you/);assert.deepEqual(buttons(f.d.querySelector('.socialTrash')),['Restore to Freezer']);archive(f).open=false;f.open('pair','restore');assert.match(f.d.querySelector('.endModal').textContent,/never reopens chat/);await f.w.confirmEnd();assert.equal(f.d.querySelector('.socialTrash .freezerItem'),null);assert.equal(archive(f).open,true,'restored history is visible in Freezer');assert.match(archive(f).textContent,/Blocked by you/);assert.equal(f.d.querySelector('.inlineComposer'),null);assert.equal(f.d.querySelectorAll('.chempatContact').length,0);assert.equal(f.server.rows[0].blockedByMe,true);assert.doesNotMatch(f.d.querySelector('#root').textContent,/Delete forever|Empty Trash|Permanently delete/)}finally{f.close()}
 });
 
 test('only your own block can be undone; unblocking never revives any connection',async()=>{
@@ -213,4 +319,23 @@ for(const kind of ['friend','vibe'])test(`${kind}: wrong account can switch to t
 for(const kind of ['friend','vibe'])test(`${kind}: intended-email signup resumes the invitation without accepting or fabricating answers`,async()=>{
  const f=boundInvitationBrowser(kind,{newAccount:true});
  try{await flush();f.w.startFresh();f.d.querySelector('#joinName').value='Taylor New';f.d.querySelector('#joinContact').value=own.contact;f.d.querySelector('#joinAgree').checked=true;f.w.nextJoinStep();await flush();f.d.querySelector('#signinCode').value='123456';await f.w.signinVerify();assert.equal(f.state().joinStep,2);f.w.eval(`s.member.photo='${photo}'`);await f.w.finishRegistration();await flush();assert.equal(f.calls.filter(c=>c.body?.action==='register').length,1);assert.deepEqual(f.calls.find(c=>c.body?.action==='register').body.answers,[]);assert.equal(f.calls.filter(c=>['accept','first'].includes(c.body?.action)).length,0);assert.equal(f.d.querySelector('.inlineComposer'),null);assert.match(f.d.querySelector('#root').textContent,/Morgan/);if(kind==='friend'){await f.w.acceptFriendInvitation();assert.ok(f.d.querySelector('.inlineComposer'));assert.deepEqual(f.state().member.answers,[])}else{assert.deepEqual(f.state().prospect.answers,[]);await f.w.startProspect();assert.equal(f.state().prospectQuestionsOpen,true);assert.equal(f.d.querySelector('.inlineComposer'),null)}}finally{f.close()}
+});
+
+
+test('closed Freezer exposes history and pagination on demand and keeps its loaded count accurate',async()=>{
+ const f=fixture([frozen('first')],{cursor:'older'});try{
+  assert.equal(archive(f).open,false);assert.equal(archive(f).querySelector('.dashboardDisclosureCount').textContent,'1+');
+  archive(f).querySelector('summary').click();assert.equal(archive(f).open,true);assert.ok(archive(f).querySelector('[data-connection-id="first"]'));assert.ok(archive(f).querySelector('.historyAction'));
+  f.server.next=[frozen('second')];f.server.nextCursor=null;await f.w.loadFreezerHistory();
+  assert.equal(archive(f).open,true);assert.equal(archive(f).querySelector('.dashboardDisclosureCount').textContent,'2');assert.equal(archive(f).querySelector('.loadFreezer'),null);
+  archive(f).querySelector('summary').click();f.w.eval('render(true)');assert.equal(archive(f).open,false);
+ }finally{f.close()}
+});
+
+test('a dismissed pending freeze updates history without reopening a deliberately closed Freezer',async()=>{
+ const f=fixture([row()]);try{
+  const hold=deferred();f.w.fetch=async(url,options)=>{if(options?.body&&JSON.parse(options.body).action==='freeze')await hold.promise;return f.fetch(url,options)};
+  f.open('pair','freeze');const pending=f.w.confirmEnd();f.w.closeInvite();hold.resolve();await pending;
+  assert.equal(archive(f).open,false);assert.equal(archive(f).querySelector('.dashboardDisclosureCount').textContent,'1');assert.ok(archive(f).querySelector('[data-connection-id="pair"]'));
+ }finally{f.close()}
 });
