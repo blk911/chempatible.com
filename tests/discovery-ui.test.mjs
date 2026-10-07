@@ -298,16 +298,16 @@ test('empty and failed compact collections remain optional and friend-only pages
 test('dashboard sections are compact named disclosures with inline notes and live result counts',async()=>{
  const f=await fixture({pieces:[piece]});try{
   const rows=[...f.d.querySelectorAll('.dashboardDisclosure')];
-  assert.equal(rows.length,3);assert.ok(rows.every(row=>row.tagName==='DETAILS'&&!row.open));
-  assert.deepEqual(rows.map(row=>row.querySelector('summary strong').textContent),['My secrets','My game results','Freezer']);
-  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureNote').textContent),['Your saved answers','Optional games · Private until shared','Ended connections & cancelled invites']);
-  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureCount').textContent),['10','1','0']);
+  assert.equal(rows.length,4);assert.ok(rows.every(row=>row.tagName==='DETAILS'&&!row.open));
+  assert.deepEqual(rows.map(row=>row.querySelector('summary strong').textContent),['My secrets','Game Pieces','My game results','Freezer']);
+  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureNote').textContent),['Your saved answers','Five little unlocks. Where will you take them?','Optional games · Private until shared','Ended connections & cancelled invites']);
+  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureCount').textContent),['10','2 / 5','1','0']);
   assert.ok(rows.every(row=>row.querySelector(':scope > summary > svg[aria-hidden="true"]')));
   const collection=f.d.querySelector('#earnedPieces');
   assert.equal(collection.querySelector('.discoveryHeading,.earnedPiecesNote'),null);assert.equal(f.d.getElementById(collection.getAttribute('aria-labelledby')).textContent,'My game results');
   f.server.pieces.push({...piece,moduleId:'closeness',title:'Closeness'});await f.w.loadDiscoveryPieces(true);await f.w.loadDiscovery('alpha',true);
   assert.equal(f.d.querySelector('#gameResultsCount').textContent,'2');assert.equal(f.d.querySelector('#gameResultsCount').getAttribute('aria-label'),'2 saved game results');
-  assert.equal(collection.querySelector('.discoveryHeading,.earnedPiecesNote'),null,'polling keeps the compact body');assert.equal(rows[1].open,false,'a result refresh does not open a closed collection');
+  assert.equal(collection.querySelector('.discoveryHeading,.earnedPiecesNote'),null,'polling keeps the compact body');assert.equal(rows[2].open,false,'a result refresh does not open a closed collection');
   const standalone=f.d.createElement('div');standalone.innerHTML=f.w.renderDiscoveryPieces();
   assert.equal(standalone.querySelector('#earnedPiecesTitle').textContent,'My earned pieces');assert.match(standalone.textContent,/Only you.*Private until you choose to share/s);
   assert.equal(f.posts().length,0,'viewing result collections does not share a result');
@@ -316,13 +316,13 @@ test('dashboard sections are compact named disclosures with inline notes and liv
 
 test('dashboard disclosure choices and summary focus survive immediate rerenders, polling and connection changes',async()=>{
  const f=await fixture({pieces:[piece]});try{
-  for(const key of ['secrets','results','freezer']){
+  for(const key of ['secrets','pieces','results','freezer']){
    const summary=f.d.querySelector(`[data-dashboard-disclosure="${key}"] > summary`);summary.click();summary.focus();f.w.eval('render(true)');
    assert.equal(f.d.querySelector(`[data-dashboard-disclosure="${key}"]`).open,true,'capture native open state before queued toggle event');
    assert.equal(f.d.activeElement,f.d.querySelector(`[data-dashboard-disclosure="${key}"] > summary`));
   }
   f.server.rows[0].messages.push({by:'prospect',text:'A new message'});await f.w.refreshLive();f.w.selectChempat('beta');await flush();
-  assert.ok([...f.d.querySelectorAll('.dashboardDisclosure')].every(row=>row.open),'connection refresh and selection retain all three choices');
+  assert.ok([...f.d.querySelectorAll('.dashboardDisclosure')].every(row=>row.open),'connection refresh and selection retain all four choices');
   const stale=[...f.d.querySelectorAll('.dashboardDisclosure')];
   for(const row of stale)row.open=false;
   f.w.eval('render(true)');for(const row of stale){row.open=true;row.dispatchEvent(new f.w.Event('toggle'))}await flush();f.w.eval('render(true)');

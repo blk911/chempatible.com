@@ -27,6 +27,21 @@ in-app request endpoints support verified isolated development and explicitly
 configured trusted production. All member authorization, consent and lifecycle
 checks remain required; see `docs/RELEASE-MODE.md` for the fail-closed gate.
 
+## Game Pieces guide
+
+The compact five-card progress display stays at the top of My page. Its
+`detail...` link opens the **Game Pieces** disclosure below **My secrets**, moves
+keyboard focus to its summary, and scrolls there without opening a modal or
+adding browser history. Reduced-motion preferences use an immediate scroll.
+
+Five roomy cards explain Email, Cell, Duhwildcards, Be discovered, and Your 15
+seconds, with actions routed through the existing reward controls. Status comes
+from the same server-owned reward progress; the guide adds no eligibility flags
+or sharing actions. The real **My game results** collection stays underneath,
+with its saved optional-game results and privacy choices unchanged. See
+`tests/game-piece-cards-ui.test.mjs` for navigation, state, consent-copy, focus,
+and responsive CSSOM regressions. No schema or API changes are required.
+
 ## Walkthrough
 
 `main` is the development branch; `live` is the separate public release branch. Data APIs remain disabled by default. Development gameplay requires a verified isolated database and approved test inboxes; see `docs/REVIEW-ROLLBACK.md`. Preparing source for release does not enable public mail or promote the live site.
