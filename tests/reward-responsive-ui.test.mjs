@@ -106,7 +106,7 @@ test('reward header and question controls keep shrinkable tracks and touch targe
   f.w.openRewardLevel(3);const dialog=assertDialog(f.d);
   assert.equal(dialog.querySelectorAll('.rewardPrimary').length,1,'round has one prominent action');
   assert.equal(dialog.querySelector('.rewardDetails').open,false,'secondary explanation starts collapsed');
-  assert.equal(dialog.querySelector('.rewardTarget b').textContent,'Getting closer badge');
+  assert.equal(dialog.querySelector('.rewardTarget b').textContent,'Duhwildcards');
   const progress=dialog.querySelector('progress#rewardProgress');assert.ok(progress);
   assert.equal(progress.max,5);assert.equal(progress.value,0);
   assert.equal(progress.getAttribute('aria-labelledby'),'rewardAnswerCount');

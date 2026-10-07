@@ -14,7 +14,7 @@ const flush=async()=>{for(let i=0;i<5;i++)await new Promise(resolve=>setImmediat
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve}};
 const categories=[{id:'future',title:'Dreams & plans',questions:[{id:'future-1',text:'What would your dream weekend look like?'},{id:'future-2',text:'Where would you love to go next?'}]}];
 const ask=(questionId='future-1',asker='sender')=>({questionId,categoryId:'future',asker,ask:{id:`ask-${questionId}`,text:categories[0].questions.find(q=>q.id===questionId).text,at:'2026-10-06T23:00:00.000Z',by:asker==='sender'?'member':'prospect'},reply:null});
-const makeServer=()=>({level:{sender:3,recipient:2},pairs:{[a]:[ask()],[b]:[]},remaining:{sender:2,recipient:3},phone:{sender:false,recipient:false},directory:[],extraRows:{},profiles:{sender:{phone:'+15552223333',confirmedAt:'2026-10-06T22:00:00.000Z',revision:1},recipient:{phone:null,confirmedAt:null,revision:0}},calls:[],requests:new Map(),receipts:new Map(),events:[],fail:false,loseReply:false,intercept:null,ended:new Set()});
+const makeServer=()=>({level:{sender:3,recipient:2},pairs:{[a]:[ask()],[b]:[],[friend]:[]},remaining:{sender:2,recipient:3},phone:{sender:false,recipient:false},directory:[],extraRows:{},profiles:{sender:{phone:'+15552223333',confirmedAt:'2026-10-06T22:00:00.000Z',revision:1},recipient:{phone:null,confirmedAt:null,revision:0}},calls:[],requests:new Map(),receipts:new Map(),events:[],fail:false,loseReply:false,intercept:null,ended:new Set()});
 function snapshot(server,role,id=a){const eligible=server.level[role]>=3;return {connectionId:id,eligible,limit:3,remaining:eligible?server.remaining[role]:0,usedQuestionIds:server.pairs[id].map(card=>card.questionId),categories:eligible?categories:[],answerMaxLength:1000,legacyAskCount:0,cards:server.pairs[id].map(card=>({questionId:card.questionId,categoryId:card.categoryId,direction:card.asker===role?'outgoing':'incoming',status:card.reply?'answered':'waiting',canAnswer:card.asker!==role&&!card.reply,ask:card.ask,reply:card.reply}))}}
 const summary=(server,role)=>({connections:Object.keys(server.pairs).filter(id=>!server.ended.has(id)).map(id=>({id,pendingIncoming:server.pairs[id].filter(card=>card.asker!==role&&!card.reply).length,pendingOutgoing:server.pairs[id].filter(card=>card.asker===role&&!card.reply).length}))});
 function feed(server,role,visit){
@@ -28,7 +28,7 @@ function feed(server,role,visit){
 async function fixture({role='recipient',server=makeServer(),auto=false,selected=a,held,composer='',modal=''}={}){
  const dom=new JSDOM(html,{url:'https://wildcard-answers.example.test/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;let currentRole=role;
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
- const rows=()=>[a,b,friend].map(id=>({id,kind:id===friend?'friend':'vibe',channel:id===friend?'friend':'email',status:server.ended.has(id)?'ended':server.status||'chat',location:server.ended.has(id)?'freezer':'active',side:currentRole==='sender'?'member':'prospect',prospect_name:id===b?'Jordan':'Riley',sender_name:id===b?'Jordan':'Taylor',own_answers:Array(10).fill(0),prospect_answers:Array(10).fill(1),sender_answers:Array(10).fill(0),messages:[]}));
+ const rows=()=>[a,b,friend].map(id=>({id,kind:id===friend?'friend':'vibe',claimed:true,channel:id===friend?'friend':'email',status:server.ended.has(id)?'ended':server.status||'chat',location:server.ended.has(id)?'freezer':'active',side:currentRole==='sender'?'member':'prospect',prospect_name:id===b?'Jordan':'Riley',sender_name:id===b?'Jordan':'Taylor',own_answers:Array(10).fill(0),prospect_answers:Array(10).fill(1),sender_answers:Array(10).fill(0),messages:[]}));
  w.fetch=async(url,options={})=>{
   const body=options.body?JSON.parse(options.body):null,owner=options.headers?.['x-chempat-member-id']||currentRole,call={url,body,owner,method:options.method||'GET'};server.calls.push(call);
   if(server.intercept){const result=server.intercept(call);if(result)return result}
@@ -88,7 +88,7 @@ test('pending badge covers an unselected connection and disappears after the ans
   const indicator=f.d.querySelector(`[data-wildcard-pending="${b}"]`);assert.equal(indicator.hidden,false);assert.match(indicator.textContent,/1 card to answer/);assert.match(indicator.closest('button').getAttribute('aria-label'),/1 card to answer/);
   indicator.closest('button').click();await flush();assert.match(f.d.querySelector('.wildcardPlayedCard').textContent,/Jordan played a card/);
   await openAnswer(f,b);write(f,'Somewhere sunny.');await f.w.answerWildcard();await flush();assert.equal(f.d.querySelector(`[data-wildcard-pending="${b}"]`).hidden,true);
-  f.w.selectChempat(friend);assert.equal(f.d.querySelector('#connectionWildcards'),null);f.w.openWildcardAnswer(friend,'future-1');assert.equal(f.w.eval('s.modal'),'');
+  f.w.selectChempat(friend);assert.equal(f.d.querySelector('#connectionWildcards').hidden,true);f.w.openWildcardAnswer(friend,'future-1');assert.equal(f.w.eval('s.modal'),'');
  }finally{f.close()}
 });
 
@@ -326,5 +326,30 @@ test('a cold media Play waits for the initial reward read instead of treating un
  const server=makeServer(),hold=deferred();server.pairs[a]=[];server.level.recipient=4;server.directory=[{id:'sender',name:'Taylor',videoAvailable:true}];server.events=[event('intro-published',{target:{type:'intro',connectionId:a,memberId:'sender'}})];server.intercept=c=>c.url==='/api/rewards'&&!c.body?hold.promise:null;const f=await fixture({server,auto:true});try{
   assert.ok(f.d.querySelector('.gamePieceModal'));assert.equal(f.w.eval('rewardsData'),null);const playing=f.w.playGamePiece();await flush();assert.equal(server.calls.filter(c=>c.method==='HEAD').length,0);assert.ok(!f.visible().includes('not currently available'));
   hold.resolve(response({level:4,rounds:REWARD_ROUNDS,answers:{},draftRevision:0,phoneProfile:server.profiles.recipient,connections:[]}));await playing;assert.ok(f.d.querySelector('.gamePieceMedia video'));assert.equal(server.calls.filter(c=>c.method==='HEAD').length,2);
+ }finally{f.close()}
+});
+
+test('accepted Friends below Step 3 receive, answer and review wildcard cards without phone or reward access',async()=>{
+ const server=makeServer();server.pairs[a]=[];server.pairs[friend]=[ask()];server.level.recipient=0;
+ const recipient=await fixture({server,selected:friend}),sender=await fixture({role:'sender',server,selected:friend});try{
+  assert.equal(recipient.d.querySelector('#connectionWildcards').hidden,false);assert.ok(recipient.d.querySelector('[data-wildcard-focus="answer:future-1"]'));assert.equal(recipient.d.querySelector('[data-wildcard-focus="open"]'),null);assert.equal(recipient.d.querySelector('.rewardConnection'),null);assert.equal(recipient.d.querySelector('.secretsButton[aria-pressed="true"]'),null);
+  assert.match(recipient.d.querySelector(`[data-wildcard-pending="${friend}"]`).textContent,/1 card to answer/);await recipient.w.openGamePiece('201');await flush();assert.ok(recipient.d.querySelector('.gamePieceModal'));await recipient.w.playGamePiece();assert.match(recipient.d.querySelector('#wildcardTitle').textContent,/Answer Taylor’s card/);
+  write(recipient,'An afternoon on the coast.');await recipient.w.answerWildcard();assert.equal(recipient.posts()[0].body.connectionId,friend);assert.equal(server.remaining.recipient,3);assert.equal(server.remaining.sender,2);assert.equal(recipient.w.eval('rewardLevel()'),0);assert.match(recipient.d.querySelector('.wildcardPlayedCard').textContent,/An afternoon on the coast/);
+  await sender.w.loadWildcards(friend,true);assert.match(sender.d.querySelector('.wildcardPlayedCard').textContent,/Riley’s answer.*An afternoon on the coast/);assert.equal(server.calls.filter(c=>c.url.includes('/api/rewards?connection='+friend)).length,0);
+ }finally{recipient.close();sender.close()}
+});
+
+test('friend-only wildcard summaries do not trigger phone requests or permit broader friend game-piece routes',async()=>{
+ const server=makeServer();server.pairs[a]=[];server.pairs[friend]=[ask()];const f=await fixture({server,selected:friend});try{
+  f.w.eval(`s.inbox=[];gamePiecePhonesUpdated=0;gamePiecePhonesLoading=null;render()`);const before=server.calls.filter(c=>c.url==='/api/rewards?phoneRequests=1').length;await f.w.loadGamePiecePhones(true);assert.equal(server.calls.filter(c=>c.url==='/api/rewards?phoneRequests=1').length,before);
+  for(const [kind,type] of [['phone-offer','phone'],['step-complete','connection'],['directory-listed','directory'],['intro-published','intro']])assert.equal(f.w.eval(`gamePieceConnection(${JSON.stringify({kind,connectionId:friend,target:{type}})})`),undefined);
+  assert.ok(f.w.eval(`gamePieceConnection(${JSON.stringify({kind:'wildcard-ask',connectionId:friend,target:{type:'wildcard'}})})`));assert.equal(f.posts().length,0);
+ }finally{f.close()}
+});
+
+test('an older accepted Friend hydrates from its wildcard feed and does not adopt Vibe state',async()=>{
+ const id='d'.repeat(64),server=makeServer();server.pairs[a]=[];server.pairs[id]=[ask()];server.extraRows[id]={id,kind:'friend',channel:'friend',claimed:true,status:'chat',location:'active',side:'prospect',sender_name:'Older Friend',prospect_name:'Riley',messages:[]};
+ const f=await fixture({server});try{
+  const liveBefore=f.w.eval('s.liveId'),phaseBefore=f.w.eval('s.phase');await f.w.openGamePiece('201');await flush();assert.ok(f.d.querySelector('.gamePieceModal'));await f.w.playGamePiece();assert.equal(f.w.eval('s.selectedChempat'),id);assert.equal(f.w.eval('s.liveId'),liveBefore);assert.equal(f.w.eval('s.phase'),phaseBefore);assert.equal(f.d.querySelector('.rewardConnection'),null);assert.match(f.d.querySelector('#wildcardTitle').textContent,/Older/);write(f,'A good long walk.');await f.w.answerWildcard();assert.equal(f.posts()[0].body.connectionId,id);assert.match(f.d.querySelector('.wildcardPlayedCard').textContent,/A good long walk/);
  }finally{f.close()}
 });

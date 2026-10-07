@@ -139,9 +139,9 @@ await test('all current and legacy open romantic chat states preserve normal con
  }
 });
 
-await test('level upgrades never bypass mutual chat, friend separation, identified pair or lifecycle consent',async()=>{
+await test('level upgrades never bypass mutual chat, accepted-friend state, identified pair or lifecycle consent',async()=>{
  for(const state of ['invited','firstResults','request','second','nextResults','chatRequested','ended','declined']){const id=await invite({status:state});status(await read(id),404);status(await ask(id),404)}
- for(const props of [{channel:'friend'},{prospect:null},{prospect:'owner'}]){const id=await invite(props);status(await read(id),404);status(await ask(id),404)}
+ for(const props of [{channel:'friend',status:'secondResults'},{prospect:null},{prospect:'owner'}]){const id=await invite(props);status(await read(id),404);status(await ask(id),404)}
  const changes=[
   id=>db.query('UPDATE connection_state SET ended_at=now() WHERE invitation_hash=$1',[id]),
   id=>db.query(`INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())`,[ids.visitor,id]),

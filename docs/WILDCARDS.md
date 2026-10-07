@@ -1,13 +1,16 @@
 # Category-first wildcards
 
 Each verified member who has earned personal reward Level 3 can ask three
-wildcard questions in each existing romantic connection. The connection must
-already have mutually opened chat. This does not open chat, change the five
-reward levels, share contact details, or apply to friend-only connections.
+wildcard questions per connection. Eligible connections are mutually opened
+Vibe chats and accepted, active Friends chats. Pending friend invitations do
+not qualify. Playing a card does not open chat, change the five reward levels,
+or share contact details. Each person has their own allowance in each connection.
 
 ## Member experience
 
-1. Open a Vibe chat and choose **Play a wildcard** beside the remaining balance.
+1. On the completed Step 3 card, choose **Play a card**, then choose an eligible
+   connection. The allowance is three per member in each connection. An existing
+   eligible chat also provides **Play a wildcard** beside its remaining balance.
 2. **Pick a category** shows category titles only.
 3. Pick an unused question. Questions already asked by either person remain in
    place, masked and disabled as **Already played**.
@@ -26,7 +29,7 @@ starters, not copied psychological instruments.
 
 `api/wildcards.mjs` uses the existing deployment gate and verified member
 session/account binding. It rechecks both members, original pair identity,
-reward eligibility, invitation targeting, mutual chat state, blocks, and
+reward eligibility, invitation targeting, accepted-friend or mutual Vibe chat state, blocks, and
 freeze/trash/end restrictions after obtaining ordered member and connection
 locks. The ledger insert and existing chat-message append share one transaction.
 
@@ -50,6 +53,15 @@ The application baseline before this change is
 `85cbf00d67431aeecf335ff6c03454994bd97361`. Keep the recorded prior development
 and public deployment IDs. A code rollback retains the additive ledger and all
 posted chat messages; never reset or delete user data to roll back the feature.
+
+For the Step 3 entry and accepted-friend extension, the application baseline is
+`181c226a76d8f53ecd19ebd8247fc84a196936f8`. Apply
+`migrations/20261007_friend_wildcards.sql` using the same isolated-branch,
+development-first workflow. It preserves the original relationship type with
+the immutable pair snapshot and emits only wildcard asks/replies for friends.
+It does not replay historic events or grant friend access to phone exchange,
+reward progress, directory or intro game pieces. See `docs/GAME-PIECES.md` for
+its data-preserving rollback.
 
 ## Verification scope
 

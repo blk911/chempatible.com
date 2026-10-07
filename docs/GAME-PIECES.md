@@ -23,8 +23,11 @@ part of readiness summaries.
 New wildcard asks are tied to an immutable original pair and recipient. The
 sender sees Waiting, the recipient can explicitly answer, and both then see the
 question and Answered reply. Answering is allowed below Step 3 and spends no
-wildcard. Asking still requires Step 3 and an already-open romantic chat, with
-three asks per member per connection and no question reuse in that connection.
+wildcard. Asking still requires Step 3 and either an already-open Vibe chat or
+an accepted, active Friends chat, with three asks per member per connection and
+no question reuse in that connection. Friend cards use the same original-pair
+ledger and recipient-only reply controls. No other reward or contact-sharing
+permission is added for friends.
 Ordinary chat messages are never inferred to be a card answer.
 
 An ask, its pending recipient record and chat message commit atomically. A
@@ -39,7 +42,8 @@ future meaningful changes: first-five completion after a real pair is bound,
 later progress, continuing/opening chat, explicit phone offers, optional
 directory/video publication, and wildcard questions/replies. Existing pair IDs
 are snapshotted at rollout, but no historical events, receipts or prompts are
-backfilled.
+backfilled. Accepted friends receive only wildcard question/reply game pieces;
+progress, phone, directory and intro events keep their existing Vibe scope.
 
 The event store contains identifiers and milestone metadata, not private phone
 numbers, answers, question/reply text, photos or videos. Reads reauthorize the
@@ -69,6 +73,7 @@ Apply in order:
 1. `20261006_member_phone_profile.sql`
 2. `20261006_wildcard_answers.sql`
 3. `20261006_game_pieces.sql`
+4. `20261007_friend_wildcards.sql` for the Step 3 entry and accepted-friend extension
 
 Test on isolated development and production children first, then migrate stable
 development before its `main` deployment. Only after verification, migrate the
@@ -84,6 +89,13 @@ If recovery concerns a trigger defect, an application rollback alone is not
 enough: under the authorized recovery plan, pause only the seven new game-piece
 emission triggers while retaining their definitions and all stored data. A
 reviewed migration can re-enable emission after the defect is corrected.
+
+The friend-card extension baseline is `181c226a76d8f53ecd19ebd8247fc84a196936f8`.
+Its rollback retains all new friend cards, chat messages, pair snapshots and
+receipts. Restore the previous application deployment; if needed, restore the
+prior `game_piece_capture` and `game_piece_emit` function definitions from
+`20261006_game_pieces.sql`. The added relationship discriminator can remain.
+Do not reclassify existing snapshots or backfill historical prompts.
 
 ## Verification boundaries
 

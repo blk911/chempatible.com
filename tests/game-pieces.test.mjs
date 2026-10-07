@@ -9,7 +9,7 @@ import {REWARD_ROUNDS} from '../api/_reward-rounds.mjs';
 import {WILDCARD_CATEGORIES} from '../api/_wildcard-questions.mjs';
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';process.env.DATABASE_URL='postgres://local-game-piece-tests-only';
 if(process.env.GAME_PIECE_TEST_MODE==='live')Object.assign(process.env,{CHEMPAT_RELEASE_MODE:'live',VERCEL:'1',VERCEL_PROJECT_ID:'prj_gtV01YIqkEfAfvdSbVopIfy2VpnJ',VERCEL_ENV:'production',VERCEL_GIT_COMMIT_REF:'live'});
-const root=new URL('../',import.meta.url),db=new PGlite(),migration=fs.readFileSync(new URL('migrations/20261006_game_pieces.sql',root),'utf8');
+const root=new URL('../',import.meta.url),db=new PGlite(),baseMigration=fs.readFileSync(new URL('migrations/20261006_game_pieces.sql',root),'utf8'),friendMigration=fs.readFileSync(new URL('migrations/20261007_friend_wildcards.sql',root),'utf8'),migration=baseMigration+'\n'+friendMigration;
 await db.exec(fs.readFileSync(new URL('schema.sql',root),'utf8'));
 await db.exec('ALTER TABLE members ADD COLUMN IF NOT EXISTS email_verified_at timestamptz');
 await db.exec(migration);await db.exec(migration);
@@ -28,7 +28,9 @@ sql.transaction=async(build,options)=>{
  assert.equal(options?.isolationLevel,'ReadCommitted');transactions++;
  if(beforeTransaction){const hook=beforeTransaction;beforeTransaction=null;await hook()}
  return db.transaction(async tx=>{
-  const statements=build({query:(text,values=[])=>({text,values})});
+  const statement=(strings,...values)=>({text:strings.reduce((out,part,index)=>out+(index?'$'+index:'')+part,''),values});
+  statement.query=(text,values=[])=>({text,values});
+  const statements=build(statement);
   assert.match(statements[0].text,/ORDER BY id FOR UPDATE/);
   if(statements.some(s=>s.text.includes('UPDATE game_piece_events e SET'))){
    assert.equal(statements.length,3);assert.match(statements[1].text,/connection_state.*FOR UPDATE/);
@@ -48,7 +50,7 @@ async function loadApi(name){
  const source=fs.readFileSync(new URL('api/'+name+'.mjs',root),'utf8').replace("import {neon} from '@neondatabase/serverless';",'const neon=()=>globalThis.__gamePieceSql;').replace(/from '\.\/(.*?)\.mjs'/g,(_,name)=>`from '${new URL('api/'+name+'.mjs',root).href}'`);
  return (await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'))).default;
 }
-const feed=await loadApi('game-pieces'),rewards=await loadApi('rewards'),wildcards=await loadApi('wildcards'),directory=await loadApi('reward-directory'),connection=await loadApi('connection');
+const feed=await loadApi('game-pieces'),rewards=await loadApi('rewards'),wildcards=await loadApi('wildcards'),directory=await loadApi('reward-directory'),connection=await loadApi('connection'),friend=await loadApi('friend');
 globalThis.fetch=async()=>{throw Error('Unexpected external call in game piece tests')};
 async function call({api=feed,as='owner',body,rawBody,query='visit='+visit,headers={},cookie,method}={}){
  const h=new Headers({cookie:cookie??(as?'chempat_member='+tokens[as]:''),'content-type':'application/json',...(as?{'x-chempat-member-id':ids[as]}:{})});
@@ -67,8 +69,7 @@ const setLevel=async(value,as='owner')=>{
  await db.query('UPDATE members SET answers=$2 WHERE id=$1',[ids[as],JSON.stringify(value>=2?ten:value===1?five:[])]);
  if(value>=3)await db.query('INSERT INTO member_reward_state(member_id,completed_level) VALUES($1,$2) ON CONFLICT(member_id) DO UPDATE SET completed_level=excluded.completed_level',[ids[as],value]);
 };
-async function invite({sender='owner',prospect='visitor',channel='email',state='chat',bound=true,answers=five}={}){
- const id=hash('game-piece-'+(++sequence));
+async function invite({sender='owner',prospect='visitor',channel='email',state='chat',bound=true,answers=five,id=hash('game-piece-'+(++sequence))}={}){
  await db.query(`INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[id,sender+'@example.com',sender,photo,JSON.stringify(answers),prospect,prospect+'@example.com',ids[sender],channel]);
  await db.query('INSERT INTO connection_state(invitation_hash,prospect_member_id,prospect_name,prospect_answers,status,messages) VALUES($1,$2,$3,$4,$5,$6)',[id,bound?ids[prospect]:null,prospect,JSON.stringify(bound?answers:[]),state,'[{"by":"member","text":"private ordinary chat"}]']);if(channel==='qr'&&bound)await db.query('UPDATE connection_state SET claim_hash=$2 WHERE invitation_hash=$1',[id,hash('synthetic-claim')]);return id;
 }
@@ -100,9 +101,9 @@ await test('migration is additive, idempotent, future-only and contains no privi
 });
 
 await test('rollout snapshots preserve existing pair IDs without historical pieces or malformed recipients',async()=>{
- const id=await invite();await invite({bound:false});await invite({channel:'friend'});await invite({prospect:'owner'});
+ const id=await invite(),friendId=await invite({channel:'friend'});await invite({bound:false});await invite({channel:'friend',state:'invited',bound:false});await invite({channel:'friend',state:'declined'});await invite({prospect:'owner'});
  await db.exec('DELETE FROM game_piece_events;DELETE FROM game_piece_pairs');await db.exec(migration);
- const pairs=(await db.query('SELECT * FROM game_piece_pairs')).rows;assert.equal(pairs.length,1);assert.equal(pairs[0].invitation_hash,id);assert.equal((await ledger()).length,0);
+ const pairs=(await db.query('SELECT * FROM game_piece_pairs')).rows;assert.equal(pairs.length,2);assert.equal(pairs.find(p=>p.invitation_hash===id).connection_kind,'vibe');assert.equal(pairs.find(p=>p.invitation_hash===friendId).connection_kind,'friend');assert.equal((await ledger()).length,0);
  await db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[id,ids.other]);await db.exec(migration);assert.equal((await db.query('SELECT prospect_member_id FROM game_piece_pairs WHERE invitation_hash=$1',[id])).rows[0].prospect_member_id,ids.visitor);
  await setLevel(3);assert.equal((await ledger()).length,0);
 });
@@ -338,4 +339,61 @@ await test('first-choice and required next-five pieces resolve from source succe
 await test('deployment gate fails closed without touching the database',async()=>{
  const old=process.env.CHEMPAT_REVIEW_DATA,mode=process.env.CHEMPAT_RELEASE_MODE;delete process.env.CHEMPAT_REVIEW_DATA;delete process.env.CHEMPAT_RELEASE_MODE;status(await read(),503);process.env.CHEMPAT_REVIEW_DATA=old;if(mode)process.env.CHEMPAT_RELEASE_MODE=mode;
 });
+await test('real friend acceptance preserves canonical ID and emits only future wildcard ask and answer pieces',async()=>{
+ await setLevel(3);const token=hash('accepted-friend-token'),id=hash(token);await invite({id,channel:'friend',state:'invited',bound:false,answers:[]});
+ await db.query("UPDATE invitations SET expires_at=now()+interval '1 day' WHERE token_hash=$1",[id]);
+ status(await ask(id),404);assert.equal((await db.query('SELECT * FROM game_piece_pairs WHERE invitation_hash=$1',[id])).rows.length,0);
+ const accepted=await call({api:friend,as:'visitor',body:{action:'accept',token}});status(accepted);assert.equal(accepted.data.id,id);assert.equal(accepted.data.kind,'friend');
+ const pair=(await db.query('SELECT * FROM game_piece_pairs WHERE invitation_hash=$1',[id])).rows[0];assert.equal(pair.connection_kind,'friend');assert.equal(pair.prospect_member_id,ids.visitor);assert.deepEqual(await ledger(),[]);
+ status(await ask(id));const incoming=(await pieces('visitor'))[0];assert.equal(incoming.kind,'wildcard-ask');assert.equal(incoming.target.type,'wildcard');assert.equal(incoming.target.questionId,question);assert.equal(incoming.target.connectionId,id);assert.equal(incoming.status,'your-turn');assert.equal(incoming.actorId,ids.owner);assert.equal((await pieces('owner')).length,0);
+ const hydrated=await hydrate(incoming,'visitor');status(hydrated);assert.equal(hydrated.data.connection.kind,'friend');assert.equal(hydrated.data.connection.claimed,true);assert.deepEqual(hydrated.data.connection.own_answers,[]);assert.deepEqual(hydrated.data.connection.sender_answers,[]);assert.equal(hydrated.data.connection.prospect_phone,null);assert.equal(hydrated.data.connection.prospect_email,null);
+ const inbox=await call({api:connection,as:'visitor',query:'inbox=1'});status(inbox);assert.deepEqual(hydrated.data.connection,inbox.data.connections.find(c=>c.id===id));
+ status(await ack(incoming,'seen','visitor'));const reply=await answer(id);status(reply);assert.equal(reply.data.eligible,false);assert.equal(reply.data.remaining,0);status(await answer(id));
+ assert.deepEqual(await pieces('visitor'),[]);const returned=(await pieces('owner'))[0];assert.equal(returned.kind,'wildcard-answer');assert.equal(returned.status,'answered');assert.equal(returned.actorId,ids.visitor);assert.equal(returned.connectionId,id);status(await hydrate(returned));
+ assert.equal((await ledger()).length,2);assert.equal((await db.query('SELECT * FROM connection_wildcard_asks')).rows.length,1);privateOnly(await read());
+ // A duplicate invitation is a spent alias and must never become a target.
+ const duplicateToken=hash('duplicate-friend-token'),duplicateId=hash(duplicateToken);await invite({id:duplicateId,channel:'friend',state:'invited',bound:false,answers:[]});await db.query("UPDATE invitations SET expires_at=now()+interval '1 day' WHERE token_hash=$1",[duplicateId]);
+ const duplicate=await call({api:friend,as:'visitor',body:{action:'accept',token:duplicateToken}});status(duplicate);assert.equal(duplicate.data.id,id);assert.equal(duplicate.data.alreadyConnected,true);status(await ask(duplicateId),404);assert.equal((await db.query('SELECT * FROM game_piece_pairs WHERE invitation_hash=$1',[duplicateId])).rows.length,0);
+});
+await test('friend prospect can ask and the original sender receives the answer action below Level 3',async()=>{
+ await setLevel(3,'visitor');const id=await invite({channel:'friend',answers:[]});status(await ask(id,'visitor'));const incoming=(await pieces('owner'))[0];assert.equal(incoming.actorId,ids.visitor);assert.equal(incoming.kind,'wildcard-ask');status(await hydrate(incoming));status(await answer(id,'owner'));const result=(await pieces('visitor'))[0];assert.equal(result.kind,'wildcard-answer');assert.equal(result.actorId,ids.owner);assert.equal((await pieces('owner')).length,0);
+});
+await test('friend feed cannot widen phone, profile, progress or other Vibe event access',async()=>{
+ const id=await invite({channel:'friend',answers:[]});await setLevel(5);await setLevel(5,'visitor');status(await phone(id),409);
+ for(const kind of ['step-complete','continue-request','continue-ready','chat-request','chat-ready','phone-offer','directory-listed','intro-published']){
+  await db.query('SELECT game_piece_emit($1,$2,$3,$4,3::smallint)',[id,ids.owner,kind,'friend-forbidden-'+kind]);
+ }
+ assert.deepEqual(await ledger(),[]);status(await publish('list'));assert.deepEqual(await ledger(),[]);
+ status(await ask(id));assert.equal((await pieces('visitor')).length,1);
+ // Even malformed stored non-wildcard events fail both feed and hydration.
+ await db.query("INSERT INTO game_piece_events(invitation_hash,sender_member_id,prospect_member_id,actor_id,recipient_id,kind,source_key,level) VALUES($1,$2,$3,$2,$3,'step-complete','step-3',3)",[id,ids.owner,ids.visitor]);
+ const raw=(await ledger()).at(-1);assert.equal((await pieces('visitor')).length,1);status(await hydrate({id:String(raw.id),connectionId:id},'visitor'),404);
+});
+await test('friend feed, receipts and hydration recheck lifecycle, recipient binding and immutable kind',async()=>{
+ const changes=[
+  id=>db.query("UPDATE connection_state SET status='invited' WHERE invitation_hash=$1",[id]),
+  id=>db.query('UPDATE connection_state SET ended_at=now() WHERE invitation_hash=$1',[id]),
+  id=>db.query('UPDATE connection_state SET claim_hash=$2 WHERE invitation_hash=$1',[id,hash('spent-link')]),
+  id=>db.query("UPDATE invitations SET channel='email' WHERE token_hash=$1",[id]),
+  id=>db.query('UPDATE invitations SET intended_member_id=$2 WHERE token_hash=$1',[id,ids.other]),
+  id=>db.query("UPDATE invitations SET intended_email='other@example.com' WHERE token_hash=$1",[id]),
+  id=>db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[id,ids.other]),
+  id=>db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())",[ids.owner,id]),
+  id=>db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,trashed_at) VALUES($1,$2,'unfreeze',now())",[ids.visitor,id]),
+  ()=>db.query('INSERT INTO member_blocks(blocker_id,blocked_id) VALUES($1,$2)',[ids.visitor,ids.owner]),
+  ()=>db.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.owner]),
+  ()=>db.query("UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=$1",[ids.owner]),
+  ()=>db.query('UPDATE members SET email_verified_at=NULL WHERE id=$1',[ids.owner])
+ ];
+ for(const change of changes){await reset();await setLevel(3);const id=await invite({channel:'friend',answers:[]});status(await ask(id));const piece=(await pieces('visitor'))[0];await change(id);assert.deepEqual(await pieces('visitor'),[]);status(await hydrate(piece,'visitor'),404);status(await ack(piece,'seen','visitor'),404);assert.equal((await ledger())[0].observed_at,null)}
+});
+await test('friend rollout and function rollback preserve immutable pairs, ledger and receipt history',async()=>{
+ await setLevel(3);const id=await invite({channel:'friend',answers:[]});status(await ask(id));const piece=(await pieces('visitor'))[0];status(await ack(piece,'hold','visitor'));
+ const events=await ledger(),pairs=(await db.query('SELECT * FROM game_piece_pairs ORDER BY invitation_hash')).rows,asks=(await db.query('SELECT * FROM connection_wildcard_asks')).rows;
+ await db.exec(friendMigration);await db.exec(friendMigration);assert.deepEqual(await ledger(),events);assert.deepEqual((await db.query('SELECT * FROM game_piece_pairs ORDER BY invitation_hash')).rows,pairs);assert.deepEqual((await db.query('SELECT * FROM connection_wildcard_asks')).rows,asks);
+ const previousFunctions=baseMigration.slice(baseMigration.indexOf('CREATE OR REPLACE FUNCTION game_piece_capture'),baseMigration.indexOf('CREATE OR REPLACE FUNCTION game_piece_member_event'));
+ await db.exec(previousFunctions);assert.deepEqual(await ledger(),events);await db.query("SELECT game_piece_emit($1,$2,'wildcard-ask','rollback-does-not-emit')",[id,ids.owner]);assert.deepEqual(await ledger(),events);await db.exec(friendMigration);
+ status(await answer(id));assert.equal((await pieces('owner','wildcard-answer')).length,1);
+});
+
 await db.close();console.log(`${passed} game-piece tests passed; ${failed} failed`);if(failed)process.exitCode=1;

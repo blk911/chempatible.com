@@ -305,5 +305,84 @@ await test('historical asks are preserved read-only in chat/quota and never gain
  assert.equal((await read(id)).data.remaining,2);status(await answer(id),404);status(await ask(id,0,'owner','legacy-request'));assert.deepEqual(await ledger(),before);assert.deepEqual(await messages(id),chat);assert.deepEqual(await states(),[]);
 });
 
+
+const targets=(as='owner',after)=>call({as,query:'targets=1'+(after?'&after='+after:'')});
+const hydrateTarget=(id,as='owner')=>call({as,query:'connection='+id+'&hydrate=1'});
+await test('accepted friends in either direction ask three and answer below Level 3 without changing friend-only fields',async()=>{
+ for(const sender of ['owner','visitor']){
+  await reset();const receiver=sender==='owner'?'visitor':'owner',id=await invite({channel:'friend'}),original=await core(id);await level(receiver,0);
+  for(let i=0;i<3;i++)status(await ask(id,i,sender,`friend-ask-${i}`));
+  const exhausted=await ask(id,3,sender);status(exhausted,409);assert.equal(exhausted.data.quotaReached,true);
+  const incoming=await read(id,receiver);status(incoming);assert.equal(incoming.data.eligible,false);assert.equal(card(incoming).canAnswer,true);assert.equal(card(incoming).direction,'incoming');privacy(incoming);
+  status(await ask(id,3,receiver),409);let result=await summary(receiver);assert.deepEqual(result.data.connections,[{id,pendingIncoming:3,pendingOutgoing:0}]);
+  const reply=await answer(id,0,receiver,'friend-answer');status(reply);assert.equal(reply.data.remaining,0);assert.equal(reply.data.message.by,receiver==='owner'?'member':'prospect');
+  const replay=await answer(id,0,receiver,'friend-answer');status(replay);assert.equal(replay.data.replayed,true);assert.deepEqual(replay.data.message,reply.data.message);
+  result=await summary(sender);assert.deepEqual(result.data.connections,[{id,pendingIncoming:0,pendingOutgoing:2}]);
+  await level(receiver,3);for(let i=3;i<6;i++)status(await ask(id,i,receiver));status(await ask(id,6,receiver),409);
+  assert.equal((await ledger()).length,6);assert.equal((await answered()).length,1);assert.equal((await messages(id)).length,9);assert.deepEqual(await core(id),original);
+ }
+});
+await test('friend wildcard reads and writes reject pending, duplicate, nonchat and unidentified links',async()=>{
+ for(const state of ['invited','firstResults','request','secondFive','nextResults','chatRequested','secondResults','email','tests','declined','ended']){
+  const id=await invite({channel:'friend',status:state});status(await read(id),404);status(await ask(id),404);status(await answer(id),404);status(await hydrateTarget(id),404);
+ }
+ for(const prospect of [null,'owner']){const id=await invite({channel:'friend',prospect});status(await read(id),404);status(await ask(id),404)}
+ const id=await invite({channel:'friend'});await db.query('UPDATE connection_state SET claim_hash=$2 WHERE invitation_hash=$1',[id,hash('canonical-duplicate')]);status(await read(id),404);status(await ask(id),404);
+ assert.deepEqual((await targets()).data.connections,[]);assert.deepEqual((await summary()).data.connections,[]);assert.equal((await ledger()).length,0);
+});
+await test('friend identities and recipient binding cannot change or revive hidden cards through summaries, targets or hydration',async()=>{
+ const changes=[
+  id=>db.query("UPDATE connection_state SET status='ended' WHERE invitation_hash=$1",[id]),
+  id=>db.query('UPDATE connection_state SET ended_at=now() WHERE invitation_hash=$1',[id]),
+  id=>db.query('UPDATE connection_state SET claim_hash=$2 WHERE invitation_hash=$1',[id,hash('duplicate')]),
+  id=>db.query("UPDATE invitations SET channel='email' WHERE token_hash=$1",[id]),
+  id=>db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[id,ids.other]),
+  id=>db.query('UPDATE invitations SET sender_member_id=$2 WHERE token_hash=$1',[id,ids.other]),
+  id=>db.query('UPDATE invitations SET intended_member_id=$2 WHERE token_hash=$1',[id,ids.other]),
+  id=>db.query("UPDATE invitations SET intended_email='other@example.com' WHERE token_hash=$1",[id]),
+  id=>db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())",[ids.owner,id]),
+  id=>db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,trashed_at) VALUES($1,$2,'unfreeze',now())",[ids.visitor,id]),
+  ()=>db.query('INSERT INTO member_blocks(blocker_id,blocked_id) VALUES($1,$2)',[ids.owner,ids.visitor])
+ ];
+ for(const change of changes){await reset();const id=await invite({channel:'friend'});status(await ask(id));const original=await states();await change(id);
+  for(const as of ['owner','visitor','other']){status(await read(id,as),404);status(await ask(id,1,as),404);status(await answer(id,0,as),404);status(await hydrateTarget(id,as),404);assert.deepEqual((await summary(as)).data.connections,[]);assert.deepEqual((await targets(as)).data.connections,[])}
+  assert.deepEqual(await states(),original);assert.equal((await messages(id)).length,3);
+ }
+ for(const property of ['blocked_at=now()',"suspended_until=now()+interval '1 day'",'email_verified_at=NULL']){await reset();const id=await invite({channel:'friend'});status(await ask(id));await db.exec(`UPDATE members SET ${property} WHERE id='${ids.visitor}'`);status(await read(id),404);status(await answer(id),403);assert.deepEqual((await targets()).data.connections,[])}
+});
+await test('friend request replay, pair and recipient binding are revalidated after lock waits',async()=>{
+ const changes=[
+  id=>db.query('UPDATE invitations SET intended_member_id=$2 WHERE token_hash=$1',[id,ids.other]),
+  id=>db.query("UPDATE invitations SET intended_email='other@example.com' WHERE token_hash=$1",[id]),
+  id=>db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[id,ids.other]),
+  id=>db.query("UPDATE invitations SET channel='email' WHERE token_hash=$1",[id]),
+  id=>db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())",[ids.visitor,id])
+ ];
+ for(const change of changes){for(const answering of [false,true]){await reset();const id=await invite({channel:'friend'});status(await ask(id));beforeTransaction=()=>change(id);status(await (answering?answer(id):ask(id,1)),409);assert.equal((await answered()).length,0);assert.equal((await ledger()).length,1);assert.equal((await messages(id)).length,3)}}
+});
+await test('target catalog is stable, paginated beyond fifty, private and authoritative for empty and exhausted pairs',async()=>{
+ const valid=[];for(let i=0;i<53;i++)valid.push(await invite({channel:i%2?'friend':'email'}));
+ await invite({channel:'friend',status:'invited',prospect:null});await invite({status:'firstResults'});await invite({sender:'visitor',prospect:'other'});
+ const frozen=await invite();await db.query("INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())",[ids.visitor,frozen]);
+ for(let i=0;i<3;i++)status(await ask(valid[0],i));
+ const first=await targets();status(first);assert.equal(first.data.connections.length,50);assert.match(first.data.nextCursor,/^[a-f0-9]{64}$/);
+ const second=await targets('owner',first.data.nextCursor);status(second);assert.equal(second.data.connections.length,3);assert.equal(second.data.nextCursor,null);
+ const rows=[...first.data.connections,...second.data.connections];assert.deepEqual(rows.map(row=>row.id),valid.sort());
+ for(const row of rows){assert.deepEqual(Object.keys(row).sort(),['eligible','id','kind','limit','name','remaining']);assert.equal(row.limit,3);assert.equal(row.eligible,true);assert.ok(['friend','vibe'].includes(row.kind))}
+ const used=(await ledger())[0].invitation_hash;assert.equal(rows.find(row=>row.id===used).remaining,0);assert.equal(rows.filter(row=>row.remaining===3).length,52);
+ const data=JSON.stringify(first.data);for(const secret of ['@example.com','data:image','private-phone','Existing private conversation','sender_member_id','prospect_member_id','session_hash'])assert.equal(data.includes(secret),false,secret);
+ const visitor=(await targets('visitor')).data.connections;assert.equal(visitor.find(row=>row.id===used).remaining,3);
+ await level('owner',2);assert.ok((await targets()).data.connections.every(row=>!row.eligible&&row.remaining===0));
+ for(const query of ['targets=2','targets=1&after=bad','targets=1&after='+hash('after').toUpperCase(),'targets=1&hydrate=1','targets=1&summary=1','targets=1&connection='+used])status(await call({query}),400);
+});
+await test('selected friend target hydration reuses the privacy-safe connection and reauthorizes before reading it',async()=>{
+ const id=await invite({channel:'friend'});for(const as of ['owner','visitor']){
+  const result=await hydrateTarget(id,as);status(result);const c=result.data.connection;assert.equal(c.id,id);assert.equal(c.kind,'friend');assert.equal(c.channel,'friend');assert.equal(c.claimed,true);assert.equal(c.status,'chat');assert.deepEqual(c.own_answers,[]);assert.deepEqual(c.prospect_answers,[]);assert.equal(c.prospect_phone,null);assert.equal(c.prospect_email,null);assert.equal(c.recipient_email,null);
+  for(const secret of ['session_hash','sender_member_id','prospect_member_id','claim_hash','private-phone','private@example.com'])assert.equal(JSON.stringify(c).includes(secret),false,secret);
+ }
+ status(await hydrateTarget(id,'other'),404);status(await call({query:'connection='+id+'&hydrate=wrong'}),400);
+ beforeRead={matches:text=>text.includes('AS connection'),run:()=>db.query('UPDATE invitations SET intended_member_id=$2 WHERE token_hash=$1',[id,ids.other])};status(await hydrateTarget(id),404);
+});
+
 console.log(`Wildcard answers integration: ${passed} passed; ${failed} failed; ${transactions} SQL transactions; ${reads} reads`);
 await db.close();if(failed)process.exitCode=1;

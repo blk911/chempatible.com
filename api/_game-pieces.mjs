@@ -23,7 +23,8 @@ const GAME_PIECE_BOUND=`SELECT e.*,CASE WHEN e.actor_id=i.sender_member_id THEN 
  JOIN members viewer ON viewer.id=e.recipient_id JOIN members author ON author.id=e.actor_id
  LEFT JOIN member_reward_state vr ON vr.member_id=viewer.id LEFT JOIN member_reward_state ar ON ar.member_id=author.id
  LEFT JOIN reward_directory_profile d ON d.member_id=author.id
- WHERE i.channel<>'friend' AND c.ended_at IS NULL AND c.status NOT IN('ended','declined')
+ WHERE p.connection_kind=CASE WHEN i.channel='friend' THEN 'friend' ELSE 'vibe' END
+ AND (i.channel<>'friend' OR (c.status='chat' AND c.claim_hash IS NULL AND e.kind IN('wildcard-ask','wildcard-answer'))) AND c.ended_at IS NULL AND c.status NOT IN('ended','declined')
  AND NOT (i.channel='qr' AND c.claim_hash IS NULL AND coalesce(i.expires_at<=now(),true))
  AND e.actor_id<>e.recipient_id AND e.actor_id IN(i.sender_member_id,c.prospect_member_id) AND e.recipient_id IN(i.sender_member_id,c.prospect_member_id)
  AND (i.intended_member_id IS NULL OR i.intended_member_id=c.prospect_member_id)
