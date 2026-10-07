@@ -2,6 +2,17 @@
 
 A mobile-first two-person game with live QR and email invitations. The static page can be served locally with `python3 -m http.server 4173`; invitations require Vercel and the database below.
 
+## My profile
+
+The My profile control beside the member avatar opens the existing account's
+name, picture and read-only sign-in email. Camera/file pictures are previewed
+before Save. Private phone editing reuses the Step 2 reward control and does not
+offer a number to any connection. Current identity appears in eligible active
+connections; original invitation/history snapshots remain unchanged. Updating an
+already-listed discovery name/photo is a separate checkbox on Save, preserving
+listing and video publication choices. See `docs/MEMBER-PROFILE.md` for the
+entry/endpoint matrix, authorization, tests and rollout.
+
 ## Five-level reward game
 
 The five-level game uses saved First 5 / Second 5 answers, then

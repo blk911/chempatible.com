@@ -4,9 +4,12 @@ import * as ops from './_ops.mjs';
 import {pairBlocked,lockedWrite,targetAllowed} from './_connections.mjs';
 import {reinvite} from './_reinvite.mjs';
 import {reviewGate} from './_review.mjs';
+import {currentConnectionIdentities} from './_connection-identity.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
+const expectedMember=(req,member)=>req.headers.get('x-chempat-member-id')===null||req.headers.get('x-chempat-member-id')===member;
+const changedMember=()=>reply({error:'Your signed-in account changed. Refresh your page before continuing.',sessionExpired:true},403);
 const validToken=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
 const validPhoto=s=>typeof s==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(s)&&s.length<250000;
 const validAnswers=(a,n)=>Array.isArray(a)&&a.length===n&&a.every(x=>Number.isInteger(x)&&x>=0&&x<=2);
@@ -84,7 +87,7 @@ async function actionView(sql,id,side,member){
  const row=await connectionRow(sql,id),own=await privateMetadata(sql,row,side,member);
  return historyAction(own)?historyView(own,side,member):{...inboxView(own,side),...metadata(own,side,member)};
 }
-async function listConnections(sql,{member,sender,cursor=null,historyOnly=false,trashOnly=false}){
+async function listConnections(sql,{member,sender,session,cursor=null,historyOnly=false,trashOnly=false}){
  let before=null,beforeId=null;
  if(cursor){try{const parts=JSON.parse(Buffer.from(cursor,'base64url').toString());if(!Array.isArray(parts)||parts.length!==2||!Number.isFinite(Date.parse(parts[0]))||!validToken(parts[1]))throw Error();[before,beforeId]=parts}catch{return null}}
  const ownership=`(i.sender_member_id=$1 OR c.prospect_member_id=$1 OR (i.sender_member_id IS NULL AND i.sender_email=$2))`;
@@ -94,7 +97,8 @@ async function listConnections(sql,{member,sender,cursor=null,historyOnly=false,
  const active=historyOnly||trashOnly?[]:await sql.query(`SELECT ${fields},i.sender_photo,i.sender_answers,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.messages,(c.claim_hash IS NOT NULL) AS claimed ${common} AND NOT ${isHistory} ORDER BY i.created_at DESC,i.token_hash DESC LIMIT 50`,[member,sender||'']);
  const history=await sql.query(`SELECT ${fields},CASE WHEN i.channel<>'friend' AND (c.status IN ('email','tests') OR EXISTS(SELECT 1 FROM activity a WHERE a.connection_id=i.token_hash AND a.kind='email_shared')) THEN c.prospect_email ELSE NULL END AS prospect_email,EXISTS(SELECT 1 FROM activity a WHERE a.connection_id=i.token_hash AND a.kind='email_shared') AS history_email_shared ${common} AND ${isHistory} AND ($3::timestamptz IS NULL OR (i.created_at,i.token_hash)<($3::timestamptz,$4::text)) ORDER BY i.created_at DESC,i.token_hash DESC LIMIT 51`,[member,sender||'',before,beforeId]);
  const page=history.slice(0,50),last=page.at(-1);
- return {connections:[...active.map(r=>{const side=member&&r.prospect_member_id===member?'prospect':'member';return {...inboxView(r,side),...metadata(r,side,member)}}),...page.map(r=>historyView(r,member&&r.prospect_member_id===member?'prospect':'member',member))],[trashOnly?'trashCursor':'freezerCursor']:history.length>50?Buffer.from(JSON.stringify([last.cursor_created_at,last.token_hash])).toString('base64url'):null};
+ const current=await currentConnectionIdentities(sql,active,{member,session});
+ return {connections:[...current.map(r=>{const side=member&&r.prospect_member_id===member?'prospect':'member';return {...inboxView(r,side),...metadata(r,side,member)}}),...page.map(r=>historyView(r,member&&r.prospect_member_id===member?'prospect':'member',member))],[trashOnly?'trashCursor':'freezerCursor']:history.length>50?Buffer.from(JSON.stringify([last.cursor_created_at,last.token_hash])).toString('base64url'):null};
 }
 async function participant(sql,body,req,{history=false}={}){
  if(body.token){const row=await ownInvitation(sql,body,req);return row?{row,id:row.token_hash,invitedAt:row.created_at||null,side:'prospect'}:null}
@@ -105,6 +109,11 @@ async function participant(sql,body,req,{history=false}={}){
  if(member&&row.prospect_member_id===member)return {row,id:body.id,side:'prospect'};
  if(member&&row.sender_member_id===member||!row.sender_member_id&&email&&row.sender_email===email)return {row,id:body.id,side:'member'};
  return null;
+}
+async function currentProspectView(sql,row,member,req){
+ const token=cookie(req).chempat_member;
+ const [current]=await currentConnectionIdentities(sql,[row],{member,session:validToken(token)?hash(token):null});
+ return {...prospectView(current),...metadata(await privateMetadata(sql,current,'prospect',member),'prospect',member)};
 }
 async function handler(req){
  const blocked=reviewGate();if(blocked)return blocked;
@@ -119,12 +128,13 @@ async function handler(req){
     const id=hash(token);
     let row=await connectionRow(sql,id);if(!row)return reply({error:'Invitation not found.'},404);
     const viewer=await senderMember(req,sql);
+    if(!expectedMember(req,viewer))return changedMember();
     if(!viewer&&(row.intended_member_id||row.intended_email))return reply({error:'Sign in or create your member page to open this invitation.',requiresSignIn:true},401);
     if(!await targetAllowed(sql,row,viewer))return reply({error:'Open the member page this invitation was sent to.'},403);
     if(closed(row)||expired(row))return reply({error:'This invitation is closed. Ask for a fresh invitation.'},410);
     if(await pairBlocked(sql,row.sender_member_id,row.prospect_member_id||row.intended_member_id||viewer))return reply({error:'This connection is unavailable.'},403);
-    if(friend(row)){const own=await ownInvitation(sql,token,req);return own?reply({...prospectView(own),...metadata(await privateMetadata(sql,own,'prospect',viewer),'prospect',viewer)}):reply({error:'Open your linked member page to see this friend connection.'},403)}
-    if(row.prospect_member_id){const own=await ownInvitation(sql,token,req);return own?reply({...prospectView(own),...metadata(await privateMetadata(sql,own,'prospect',viewer),'prospect',viewer)}):reply({error:'Sign in to the member page linked to this connection.'},403)}
+    if(friend(row)){const own=await ownInvitation(sql,token,req);return own?reply(await currentProspectView(sql,own,viewer,req)):reply({error:'Open your linked member page to see this friend connection.'},403)}
+    if(row.prospect_member_id){const own=await ownInvitation(sql,token,req);return own?reply(await currentProspectView(sql,own,viewer,req)):reply({error:'Sign in to the member page linked to this connection.'},403)}
     if(row.channel!=='qr')return reply(prospectView(row));
     const guest=cookie(req)[claimCookie(id)];
     if(row.claim_hash)return guest&&hash(guest)===row.claim_hash?reply(prospectView(row)):reply({error:'This code is already in play on another phone.'},409);
@@ -139,9 +149,11 @@ async function handler(req){
    }
    if(url.searchParams.has('inbox')||url.searchParams.has('freezer')||url.searchParams.has('trash')){
     const sender=await senderEmail(req,sql),member=await senderMember(req,sql);
+    if(!expectedMember(req,member))return changedMember();
     if(cookie(req).chempat_member&&!member)return reply({error:'Your sign-in expired. Sign in again to see your connections.',sessionExpired:true},401);
     if(!sender&&!member)return reply({error:'Open your member page to see connections.'},401);
-    const result=await listConnections(sql,{member,sender,cursor:url.searchParams.get('cursor'),historyOnly:url.searchParams.has('freezer'),trashOnly:url.searchParams.has('trash')});
+    const memberToken=cookie(req).chempat_member;
+    const result=await listConnections(sql,{member,sender,session:validToken(memberToken)?hash(memberToken):null,cursor:url.searchParams.get('cursor'),historyOnly:url.searchParams.has('freezer'),trashOnly:url.searchParams.has('trash')});
     return result?reply(result):reply({error:'Invalid history cursor.'},400);
    }
    return reply({error:'Missing connection.'},400);
@@ -150,6 +162,7 @@ async function handler(req){
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
   if(!body||typeof body!=='object'||Array.isArray(body))return reply({error:'Invalid request.'},400);
   const actor=await senderMember(req,sql);
+  if(!expectedMember(req,actor))return changedMember();
   if(!actor&&!['unmatch','report','cancel'].includes(body.action))return reply({error:'Open your member page to continue.'},401);
   if(!['unmatch','report','cancel','freeze','unfreeze','block','trash','restore','unblock'].includes(body.action)){const paused=await ops.standing(sql,actor);if(paused)return reply(paused,403)}
   // Scanners can reveal their first five before confirming their email; everything after needs it.

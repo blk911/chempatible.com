@@ -16,6 +16,9 @@ await db.exec(`CREATE TABLE members(id uuid PRIMARY KEY,session_hash text UNIQUE
 await db.exec("CREATE TABLE activity(kind text,connection_id text); ALTER TABLE connection_state ADD COLUMN ended_at timestamptz; ALTER TABLE connection_state ADD COLUMN ended_by text");
 await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_freezer.sql',import.meta.url),'utf8'));
 await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_trash.sql',import.meta.url),'utf8'));
+// Current profile projection fails closed without a registered accepted pair.
+// Full-schema acceptance/identity integration is covered by profile-identity.
+await db.exec("CREATE TABLE game_piece_pairs(invitation_hash text PRIMARY KEY,sender_member_id uuid,prospect_member_id uuid,connection_kind text NOT NULL DEFAULT 'vibe')");
 for(const [name,id] of Object.entries(ids))await db.query('INSERT INTO members(id,session_hash,name,photo,contact,email_verified_at) VALUES($1,$2,$3,$4,$5,now())',[id,hash(tokens[name]),name,photo,`${name}@example.com`]);
 const query=(strings,values)=>({text:strings.reduce((out,part,index)=>out+(index?`$${index}`:'')+part,''),values});
 async function run(executor,{text,values}){return (await executor.query(text,values)).rows}

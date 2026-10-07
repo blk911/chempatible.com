@@ -3,6 +3,7 @@ import {neon} from '@neondatabase/serverless';
 import {deploymentMode} from './_deployment.mjs';
 import {expectedRewardMember,bindRewardMember} from './_reward-auth.mjs';
 import {connectionInboxView} from './connection.mjs';
+import {connectionIdentityJoin,connectionIdentityFields} from './_connection-identity.mjs';
 import {WILDCARD_LIMIT,WILDCARD_CATEGORIES,getWildcardQuestion} from './_wildcard-questions.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
@@ -51,14 +52,15 @@ const cardsQuery=`SELECT jsonb_agg(jsonb_build_object(
 // Hydrate only a selected eligible target through the existing inbox serializer.
 // The raw source projection never becomes the HTTP response.
 const connectionQuery=`SELECT to_jsonb(selected) FROM (
- SELECT i.token_hash AS id,i.token_hash,i.created_at,i.expires_at,i.sender_name,i.sender_member_id,i.recipient_name,i.recipient_email,i.channel,i.intended_member_id,i.intended_email,i.reinvite_from,i.delivery_status,
- c.claim_hash,c.prospect_member_id,c.prospect_name,c.status,c.ended_at,c.ended_by,
- i.sender_photo,i.sender_answers,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.messages,(c.claim_hash IS NOT NULL) AS claimed,
+ SELECT i.token_hash AS id,i.token_hash,i.created_at,i.expires_at,i.sender_member_id,i.recipient_name,i.recipient_email,i.channel,i.intended_member_id,i.intended_email,i.reinvite_from,i.delivery_status,
+ c.claim_hash,c.prospect_member_id,c.status,c.ended_at,c.ended_by,
+ ${connectionIdentityFields()},i.sender_answers,c.prospect_answers,c.prospect_phone,c.prospect_email,c.messages,(c.claim_hash IS NOT NULL) AS claimed,
  v.frozen_at,v.action,v.action_at,v.trashed_at,v.restored_at,
  false AS blocked_by_me,false AS pair_blocked,NULL::timestamptz AS blocked_at,
  EXISTS(SELECT 1 FROM activity a WHERE a.connection_id=i.token_hash AND ((i.channel='email' AND a.kind='invite_emailed') OR (i.channel='friend' AND a.kind='friend_invited'))) AS invitation_sent
  FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash
  LEFT JOIN connection_visibility v ON v.invitation_hash=i.token_hash AND v.member_id=e.actor
+ ${connectionIdentityJoin({viewer:'e.actor',session:'$1'})}
  WHERE i.token_hash=e.token_hash
  ) selected`;
 const snapshotQuery=(pair=PAIR,withRequest=false,withAnswer=false,withConnection=false)=>`WITH eligible AS (${pair}) SELECT e.level,
@@ -72,9 +74,10 @@ const snapshotQuery=(pair=PAIR,withRequest=false,withAnswer=false,withConnection
  FROM eligible e`;
 const targetsQuery=`WITH eligible AS (${PAIR.replace('i.token_hash=$2 AND ','')})
  SELECT e.token_hash AS id,e.level,CASE WHEN e.channel='friend' THEN 'friend' ELSE 'vibe' END AS kind,
- CASE WHEN e.actor=e.sender_member_id THEN c.prospect_name ELSE i.sender_name END AS name,
+ CASE WHEN e.actor=e.sender_member_id THEN coalesce(nullif(current_identity.prospect_name,''),c.prospect_name) ELSE coalesce(nullif(current_identity.sender_name,''),i.sender_name) END AS name,
  (SELECT count(*)::integer FROM connection_wildcard_asks w WHERE w.invitation_hash=e.token_hash AND w.member_id=e.actor) AS used
  FROM eligible e JOIN invitations i ON i.token_hash=e.token_hash JOIN connection_state c ON c.invitation_hash=e.token_hash
+ ${connectionIdentityJoin({viewer:'e.actor',session:'$1'})}
  WHERE e.token_hash>$2 ORDER BY e.token_hash LIMIT 51`;
 const summaryQuery=`WITH eligible AS (${PAIR.replace('i.token_hash=$2 AND ','')})
  SELECT e.token_hash AS id,

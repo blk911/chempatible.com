@@ -61,3 +61,7 @@
 
 !/api/game-pieces.mjs
 !/api/_game-pieces.mjs
+
+!/api/member-profile.mjs
+!/api/_member-profile.mjs
+!/api/_connection-identity.mjs

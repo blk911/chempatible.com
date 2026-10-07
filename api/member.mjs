@@ -53,10 +53,12 @@ async function handler(req){
    await ops.ensureOps(sql);
    const session=cookieValue(req,'chempat_session'),proven=session?(await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(session)} AND expires_at>now()`)[0]?.email===contact:false;
    if(token){
-    const existing=await sql`SELECT contact FROM members WHERE session_hash=${hash(token)}`;
+    const existing=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE session_hash=${hash(token)}`;
     if(existing[0]&&existing[0].contact!==contact)return reply({error:'This device already has a different member page. Open this invitation in a private window.'},409);
-    const rows=await sql`UPDATE members SET name=${name},contact=${contact},photo=${photo},answers=CASE WHEN jsonb_array_length(answers)>${answers.length} THEN answers ELSE ${JSON.stringify(answers)}::jsonb END,email_verified_at=CASE WHEN ${proven} THEN coalesce(email_verified_at,now()) ELSE email_verified_at END,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
-    if(rows[0]){await ops.log(sql,'profile_updated',{member:rows[0].id});return reply({member:rows[0]})}
+    // Retried onboarding returns the canonical account without overwriting it
+    // with stale signup fields. Name/photo edits use the revision-bound profile
+    // endpoint; answers and verification already have their own actions.
+    if(existing[0])return reply({member:existing[0]});
    }
    // One page per email: an address that already has a page signs in with a code instead.
    const taken=await sql`SELECT id FROM members WHERE contact=${contact} LIMIT 1`;
