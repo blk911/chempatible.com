@@ -1,3 +1,4 @@
+import {invitationPreviewStylePolicy} from './_wildhub-invitation-email.mjs';
 // Dedicated Wild Hub HTTP boundary. This module never loads environment variables.
 import {timingSafeEqual} from 'node:crypto';
 import {renderWildHubQr} from './_wildhub-qr.mjs';
@@ -13,7 +14,7 @@ export const HOSTED_HEADERS=Object.freeze({
   'referrer-policy':'no-referrer',
   'cross-origin-resource-policy':'same-origin',
   'permissions-policy':'camera=(self), microphone=(), geolocation=(), payment=()',
-  'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  'content-security-policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; frame-src 'self'; "+invitationPreviewStylePolicy()
 });
 const response=(value,status=200)=>Response.json({ok:status<400,...value},{status,headers:HOSTED_HEADERS});
 const fail=(status,code,message)=>response({error:{code,message}},status);
@@ -115,7 +116,7 @@ export function createWildHubHostedHandler({service,origin,billing=null,dispatch
         let forwarded=request;
         if(request.method==='POST')forwarded=new Request(request.url,{method:'POST',headers:request.headers,body:await boundedBytes(request,HOSTED_BODY_BYTES)});
         const result=await service(forwarded);
-        if(request.method==='POST'&&result.ok)backgroundJobs();
+        if(request.method==='POST'&&result.ok&&url.searchParams.get('action')!=='invite_email_preview')backgroundJobs();
         return secured(result);
       }
       if(url.pathname!=='/api/wildhub-billing')return fail(404,'not_found','Not found.');

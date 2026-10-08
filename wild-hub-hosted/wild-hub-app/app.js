@@ -5,7 +5,7 @@ const nav = document.getElementById('account-nav');
 const alertBox = document.getElementById('app-alert');
 const dialog = document.getElementById('app-dialog');
 const dialogBody = document.getElementById('app-dialog-content');
-const state = {user:null,hub:null,memberships:[],requests:[],inbox:{pendingRequests:0},notifications:{},billingConfigs:{},checkoutKeys:{},checkoutGeneration:0,runtime:{known:false,environment:'unknown',emailMode:'unknown',billingEnabled:false,testMode:true,bodyBytes:4*1024*1024},email:'',next:'#home',photos:{},selection:0,epoch:0,sessionGeneration:0,modalGeneration:0,authVerifyPending:false,authVerifyEmail:'',authMode:'signup',join:{name:'',email:'',agreed:false},cameraGeneration:0,registrationPending:false,acquisitionSlug:'',shares:{},qrSeen:{},planChoices:{},annualDiscount:25,chatDrafts:{},chatContext:null,chatPending:new Set(),accessTimer:null,communityCaption:''};
+const state = {user:null,hub:null,memberships:[],requests:[],inbox:{pendingRequests:0},notifications:{},billingConfigs:{},checkoutKeys:{},checkoutGeneration:0,runtime:{known:false,environment:'unknown',emailMode:'unknown',billingEnabled:false,testMode:true,bodyBytes:4*1024*1024},email:'',next:'#home',photos:{},selection:0,epoch:0,sessionGeneration:0,modalGeneration:0,invitation:null,authVerifyPending:false,authVerifyEmail:'',authMode:'signup',join:{name:'',email:'',agreed:false},cameraGeneration:0,registrationPending:false,acquisitionSlug:'',shares:{},qrSeen:{},planChoices:{},annualDiscount:25,chatDrafts:{},chatContext:null,chatPending:new Set(),accessTimer:null,communityCaption:''};
 let returnFocus,toastTimer,ready=false,cameraStream=null;
 const esc = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const arrow = '<span class="arrow-icon" aria-hidden="true"></span>';
@@ -64,8 +64,8 @@ function renderNav(){nav.classList.toggle('visitor-nav',!state.user);if(state.us
 function navigate(hash){if(location.hash===hash)render();else location.hash=hash}
 function signedIn(target){if(state.user)return true;state.next=target||location.hash||'#home';navigate('#signin');return false}
 function profileReady(target){if(!signedIn(target))return false;if(complete())return true;state.next=target||location.hash;navigate(registrationRoute());return false}
-function modal(title,body){if(!dialog.open)returnFocus=document.activeElement;state.modalGeneration++;dialogBody.innerHTML=`<div class="modal-content"><div class="modal-top"><h2 id="dialog-title">${esc(title)}</h2><button class="close" data-action="close" aria-label="Close dialog">×</button></div>${body}</div>`;if(!dialog.open)dialog.showModal();document.body.style.overflow='hidden';dialog.querySelector('input,button')?.focus()}
-function closeModal(){state.modalGeneration++;state.selection++;delete state.photos.post;dialog.close();dialogBody.replaceChildren();document.body.style.overflow='';if(returnFocus?.isConnected)returnFocus.focus()}
+function modal(title,body){dialog.classList.remove('invitation-dialog','invitation-preview-dialog');if(!dialog.open)returnFocus=document.activeElement;state.modalGeneration++;dialogBody.innerHTML=`<div class="modal-content"><div class="modal-top"><h2 id="dialog-title">${esc(title)}</h2><button class="close" data-action="close" aria-label="Close dialog">×</button></div>${body}</div>`;if(!dialog.open)dialog.showModal();document.body.style.overflow='hidden';dialog.querySelector('input,button')?.focus()}
+function closeModal(){state.invitation=null;dialog.classList.remove('invitation-dialog','invitation-preview-dialog');state.modalGeneration++;state.selection++;delete state.photos.post;dialog.close();dialogBody.replaceChildren();document.body.style.overflow='';if(returnFocus?.isConnected)returnFocus.focus()}
 const hubAddressHelp='Short address: use 3–40 letters (a–z), numbers or hyphens, with a letter or number at each end and no spaces. Example: test-hub.';
 function hubAddressError(form,message=''){const input=form.elements.namedItem('slug'),error=form.querySelector('#hub-slug-error');input.setCustomValidity(message);if(message)input.setAttribute('aria-invalid','true');else input.removeAttribute('aria-invalid');error.textContent=message;error.hidden=!message}
 function formError(form,error){if(form.id==='hub-form'&&['invalid_slug','slug_taken'].includes(error.code)){hubAddressError(form,error.code==='slug_taken'?'Short address: this link is already taken. Choose another address, such as test-hub3.':hubAddressHelp);return}const target=form.querySelector('.form-error:not(#hub-slug-error)');if(target)target.textContent=error.message||String(error);else showError(error)}
@@ -77,6 +77,78 @@ async function mutate(form,work){
  const hash=location.hash,sessionGeneration=state.sessionGeneration,modalGeneration=state.modalGeneration,inDialog=dialog.contains(form);
  try{await work(()=>state.sessionGeneration===sessionGeneration&&location.hash===hash&&form.isConnected&&(!inDialog||dialog.open&&state.modalGeneration===modalGeneration),()=>state.sessionGeneration===sessionGeneration)}catch(error){if(state.sessionGeneration===sessionGeneration&&location.hash===hash&&form.isConnected){if(!redactProtectedError(error))formError(form,error.status===409&&['remove-form','leave-form','unblock-form'].includes(form.id)?Error('This membership changed. Close this dialog and refresh before deciding again.'):error)}}
  finally{delete form.dataset.busy;form.removeAttribute('aria-busy');controls.forEach(({el,disabled})=>el.disabled=disabled);if(form.id==='hub-form'&&form.isConnected)form.querySelector('[aria-invalid="true"]')?.focus()}
+}
+// A preview is a receipt for one exact email. It never creates an invitation.
+function invitationModal(title,body,preview=false){
+ modal(title,body);dialog.classList.add('invitation-dialog');dialog.classList.toggle('invitation-preview-dialog',preview);
+ const heading=dialog.querySelector('h2');heading.tabIndex=-1;heading.focus();
+}
+function invitationDeliveryNote(){return providerMail()?(openRegistration()?'This open beta sends real invitation emails.':'Invitation emails go to permitted recipients in this private beta.'):'This local preview uses a simulated inbox. No real email is sent.'}
+function invitationApprovalNote(){return 'Sending this invitation is your approval to join. Only the invited email account can accept. Their first seven-day trial starts when they accept; returning keeps the original trial deadline.'}
+function inviteRecipient(){
+ const draft=state.invitation;if(!draft)return;
+ invitationModal('Bring a friend along.',`<p class="invitation-kicker">A PERSONAL INVITATION</p><p class="invitation-intro">A little hello. A place in your circle.</p><form class="app-form invitation-form" id="invite-form" data-hub="${esc(draft.hubId)}"><label for="invite-email">Your friend’s email<input id="invite-email" type="email" name="email" maxlength="254" value="${esc(draft.email)}" placeholder="friend@example.com" autocomplete="email" aria-describedby="invite-recipient-help" required></label><p class="field-note" id="invite-recipient-help">Preview the actual email next. Nothing is sent until you choose Send.</p><p class="invitation-approval">${invitationApprovalNote()}</p><p class="field-note">${invitationDeliveryNote()}</p><p class="form-error" role="alert"></p><div class="button-row invitation-actions"><button type="submit" class="button bside-primary">Preview / Send ${arrow}</button><button type="button" class="button secondary" data-action="close">Cancel</button></div></form>`);
+ document.getElementById('invite-email').focus();
+}
+function validInvitationPreview(preview,email){
+ return !!(preview&&preview.to===email&&preview.from&&typeof preview.from.name==='string'&&preview.from.name.trim()&&preview.from.name.length<=200&&typeof preview.from.email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(preview.from.email)&&typeof preview.subject==='string'&&preview.subject.trim()&&preview.subject.length<=160&&!/[\r\n]/.test(preview.subject)&&typeof preview.message==='string'&&preview.message.trim()&&preview.message.length<=1500&&typeof preview.html==='string'&&preview.html.trim()&&preview.html.length<=200000&&typeof preview.text==='string'&&preview.text.trim()&&preview.text.length<=30000&&typeof preview.previewToken==='string'&&preview.previewToken.trim()===preview.previewToken&&preview.previewToken.length>0&&preview.previewToken.length<=30000);
+}
+function invitePreview(error=''){
+ const draft=state.invitation,preview=draft?.preview;if(!preview)return;
+ const locked=draft.sendState!=='ready',uncertain=draft.sendState==='uncertain';
+ invitationModal('Your invitation, ready to review.',`<p class="invitation-kicker">EMAIL PREVIEW</p><form class="app-form invitation-form" id="invite-preview-form"><dl class="invitation-envelope"><div><dt>From</dt><dd>${esc(preview.from.name)} &lt;${esc(preview.from.email)}&gt;</dd></div><div><dt>To</dt><dd>${esc(preview.to)}</dd></div><div class="invitation-subject"><dt>Subject</dt><dd>${esc(preview.subject)}</dd></div></dl><div class="invitation-preview-heading"><span>The email they’ll receive</span><button type="button" class="text-link" data-action="invite-edit" ${locked?'disabled':''}>Edit email</button></div><div class="invitation-email-frame"><iframe id="invitation-email-preview" title="Invitation email preview" sandbox="" tabindex="-1" inert aria-describedby="invitation-preview-help"></iframe></div><p class="field-note" id="invitation-preview-help">Preview links are inactive. A personal acceptance link is added when you send. Email apps may display the layout slightly differently.</p><details class="invitation-text-preview"><summary>Read plain-text version</summary><pre>${esc(preview.text)}</pre></details><p class="invitation-approval">${invitationApprovalNote()}</p><p class="field-note">${invitationDeliveryNote()}</p><p class="form-error" role="alert">${esc(error)}</p><p class="field-note invitation-send-note" role="status">${uncertain?'Delivery could not be confirmed. Do not send another invitation until this outcome is checked.':draft.sendState==='retry'?'You can retry this same email safely. Keep this preview open so the same send receipt is reused.':'Review the recipient and message, then choose Send. Closing after Send won’t cancel an email already being sent.'}</p><div class="button-row invitation-actions"><button type="submit" class="button bside-primary" ${uncertain?'disabled':''}>${uncertain?'Send outcome unknown':draft.previewInvalid?'Preview again':draft.sendState==='retry'?'Retry Send':'Send'} ${arrow}</button><button type="button" class="button secondary" data-action="invite-back" ${locked?'disabled':''}>Back</button><button type="button" class="text-link" data-action="close">${locked?'Close':'Cancel'}</button></div></form>`,true);
+ // The server renders the same escaped template used for delivery. The iframe is
+ // sandboxed and inert: neither the acceptance CTA nor any other link can activate.
+ document.getElementById('invitation-email-preview').srcdoc=preview.html;sizeInvitationPreview();
+}
+function sizeInvitationPreview(){
+ const frame=document.getElementById('invitation-email-preview'),preview=state.invitation?.preview;if(!frame||!preview)return;
+ // Empty-sandbox documents deliberately cannot be measured through contentWindow.
+ // Reserve generous room for the template and every message line, including long
+ // unbroken words and blank lines. The full text is also available below the frame.
+ const width=frame.getBoundingClientRect().width||Math.min(724,Math.max(240,window.innerWidth-56)),contentWidth=Math.max(120,Math.min(600,width-24)-56);
+ const lines=preview.message.split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil((line.length*11+(line.match(/[MW@#%\u2e80-\uffff]/g)||[]).length*6)/contentWidth)+1),0);
+ frame.style.height=Math.ceil((width<340?1000:width<480?850:760)+lines*29)+'px';
+}
+function inviteEdit(){
+ const draft=state.invitation,preview=draft?.preview;if(!preview||draft.sendState!=='ready')return;
+ invitationModal('Make it personal.',`<p class="invitation-kicker">EDIT YOUR INVITATION</p><p class="invitation-intro">For ${esc(preview.to)}</p><form class="app-form invitation-form" id="invite-edit-form"><label for="invite-subject">Subject<input id="invite-subject" name="subject" maxlength="160" value="${esc(preview.subject)}" required></label><label for="invite-message">Personal message<textarea id="invite-message" name="message" maxlength="1500" rows="7" aria-describedby="invite-message-help" required>${esc(preview.message)}</textarea></label><p class="field-note" id="invite-message-help">Up to 1,500 characters. The invitation details and acceptance button stay in the email.</p><p class="form-error" role="alert"></p><div class="button-row invitation-actions"><button type="submit" class="button bside-primary">Update preview ${arrow}</button><button type="button" class="button secondary" data-action="invite-edit-cancel">Cancel edits</button></div><p class="field-note">Nothing is sent when you update the preview.</p></form>`);
+ document.getElementById('invite-subject').focus();
+}
+async function updateInvitationPreview(form,data,current){
+ const draft=state.invitation;if(!draft||draft.sendState!=='ready')return;
+ const editing=form.id==='invite-edit-form',email=editing?draft.email:String(data.get('email')||'').trim().toLowerCase();
+ const content=editing?{subject:String(data.get('subject')||''),message:String(data.get('message')||'')}:draft.preview?{subject:draft.preview.subject,message:draft.preview.message}:{};
+ if(!editing)draft.email=email;
+ const result=await api('invite_email_preview',{hubId:draft.hubId,email,...content});
+ if(!current()||state.invitation!==draft)return;
+ if(result.ok!==true||!validInvitationPreview(result.preview,email))throw Error('The email preview was incomplete. Preview it again before sending.');
+ draft.email=result.preview.to;draft.preview=result.preview;draft.previewInvalid=false;invitePreview();
+}
+async function sendInvitation(form,current){
+ const draft=state.invitation;if(!draft?.preview||draft.sendState==='sending'||draft.sendState==='uncertain')return;
+ if(draft.previewInvalid){
+  const preview=draft.preview,result=await api('invite_email_preview',{hubId:draft.hubId,email:draft.email,subject:preview.subject,message:preview.message});
+  if(!current()||state.invitation!==draft)return;
+  if(result.ok!==true||!validInvitationPreview(result.preview,draft.email))throw Error('The email preview was incomplete. Preview it again before sending.');
+  draft.preview=result.preview;draft.previewInvalid=false;invitePreview();return;
+ }
+ if(!validInvitationPreview(draft.preview,draft.email))throw Error('Preview the complete email again before sending.');
+ draft.sendState='sending';form.querySelector('button[type=submit]').textContent='Sending…';
+ form.querySelectorAll('[data-action="invite-edit"],[data-action="invite-back"]').forEach(button=>button.disabled=true);
+ try{
+  const result=await api('invite_create',{hubId:draft.hubId,email:draft.email,previewToken:draft.preview.previewToken});
+  if(!current()||state.invitation!==draft)return;
+  if(result.ok!==true||result.sent!==true||typeof result.inviteId!=='string'||!result.inviteId||result.delivery?.status!=='accepted'||!['provider','simulated'].includes(result.delivery.mode))throw Object.assign(Error('The server did not confirm the send outcome. Do not send another invitation until this is checked.'),{code:'invitation_uncertain'});
+  const real=result.delivery.mode==='provider';draft.sendState='sent';
+  invitationModal(real?'Invitation sent.':'Invitation created.',`<p class="invitation-kicker">${real?'ON ITS WAY':'SIMULATED INBOX'}</p><p class="invitation-intro">${esc(draft.email)}</p><p>${real?'The email provider accepted your invitation. This does not confirm inbox delivery.':'Your invitation is in the local simulated inbox. No real email was sent.'}</p><p>They’ll join only after accepting with this email account.</p><div class="button-row invitation-actions"><button type="button" class="button bside-primary" data-action="close">Done ${arrow}</button></div>`);
+ }catch(error){
+  if(!current()||state.invitation!==draft)return;
+  if([401,402,403,404].includes(error.status))throw error;
+  if(['preview_expired','preview_changed'].includes(error.code)){draft.sendState='ready';draft.previewInvalid=true;invitePreview(error.message+' Review a fresh preview before sending.');return}
+  draft.sendState=error.code==='invitation_uncertain'?'uncertain':'retry';
+  invitePreview(error.message);
+ }
 }
 function agreeBox(id,on){return `<label class="agree"><input type="checkbox" name="agreed" id="${id}" ${on?'checked':''}><span>I’m 18 or older and agree to the <a href="https://chempatible.com/terms" target="_blank" rel="noreferrer">Terms</a> and <a href="https://chempatible.com/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.</span></label>`}
 // A plain returning sign-in opens account details; explicit invitation, creator
@@ -288,7 +360,10 @@ async function buttonAction(button){
  if(action==='clear-composer'){state.communityCaption='';delete state.photos.communityPost;state.selection++;const form=document.getElementById('community-post-form');form?.reset();const caption=form?.elements.namedItem('caption');if(caption)caption.value='';document.getElementById('communityPost-preview')?.replaceChildren();return}
  if(action==='host-qr'){const url=location.origin+'/#hub/'+encodeURIComponent(button.dataset.slug);modal('Your host QR',`<p>Place this below your YouTube videos or share it with people you want to reach. It opens registration, never immediate admission.</p>${qrMarkup(url,'Host QR for your public joining page')}<p class="small-note">The host still reviews every request. No membership, trial or charge is created by scanning.</p>`);return}
  if(action==='copy-link'){clearError();const url=safeShareUrl(button.dataset.url);if(!url)throw Error('This share link is invalid.');if(!navigator.clipboard?.writeText){button.closest('.qr-panel,.modal-content,.creator-share')?.querySelector('.qr-url input')?.select();notify('Select and copy the link shown above.');return}await navigator.clipboard.writeText(url);if(stillHere())notify('Community link copied.');return}
- if(action==='invite'){modal('Bring a friend along.',`<form class="app-form" id="invite-form" data-hub="${esc(button.dataset.hub)}"><label>Your friend’s email<input type="email" name="email" maxlength="254" placeholder="friend@example.test" required></label><p class="field-note">Inviting this person is your approval. Their first seven-day trial starts when they accept; returning keeps the original deadline. Only this email account can accept. ${providerMail()?(openRegistration()?'The server emails your invitation to this address.':'The isolated server emails its permitted test recipients.'):'The local runner sends the link to its simulated terminal inbox, not real email.'}</p><p class="form-error" role="alert"></p><div class="button-row"><button type="submit" class="button">Create test invitation ${arrow}</button><button type="button" class="button secondary" data-action="close">Cancel</button></div></form>`);return}
+ if(action==='invite'){state.invitation={hubId:button.dataset.hub,email:'',preview:null,sendState:'ready',previewInvalid:false};inviteRecipient();return}
+ if(action==='invite-back'){if(state.invitation?.sendState==='ready')inviteRecipient();return}
+ if(action==='invite-edit'){if(state.invitation?.sendState==='ready')inviteEdit();return}
+ if(action==='invite-edit-cancel'){if(state.invitation?.preview)invitePreview();return}
  if(action==='remove-prompt'){modal('Manage circle access.',`<p>Removing ${esc(button.dataset.name)} stops future access to this circle’s posts and media. It cannot erase previously viewed copies.</p><form id="remove-form" class="app-form" data-hub="${esc(button.dataset.hub)}" data-user="${esc(button.dataset.user)}" data-revision="${esc(button.dataset.revision||'')}"><label class="checkbox-label"><input type="checkbox" name="block"><span>Also block new requests and invitations for this member in this hub.</span></label><p class="form-error" role="alert"></p><div class="button-row"><button type="submit" class="button danger-button secondary">Remove access</button><button type="button" class="button secondary" data-action="close">Cancel</button></div></form>`);return}
  if(action==='unblock-prompt'){modal('Unblock this person?',`<p>Unblocking ${esc(button.dataset.name)} lets them send a new request or receive an invitation. Their access stays removed, and the original trial deadline stays the same.</p><form id="unblock-form" class="app-form" data-hub="${esc(button.dataset.hub)}" data-user="${esc(button.dataset.user)}" data-revision="${esc(button.dataset.revision||'')}"><p class="form-error" role="alert"></p><div class="button-row"><button type="submit" class="button">Unblock</button><button type="button" class="button secondary" data-action="close">Cancel</button></div></form>`);return}
  if(action==='leave-prompt'){modal('Leave this circle?',`<p>You’ll lose access to new reads of its posts and member list. Returning requires the host’s approval.</p><form id="leave-form" class="app-form" data-hub="${esc(button.dataset.hub)}" data-slug="${esc(button.dataset.slug)}" data-revision="${esc(button.dataset.revision||'')}"><p class="form-error" role="alert"></p><div class="button-row"><button class="button danger-button secondary" type="submit">Leave circle</button><button type="button" class="button secondary" data-action="close">Stay</button></div></form>`);return}
@@ -329,6 +404,10 @@ document.addEventListener('submit',event=>{
   if(!slug.validity.valid)hubAddressError(form,hubAddressHelp);
   if(!form.reportValidity()){[...form.elements].find(input=>input.willValidate&&!input.validity.valid)?.focus();return}
  }
+ if(['invite-form','invite-edit-form'].includes(form.id)){
+  const email=form.elements.namedItem('email');if(email)email.value=email.value.trim().toLowerCase();
+  if(!form.reportValidity())return;
+ }
  const data=new FormData(form);
  mutate(form,async(current,sameSession)=>{
   if(form.id==='signup-form'){const name=String(data.get('name')).trim(),email=String(data.get('email')).trim().toLowerCase();if(!name||!email)throw Error('Enter your first name and email.');if(data.get('agreed')!=='on')throw Error('Confirm you’re 18 or older and agree to the Terms and Privacy Policy.');state.join={name,email,agreed:true};state.email=email;state.authMode='signup';if(state.user?.verified&&state.user.email===email&&!complete()){if(current())navigate('#join-photo')}else{await api('auth_start',{email});if(current())navigate('#verify')}}
@@ -352,7 +431,8 @@ document.addEventListener('submit',event=>{
   }
   else if(form.id==='chat-form'){const hubId=form.dataset.hub,peerId=form.dataset.peer||'',key=chatKey(hubId,peerId),draft=chatDraft(hubId,peerId),text=String(data.get('text')).trim();if(!text||text.length>2000)throw Error('Write a message of up to 2,000 characters.');if(state.chatPending.has(key))throw Error('Your previous message is still sending.');if(draft.text!==text){draft.text=text;draft.clientId=null}if(!draft.clientId)draft.clientId=crypto.randomUUID();const clientId=draft.clientId;state.chatPending.add(key);try{await api('chat_send',{hubId,...(peerId?{peerId}:{}),text,clientId});if(!sameSession())return;if(draft.text===text&&draft.clientId===clientId){draft.text='';draft.clientId=null}if(current())await render()}finally{state.chatPending.delete(key);if(sameSession()&&state.chatContext?.hubId===hubId&&state.chatContext.peerId===peerId){const submit=document.querySelector('#chat-form button[type=submit]');if(submit)submit.disabled=false}}}
   else if(form.id==='join-form'){const result=await api('request_join',{hubId:form.dataset.hubId,intro:String(data.get('intro')).trim()});if(!sameSession())return;if(result.notification)state.notifications[form.dataset.hubId]=result.notification;await refreshMe();if(current())await render();notify('Your introduction is saved in the host’s request list.')}
-  else if(form.id==='invite-form'){await api('invite_create',{hubId:form.dataset.hub,email:String(data.get('email')).trim().toLowerCase()});if(current()){notify(providerMail()?(openRegistration()?'Invitation created. Email delivery is handled by the server.':'Test invitation created for the permitted recipient.'):'Test invitation created. Its link is in the local terminal inbox.');closeModal()}}
+  else if(form.id==='invite-form'||form.id==='invite-edit-form'){await updateInvitationPreview(form,data,current)}
+  else if(form.id==='invite-preview-form'){await sendInvitation(form,current)}
   else if(form.id==='accept-form'){const result=await api('invite_accept',{token:form.dataset.token});await refreshMe();const membership=state.memberships.find(m=>m.hubId===result.membership.hubId);if(current())navigate(membership?'#membership/'+encodeURIComponent(membership.slug):'#home');notify('Invitation accepted. Access follows your original trial or confirmed membership.')}
   else if(form.id==='post-form'||form.id==='community-post-form'){const kind=form.id==='community-post-form'?'communityPost':'post',selected=state.photos[kind],selection=state.selection,caption=String(data.get('caption')).trim();if(!selected)throw Error('Choose a photo and wait for its preview.');await api('post_create',{hubId:form.dataset.hub,caption,photoDataUrl:selected});if(!sameSession())return;if(state.selection===selection&&state.photos[kind]===selected&&(kind!=='communityPost'||state.communityCaption.trim()===caption)){delete state.photos[kind];if(kind==='communityPost')state.communityCaption='';}if(current()){const inCreator=location.hash.startsWith('#manage/');if(dialog.contains(form))closeModal();notify('Post published');if(inCreator)await render();else navigate(feedLink(state.hub.slug))}}
   else if(form.id==='remove-form'){await api('membership_remove',{hubId:form.dataset.hub,userId:form.dataset.user,block:data.get('block')==='on',expectedRevision:form.dataset.revision||null});if(current()){notify('Access removed.');closeModal();await render()}}
@@ -365,6 +445,7 @@ document.addEventListener('input',event=>{if(event.target.closest('#invite-entry
 document.addEventListener('error',event=>{if(event.target.matches?.('.qr-image')){const note=document.createElement('p');note.className='form-error';note.textContent='The QR image could not load. Use the shareable link below, or refresh.';event.target.replaceWith(note)}},true);
 dialog.addEventListener('cancel',event=>{event.preventDefault();closeModal()});
 dialog.addEventListener('click',event=>{if(event.target===dialog){const r=dialog.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)closeModal()}});
+window.addEventListener('resize',sizeInvitationPreview);
 window.addEventListener('hashchange',()=>{if(ready)render()});
 window.addEventListener('pagehide',stopCamera);
 window.addEventListener('pageshow',event=>{if(event.persisted&&ready)refreshMe().then(render).catch(showError)});

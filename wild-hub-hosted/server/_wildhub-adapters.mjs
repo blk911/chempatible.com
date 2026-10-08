@@ -39,9 +39,10 @@ export function createWildHubMailAdapter({sendgridKey,from,recipients,registrati
   const policy=createWildHubRegistrationPolicy({mode:registrationMode,recipients});
   const failure=(message,delivery)=>Object.assign(new Error(message),{delivery});
   return Object.freeze({
-    deliveryMode:'provider',supportsIdempotency:false,
+    deliveryMode:'provider',supportsIdempotency:false,sender:Object.freeze({name:'BsideVibes',email:from}),
     async send(message) {
       if(!policy.allows(message?.to)||!['otp','invite','request','approval'].includes(message.kind)||typeof message.subject!=='string'||message.subject.length>200||/[\r\n]/.test(message.subject)||typeof message.text!=='string'||message.text.length>20000)throw failure('Mail is outside the approved scope.','not_accepted');
+      if(message.html!==undefined&&(message.kind!=='invite'||typeof message.html!=='string'||message.html.length>30000))throw failure('Invalid invitation email.','not_accepted');
       if(['request','approval'].includes(message.kind)&&(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(message.notificationId||'')||message.idempotencyKey!==`wh-notification-${message.notificationId}`))throw failure('Mail is outside the approved test scope.','not_accepted');
       if(beforeSend)try{await beforeSend({to:message.to.toLowerCase(),kind:message.kind});}catch(issue){const rejected=failure('Email sending is temporarily unavailable.','not_accepted');if(issue?.code==='mail_budget_exceeded'&&Number.isInteger(issue.retryAfter)&&issue.retryAfter>=1&&issue.retryAfter<=86400)Object.assign(rejected,{code:issue.code,retryAfter:issue.retryAfter});throw rejected;}
       let response;
@@ -49,7 +50,7 @@ export function createWildHubMailAdapter({sendgridKey,from,recipients,registrati
         response=await fetchImpl('https://api.sendgrid.com/v3/mail/send',{
           method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
           headers:{authorization:`Bearer ${sendgridKey}`,'content-type':'application/json'},
-          body:JSON.stringify({personalizations:[{to:[{email:message.to.toLowerCase()}],...(['request','approval'].includes(message.kind)?{custom_args:{wild_hub_notification:message.notificationId}}:{})}],from:{email:from,name:'BsideVibes'},subject:message.subject,content:[{type:'text/plain',value:message.text}],tracking_settings:{click_tracking:{enable:false,enable_text:false},open_tracking:{enable:false}}})
+          body:JSON.stringify({personalizations:[{to:[{email:message.to.toLowerCase()}],...(['request','approval'].includes(message.kind)?{custom_args:{wild_hub_notification:message.notificationId}}:{})}],from:{email:from,name:'BsideVibes'},subject:message.subject,content:[{type:'text/plain',value:message.text},...(message.html?[{type:'text/html',value:message.html}]:[])],tracking_settings:{click_tracking:{enable:false,enable_text:false},open_tracking:{enable:false}}})
         });
       } catch {throw failure('The mail provider did not confirm acceptance.','uncertain');}
       // 202 confirms provider acceptance, not inbox delivery. Never surface

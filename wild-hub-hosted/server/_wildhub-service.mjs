@@ -1,12 +1,13 @@
 import {createHash,createHmac,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
 import {prepareWildHubPhoto,IMAGE_LIMITS} from './_wildhub-images.mjs';
 import {createWildHubNotificationDispatcher,queueWildHubNotification,readWildHubNotification,readWildHubNotifications} from './_wildhub-notifications.mjs';
+import {invitationEmailDraft,renderInvitationEmail} from './_wildhub-invitation-email.mjs';
 
 export const WILD_HUB_LIMITS=Object.freeze({name:50,about:500,intro:280,caption:500,message:2000,trialDays:7,slugMin:3,slugMax:40,bodyBytes:7*1024*1024,photoBytes:IMAGE_LIMITS.bytes,photoPixels:IMAGE_LIMITS.pixels,pageSize:20,pageMax:50});
 const BASE_HEADERS={'cache-control':'private, no-store','x-content-type-options':'nosniff','cross-origin-resource-policy':'same-origin','referrer-policy':'no-referrer','vary':'Cookie, Origin'};
 const READS=new Set(['me','hubs','public_hub','requests','memberships','posts','media','invite_preview','access_status','chat_messages','share_resolve','creator_summary','creator_people','creator_finance']);
-const WRITES=new Set(['auth_start','auth_verify','logout','profile_save','hub_save','request_join','request_withdraw','request_decide','membership_remove','leave','invite_create','invite_accept','post_create','post_delete','chat_send','share_create','membership_unblock','hub_photo_save']);
-const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed','publicLinks','publicLinksConsent'],hub_save:['name','about','slug','published','publishConsent','preservePhoto','publishPhotoConsent'],hub_photo_save:['hubId','photoDataUrl','publishConsent'],membership_unblock:['hubId','userId','expectedRevision'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_create:['hubId','email'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
+const WRITES=new Set(['auth_start','auth_verify','logout','profile_save','hub_save','request_join','request_withdraw','request_decide','membership_remove','leave','invite_email_preview','invite_create','invite_accept','post_create','post_delete','chat_send','share_create','membership_unblock','hub_photo_save']);
+const FIELDS={auth_start:['email'],auth_verify:['email','code'],logout:[],profile_save:['name','photoDataUrl','agreed','publicLinks','publicLinksConsent'],hub_save:['name','about','slug','published','publishConsent','preservePhoto','publishPhotoConsent'],hub_photo_save:['hubId','photoDataUrl','publishConsent'],membership_unblock:['hubId','userId','expectedRevision'],request_join:['hubId','intro'],request_withdraw:['hubId'],request_decide:['requestId','decision'],membership_remove:['hubId','userId','block','expectedRevision'],leave:['hubId','expectedRevision'],invite_email_preview:['hubId','email','subject','message'],invite_create:['hubId','email','previewToken'],invite_accept:['token'],post_create:['hubId','caption','photoDataUrl'],post_delete:['postId'],chat_send:['hubId','peerId','text','clientId'],share_create:['hubId']};
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const rows=async(db,sql,params=[])=>{const result=await db.query(sql,params);return Array.isArray(result)?result:result.rows};
 const json=(value,status=200,headers={})=>Response.json({ok:true,...value},{status,headers:{...BASE_HEADERS,...headers}});
@@ -84,6 +85,21 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
   const hashCode=(address,code)=>createHmac('sha256',secret).update(`${address}\n${code}`).digest('hex');
   const cookie=(token,age=2592000)=>`wh_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${secureCookies?'; Secure':''}`;
   const allowedEmail=address=>{if(emailAllowed(address)!==true)fail(403,'email_not_allowed','Use an approved preview email address.');return address};
+  const previewSignature=value=>createHmac('sha256',secret).update('invitation-preview:v1:'+value).digest('base64url');
+  function signInvitationPreview(draft) {
+    const encoded=Buffer.from(JSON.stringify(draft)).toString('base64url');
+    return encoded+'.'+previewSignature(encoded);
+  }
+  const invitationSender=()=>mail.sender||{name:'BsideVibes',email:''};
+  const invitationContentHash=rendered=>sha(JSON.stringify({subject:rendered.subject,html:rendered.html,text:rendered.text,from:invitationSender()}));
+  function readInvitationPreview(value) {
+    if(typeof value!=='string'||value.length>16000||!/^[-_a-zA-Z0-9]+\.[-_a-zA-Z0-9]{43}$/.test(value))fail(400,'preview_required','Preview this invitation before sending.');
+    const [encoded,signature]=value.split('.'),expected=previewSignature(encoded);
+    if(!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))fail(400,'preview_required','Preview this invitation before sending.');
+    let draft;try{draft=JSON.parse(Buffer.from(encoded,'base64url').toString('utf8'))}catch{fail(400,'preview_required','Preview this invitation before sending.')}
+    if(draft.v!==1||!Number.isSafeInteger(draft.createdAt))fail(400,'preview_required','Preview this invitation before sending.');
+    uuid(draft.id);return draft;
+  }
   async function rate(key,max,period) {
     const bucket=Math.floor(now()/period);
     const result=await rows(db,`INSERT INTO wh_rate_limits(key,bucket,count) VALUES($1,$2,1) ON CONFLICT(key,bucket) DO UPDATE SET count=wh_rate_limits.count+1 RETURNING count`,[sha(key),bucket]);
@@ -467,17 +483,42 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       await rows(tx,'UPDATE wh_invites SET revoked_at=$3 WHERE hub_id=$1 AND email=$2 AND accepted_at IS NULL AND revoked_at IS NULL',[current.id,targetUser.email,stamp()]);
       return json(action==='leave'?{left:true}:{removed:true});
     }
-    if(action==='invite_create') {
+    if(action==='invite_email_preview'||action==='invite_create') {
       requireProfile(user);const current=await hub(tx,body.hubId);requireOwner(current,user);const address=allowedEmail(email(body.email));
       if(address===user.email)fail(400,'own_email','Invite another person.');
+      let draft=null;
+      if(action==='invite_create'&&body.previewToken!==undefined) {
+        draft=readInvitationPreview(body.previewToken);
+        if(draft.actor!==user.id||draft.hubId!==current.id||draft.email!==address)fail(403,'preview_mismatch','This preview belongs to a different invitation.');
+        // One signed preview is one send attempt. A lost response or double click
+        // can read its outcome, but cannot send another provider message.
+        const existing=(await rows(tx,'SELECT * FROM wh_invites WHERE id=$1',[draft.id]))[0];
+        if(existing){
+          if(existing.hub_id!==current.id||existing.created_by!==user.id||existing.email!==address)fail(409,'preview_mismatch','Preview this invitation again.');
+          if(existing.ready)return json({sent:true,inviteId:existing.id,delivery:{status:'accepted',mode:mail.deliveryMode||'unknown'}});
+          fail(409,'invitation_uncertain','This invitation is still sending or its send could not be confirmed. Do not send it again; check with your recipient first.');
+        }
+        if(draft.createdAt>now()||now()-draft.createdAt>1_800_000)fail(409,'preview_expired','This preview has expired. Review it again before sending.');
+        const currentNames=invitationEmailDraft({hostName:user.name,hubName:current.name});
+        if(draft.hostName!==currentNames.hostName||draft.hubName!==currentNames.hubName)fail(409,'preview_changed','Your page details changed. Review the updated email before sending.');
+        const reviewed=renderInvitationEmail({...draft,origin,to:address,link:new URL('/#invitation-preview',origin).href});
+        if(draft.contentHash!==invitationContentHash(reviewed))fail(409,'preview_changed','The email template or sender changed. Review the updated email before sending.');
+      }
       const target=(await rows(tx,'SELECT * FROM wh_users WHERE email=$1',[address]))[0];
       if(target){const member=await membership(tx,current.id,target.id);if(target.standing!=='active'||member?.status==='blocked')fail(403,'unavailable','This invitation is unavailable.');if(member?.status==='active')fail(409,'already_member','This person is already a member.')}
-      const id=randomUUID(),token=randomBytes(32).toString('hex');
+      if(action==='invite_email_preview') {
+        const content=invitationEmailDraft({hostName:user.name,hubName:current.name,subject:body.subject,message:body.message});
+        const rendered=renderInvitationEmail({...content,origin,to:address,link:new URL('/#invitation-preview',origin).href});
+        const preview={v:1,id:randomUUID(),actor:user.id,hubId:current.id,email:address,...content,contentHash:invitationContentHash(rendered),createdAt:now()};
+        return json({preview:{to:address,from:invitationSender(),...rendered,previewToken:signInvitationPreview(preview)}});
+      }
+      // Existing clients may still use the default invitation. New custom mail
+      // always comes from a signed server preview, never browser-provided HTML.
+      draft=draft||invitationEmailDraft({hostName:user.name,hubName:current.name});
+      const id=draft.id||randomUUID(),token=randomBytes(32).toString('hex');
       await rows(tx,'UPDATE wh_invites SET revoked_at=$3 WHERE hub_id=$1 AND email=$2 AND accepted_at IS NULL AND revoked_at IS NULL',[current.id,address,stamp()]);
       await rows(tx,'INSERT INTO wh_invites(id,hub_id,created_by,email,token_hash,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,current.id,user.id,address,sha(token),new Date(now()+604_800_000).toISOString(),stamp()]);
-      // Internal dispatch result only. The caller sends mail after COMMIT, never
-      // holding a SQL transaction open over provider I/O or exposing raw tokens.
-      return {sendInvite:{id,token,address,hubName:current.name,hostName:user.name}};
+      return {sendInvite:{id,token,address,draft}};
     }
     if(action==='invite_preview'||action==='invite_accept') {
       const token=tokenValue(action==='invite_preview'?url.searchParams.get('token'):body.token);
@@ -552,11 +593,11 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
       if(req.method==='POST'&&requestOrigin!==origin)fail(403,'origin_required','A same-origin request is required.');
       // Client keys come only from a trusted injected adapter, never arbitrary
       // X-Forwarded-For headers. Email and actor quotas remain server-owned.
-      await rate(`client:${String(getClientKey(req)).slice(0,200)}`,400,60_000);
+      if(action!=='invite_email_preview')await rate(`client:${String(getClientKey(req)).slice(0,200)}`,400,60_000);
       let body={};if(req.method==='POST') {body=await boundedJson(req);if(Object.keys(body).some(key=>!FIELDS[action].includes(key)))fail(400,'unexpected_field','The request contains unsupported fields.');}
       if(action==='auth_start')return await startAuth(email(body.email));
       if(action==='auth_verify')return await verifyAuth(req,body);
-      if(req.method==='POST') {
+      if(req.method==='POST'&&action!=='invite_email_preview') {
         const token=sessionToken(req);
         const account=token?(await rows(db,'SELECT user_id FROM wh_sessions WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>$2',[sha(token),stamp()]))[0]:null;
         await rate(`write:${account?.user_id||'anonymous'}:${action}`,action==='invite_create'?20:action==='request_join'?10:action==='chat_send'?600:120,3_600_000);
@@ -572,12 +613,24 @@ export function createWildHubService({db,mail,origin,secret,sharp,now=()=>Date.n
         return json({...notice.payload,notification},notice.status);
       }
       if(!result.sendInvite)return result;
-      const {id,token,address,hubName,hostName}=result.sendInvite;
+      const {id,token,address,draft}=result.sendInvite;
       const link=new URL(`/#invite/${token}`,origin).href;
-      try {await mail.send({to:address,subject:`${hostName} invited you to ${hubName} on BsideVibes`,text:`${hostName} invited you to ${hubName} on BsideVibes. Sign in with this email and explicitly accept to join. The invitation expires in seven days.\n${link}`,kind:'invite',token,url:link});}
-      catch(issue) {await rows(db,'DELETE FROM wh_invites WHERE id=$1 AND ready=false',[id]);if(issue?.code==='mail_budget_exceeded')return error(429,'rate_limited','Email sending is temporarily limited. Please try again later.',{'retry-after':String(issue.retryAfter)});return error(503,'mail_unavailable','The invitation could not be delivered. You can try again.');}
+      const rendered=renderInvitationEmail({...draft,origin,to:address,link});
+      try {
+        const sent=await mail.send({to:address,subject:rendered.subject,text:rendered.text,html:rendered.html,kind:'invite',token,url:link,idempotencyKey:`wh-invite-${id}`});
+        if(sent?.accepted===false)throw Object.assign(Error('Mail was not accepted.'),{delivery:'not_accepted'});
+      } catch(issue) {
+        if(issue?.delivery==='not_accepted'||issue?.code==='mail_budget_exceeded') {
+          await rows(db,'DELETE FROM wh_invites WHERE id=$1 AND ready=false',[id]);
+          if(issue?.code==='mail_budget_exceeded')return error(429,'rate_limited','Email sending is temporarily limited. Please try again later.',{'retry-after':String(issue.retryAfter)});
+          return error(503,'mail_unavailable','The email provider did not accept this invitation. You can retry the same preview.');
+        }
+        // SendGrid has no idempotency guarantee. Preserve a pending attempt on
+        // an ambiguous result, so retrying cannot duplicate the email.
+        return error(409,'invitation_uncertain','The email provider did not confirm this send. Do not send it again; check with your recipient first.');
+      }
       await rows(db,'UPDATE wh_invites SET ready=true WHERE id=$1 AND revoked_at IS NULL',[id]);
-      return json({sent:true,inviteId:id});
+      return json({sent:true,inviteId:id,delivery:{status:'accepted',mode:mail.deliveryMode||'unknown'}});
     } catch(e) {
       if(e.status&&e.code)return error(e.status,e.code,e.message,e.status===429?{'retry-after':'60'}:{});
       if(e.code==='23505')return error(409,'conflict','That item already exists. Refresh and try again.');

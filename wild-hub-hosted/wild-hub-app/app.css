@@ -1075,3 +1075,58 @@ button.community-person-actions:hover{color:var(--accent)}
  .site-header nav:not(.visitor-nav)>a{display:inline-flex;align-items:center;min-height:44px}
  .site-header .account-line .profile-label{display:inline}
 }
+
+/* Invitation composer: recipient → exact server email → explicit Send. */
+#app-dialog.invitation-dialog{width:min(560px,calc(100% - 24px));max-width:calc(100% - 24px);overflow-x:hidden}
+#app-dialog.invitation-preview-dialog{width:min(780px,calc(100% - 24px))}
+.invitation-dialog .modal-content{padding:28px;min-width:0;box-sizing:border-box}
+.invitation-dialog .modal-top{gap:14px;margin-bottom:16px}
+.invitation-dialog .modal-top h2{min-width:0;overflow-wrap:anywhere;max-width:560px;font-size:30px;line-height:1.13;letter-spacing:-.035em}
+.invitation-dialog .close{flex-shrink:0}
+.invitation-dialog .invitation-kicker{margin-top:0;color:#68605e;font-size:10px;font-weight:700;letter-spacing:.13em;line-height:1.5}
+.invitation-dialog .invitation-intro{font-size:16px;line-height:1.6;overflow-wrap:anywhere}
+.invitation-form{margin-top:20px;min-width:0}
+.invitation-form label{font-size:13px}
+.invitation-form input,.invitation-form textarea{box-sizing:border-box;max-width:100%;min-width:0;font-size:16px!important}
+.invitation-form .field-note{font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+.invitation-approval{padding:14px 16px;background:#f5f1e9;border:1px solid #e7dfd2;border-radius:8px;font-size:12px;line-height:1.7;margin-top:22px;overflow-wrap:anywhere}
+.invitation-envelope{margin:0;padding:16px 18px;background:#f8f7f4;border:1px solid #e4e1db;border-radius:10px;min-width:0}
+.invitation-envelope>div{display:grid;grid-template-columns:50px minmax(0,1fr);gap:12px;padding:4px 0;font-size:13px;line-height:1.6}
+.invitation-envelope dt{color:#77716c;font-weight:400}
+.invitation-envelope dd{min-width:0;margin:0;overflow-wrap:anywhere}
+.invitation-envelope .invitation-subject{border-top:1px solid #e4e1db;margin-top:8px;padding-top:12px}
+.invitation-subject dd{font-weight:600}
+.invitation-preview-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:16px 0 8px;font-size:12px;color:#655e59}
+.invitation-preview-heading>span{min-width:0;overflow-wrap:anywhere}
+.invitation-preview-heading .text-link{flex-shrink:0;min-height:44px;font-size:12px}
+.invitation-email-frame{background:#f6f2eb;border:1px solid #ddd7cc;border-radius:12px;overflow:hidden;width:100%;box-sizing:border-box}
+#invitation-email-preview{display:block;border:0;width:100%;max-width:100%;min-width:0;height:900px;pointer-events:none;background:#f6f2eb}
+.invitation-text-preview{margin-top:14px;border:1px solid #e4e1db;border-radius:8px;background:#fff}
+.invitation-text-preview summary{font-size:12px;line-height:1.6;min-height:44px;box-sizing:border-box;padding:12px 14px;cursor:pointer}
+.invitation-text-preview pre{margin:0;padding:0 14px 16px;font:inherit;font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;box-sizing:border-box}
+.invitation-dialog .invitation-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:22px}
+.invitation-actions .button,.invitation-actions .text-link{min-height:44px;max-width:100%;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;font-size:13px}
+.invitation-actions .button{min-width:120px;justify-content:center}
+.invitation-actions .text-link{padding:10px 12px}
+.invitation-dialog button:disabled{cursor:default;opacity:.5}
+.invitation-form[aria-busy=true]{opacity:1}
+.invitation-send-note{margin-top:14px!important}
+.invitation-dialog .form-error{overflow-wrap:anywhere}
+@media(max-width:520px){
+ .invitation-dialog .modal-content{padding:20px 16px}
+ .invitation-dialog .modal-top h2{font-size:25px}
+ .invitation-envelope{padding:12px}
+ .invitation-envelope>div{grid-template-columns:42px minmax(0,1fr);gap:8px;font-size:12px}
+ .invitation-email-frame{border-radius:8px}
+ #invitation-email-preview{height:1120px}
+ .invitation-approval{padding:12px}
+ .invitation-actions .button{flex:1 1 110px;min-width:0;padding:12px}
+ .invitation-actions .text-link{flex:0 1 auto}
+}
+@media(max-width:360px){
+ .invitation-dialog .modal-content{padding:18px 12px}
+ .invitation-dialog .modal-top{gap:8px}
+ .invitation-dialog .modal-top h2{font-size:23px}
+ .invitation-envelope>div{grid-template-columns:minmax(0,1fr);gap:0}
+ #invitation-email-preview{height:1280px}
+}

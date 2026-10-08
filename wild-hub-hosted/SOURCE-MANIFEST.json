@@ -3,7 +3,11 @@
   "files": {
     "server/_wildhub-service.mjs": {
       "source": "api/_wildhub-service.mjs",
-      "sha256": "fe93c18b166a30611fb6e14462b51c98ec3a23c0049ec9b8f21ce68d95060bd5"
+      "sha256": "076945741747088ffd758f1d838645175eb924d25a6bfbc5bf8ef66954c3d9f0"
+    },
+    "server/_wildhub-invitation-email.mjs": {
+      "source": "api/_wildhub-invitation-email.mjs",
+      "sha256": "c828de07fe002fafb5c57ca01625511f28dd4ecba7665d7efb090b2bf4f852bd"
     },
     "server/_wildhub-images.mjs": {
       "source": "api/_wildhub-images.mjs",
@@ -11,7 +15,7 @@
     },
     "server/_wildhub-adapters.mjs": {
       "source": "api/_wildhub-adapters.mjs",
-      "sha256": "c3b7b15dd3243bec38c757ce0719d7ae713e9aaf30387f523c3d13e77bee8937"
+      "sha256": "f1f6126f204d463d6b01cddc25d937ef97773f172cefb6a77b5dcbaea2ca1bd8"
     },
     "server/_wildhub-notifications.mjs": {
       "source": "api/_wildhub-notifications.mjs",
@@ -31,7 +35,7 @@
     },
     "server/_wildhub-hosted.mjs": {
       "source": "api/_wildhub-hosted.mjs",
-      "sha256": "80befb8bebd055611b001beab4bc2fe36ac1a79c34fcd037c3a6c7b06f4859ac"
+      "sha256": "6f88b1bd96a58d5e0f3ca28b35f8a626ecb0f30a815ad649a387c1e0c939f5b2"
     },
     "server/_wildhub-runtime.mjs": {
       "source": "api/_wildhub-runtime.mjs",
@@ -47,15 +51,15 @@
     },
     "wild-hub-app/index.html": {
       "source": "wild-hub-app/index.html",
-      "sha256": "609ff3eb44bce92c3577b3b0911a2442c7f7a58ec13ed6ecef1094758daf869f"
+      "sha256": "78bba1ab0c07a8bcddbc7c71676c79ade0865eef3ed7a6ab96d0ebb645844303"
     },
     "wild-hub-app/app.js": {
       "source": "wild-hub-app/app.js",
-      "sha256": "dc01fe90c2f1d7896b1026835ff68cd1a7ed019bb48e44525e30a395da9b8e02"
+      "sha256": "83a086edbda3a9367d3a9e0ba361b8b9dc3d6a305da6c717cfe8f9bb5d186e20"
     },
     "wild-hub-app/app.css": {
       "source": "wild-hub-app/app.css",
-      "sha256": "892de619cb9db99d122b406f5a4490452fc639642ada77a1d9528c074d73f056"
+      "sha256": "164c28a84242ac844b26a3bb4d10550773727912d4993d68da83e1bbe80efda5"
     },
     "wild-hub-concepts/lauren/index.html": {
       "source": "wild-hub-concepts/lauren/index.html",
