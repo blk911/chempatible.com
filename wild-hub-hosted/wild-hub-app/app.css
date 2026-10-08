@@ -1067,3 +1067,11 @@ button.community-person-actions:hover{color:var(--accent)}
 .chat-meta time,.chat-heading p,.chat-heading small,.chat-person small,.chat-person p,
 .bside-home .bside-entry-note,.bside-home .bside-sample-note,
 .bside-sample-caption>p,.bside-sample-heading>div>span,.bside-sample-conversation>div>span{color:var(--note-ink)}
+
+/* Signed-in phone navigation stays labeled and wraps below the brand. */
+@media(max-width:760px){
+ .site-header{flex-wrap:wrap}
+ .site-header nav:not(.visitor-nav){flex-basis:100%;flex-wrap:wrap;justify-content:flex-start;overflow:visible;gap:8px 14px}
+ .site-header nav:not(.visitor-nav)>a{display:inline-flex;align-items:center;min-height:44px}
+ .site-header .account-line .profile-label{display:inline}
+}
