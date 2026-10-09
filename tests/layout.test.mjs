@@ -32,7 +32,10 @@ try{
  const samplePieces=['Feel Loved','Closeness Reflection',longName+' Snapshot'].map((title,i)=>({moduleId:'layout-piece-'+i,version:1,title,result:{summary:'A private result',dimensions:[]}}));
  w.eval(`mergeDiscoveryPieces(${JSON.stringify(samplePieces)});paintDiscovery()`);
  const memberHeader=d.querySelector('#root .socialMemberHeader');
- assert.deepEqual([...memberHeader.children].map(el=>el.className),['socialMemberIdentity','socialMemberAction'],'header keeps identity and connection actions primary');
+ assert.deepEqual([...memberHeader.children].map(el=>el.className),['ctaPrompt socialMemberTagline','socialMemberIdentity','socialMemberAction'],'hero pairs the left tagline and invitation actions with the right identity');
+ assert.equal(memberHeader.querySelector('.socialMemberTagline').textContent,'Catch a vibe.');
+ assert.doesNotMatch(memberHeader.textContent,/MY PAGE|Make your next connection/,'the hero has no redundant page label or old intro');
+ assert.equal(memberHeader.querySelector('.socialMemberIdentity h1').textContent,'Taylor');
  assert.equal(d.querySelectorAll('#root #earnedPieces').length,1,'only one collection is rendered');
  assert.equal(d.querySelectorAll('#root #earnedPiecesTitle').length,1);
  const rootIds=[...d.querySelectorAll('#root [id]')].map(el=>el.id);assert.equal(new Set(rootIds).size,rootIds.length,'dashboard has no duplicate IDs');
@@ -133,7 +136,18 @@ try{
   assert.ok(parseFloat(w.getComputedStyle(friendButton).minHeight)>=44);
   const memberStyle=w.getComputedStyle(memberHeader),collection=profileProgress.querySelector('#rewardLadder');
   assert.equal(memberStyle.display,'grid');
-  assert.equal(memberStyle.gridTemplateColumns,width>700?'minmax(0,1fr) minmax(0,1.35fr)':'minmax(0,1fr)',`${width}px: identity and invitation actions stack naturally on mobile`);
+  assert.equal(memberStyle.gridTemplateColumns,width>700?'minmax(0,1.35fr) minmax(0,1fr)':'repeat(2,minmax(0,1fr))',`${width}px: tagline and identity retain their left and right alignment`);
+  const taglineStyle=w.getComputedStyle(memberHeader.querySelector('.socialMemberTagline'));
+  const identityStyle=w.getComputedStyle(memberHeader.querySelector('.socialMemberIdentity'));
+  const actionStyle=w.getComputedStyle(actions);
+  assert.equal(taglineStyle.gridColumn,'1','tagline stays on the left');
+  assert.equal(taglineStyle.gridRow,'1');
+  assert.equal(identityStyle.gridColumn,'2','member identity stays on the right');
+  assert.equal(identityStyle.gridRow,width<=700?'1':'1 / 3');
+  assert.equal(identityStyle.justifyContent,'flex-end');
+  assert.equal(identityStyle.textAlign,'right');
+  assert.equal(actionStyle.gridColumn,width<=700?'1 / -1':'1','invitation pills share the tagline’s left edge');
+  assert.equal(actionStyle.gridRow,'2');
   assert.equal(parseFloat(w.getComputedStyle(collection).minWidth),0);
   assert.equal(collection.querySelectorAll('.rewardSlot').length,5,'exactly five collectible slots');
   assert.equal(w.getComputedStyle(collection.querySelector('.rewardSlots')).gridTemplateColumns,width<=700?'minmax(0,1fr)':'repeat(5,minmax(0,1fr))','mobile profile steps use readable full-width rows');
@@ -152,7 +166,7 @@ try{
   if(width<=700)assert.equal(w.getComputedStyle(vibeRow).gridTemplateColumns,'repeat(2,minmax(0,1fr))');
   else assert.equal(w.getComputedStyle(vibeRow).flexWrap,'wrap','actions may wrap rather than overflow');
   assert.equal(w.getComputedStyle(actions).flexDirection,'column');
-  assert.equal(w.getComputedStyle(actions).alignItems,width<=700?'stretch':'flex-end');
+  assert.equal(w.getComputedStyle(actions).alignItems,width<=700?'stretch':'flex-start');
   assert.equal(w.getComputedStyle(actions).gap,width<=700?'8px':'7px','invitation choices stay grouped');
   assert.equal(w.getComputedStyle(d.querySelector('.socialMemberIdentity>div')).overflowWrap,'anywhere','long member names can wrap');
   for(const action of actions.querySelectorAll('.button')){

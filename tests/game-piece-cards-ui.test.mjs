@@ -143,7 +143,7 @@ test('mobile entry controls and profile steps reflow with full-size touch target
  const f=await fixture(3);try{
   for(const width of widths)atWidth(f,width,style=>{
    const header=f.d.querySelector('.socialMemberHeader');
-   assert.equal(style(header).gridTemplateColumns,width<=700?'minmax(0,1fr)':'minmax(0,1fr) minmax(0,1.35fr)');
+   assert.equal(style(header).gridTemplateColumns,width<=700?'repeat(2,minmax(0,1fr))':'minmax(0,1.35fr) minmax(0,1fr)');
    const actions=f.d.querySelector('.socialVibeAction');assert.equal(style(actions).display,width<=700?'grid':'flex');
    if(width<=700)assert.equal(style(actions).gridTemplateColumns,'repeat(2,minmax(0,1fr))');
    for(const button of actions.querySelectorAll('button')){assert.ok(parseFloat(style(button).minHeight)>=46);assert.equal(style(button).whiteSpace,'normal');assert.notEqual(style(button).display,'none')}
