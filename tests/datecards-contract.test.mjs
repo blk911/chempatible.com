@@ -82,7 +82,7 @@ async function fixture(as,id=chatId){
    if(held&&held.match(full,method,body)){
     const current=held;held=null;
     const snapshot=await response.text();current.captured.resolve({status:response.status,body:JSON.parse(snapshot)});
-    await current.release.promise;
+    const released=await current.release.promise;if(released instanceof Error)throw released;
     return new Response(snapshot,{status:response.status,headers:response.headers});
    }
    return response;
@@ -94,7 +94,7 @@ async function fixture(as,id=chatId){
   for(let pass=0;pass<100;pass++){await Promise.allSettled([...pending]);await pause();if(!pending.size){await pause();if(!pending.size)return}}
   throw Error('In-process UI requests did not settle');
  }
- const f={w,d,calls,drain,holdResponse(match){assert.equal(held,null);const captured=deferred(),release=deferred();held={match,captured,release};return {captured:captured.promise,release:release.resolve}},close(){w.close()}};
+ const f={w,d,calls,drain,holdResponse(match){assert.equal(held,null);const captured=deferred(),release=deferred();held={match,captured,release};return {captured:captured.promise,release:release.resolve,fail:()=>release.resolve(Error('Synthetic response interrupted'))}},close(){w.close()}};
  pages.push(f);await drain();
  assert.equal(w.eval('activeMemberId()'),ids[as],'each window has its own authenticated account');
  w.selectChempat(id);await drain();
@@ -205,6 +205,56 @@ try{
  assert.deepEqual(await invariants(),original);
  console.log('PASS recipient suggestion → original member acceptance, persisted versions 1–4, and stale-response rollback protection');
 
+ // Keep a separate invitation, ordinary conversation and a private bookmark
+ // unchanged while cancelling the agreed card through its visible pill.
+ await click(owner,'.dateIdeaStrip [data-date-focus="idea:movie"]');
+ input(owner,'#dateNote','Keep this separate invitation');await click(owner,'.dateModal [data-date-focus="send"]');
+ const retained=(await persistedCards(chatId)).find(message=>message.id!==cardId);
+ const retainedBefore=JSON.stringify(retained),savedIdeas=owner.w.localStorage.getItem('duhwild.date-ideas.'+ids.owner);
+ await click(peer,'[data-date-focus="change:'+cardId+'"]');input(peer,'#datePlace','An unfinished edit');
+ const cancelling=owner.holdResponse((url,method,body)=>url.pathname==='/api/datecards'&&method==='POST'&&body.action==='cancel');
+ const cancelButton=owner.d.querySelector('[data-date-focus="cancel:'+cardId+'"]');assert.ok(cancelButton);assert.equal(cancelButton.textContent.trim(),'Cancel');
+ const beforeCancelPosts=datePosts(owner).length;cancelButton.click();cancelButton.click();
+ const cancelResponse=await cancelling.captured;assert.equal(cancelResponse.status,200);
+ assert.equal(datePosts(owner).length,beforeCancelPosts+1,'rapid repeat clicks produce one cancellation request');
+ for(const button of owner.d.querySelectorAll('.sharedDateCard .dateCardActions button'))assert.equal(button.disabled,true);
+ cancelling.release();await owner.drain();
+ const cancelBody=datePosts(owner).at(-1).body;
+ assert.deepEqual(Object.keys(cancelBody).sort(),['action','cardId','id','requestId','version']);assert.equal(cancelBody.cardId,cardId);assert.equal(cancelBody.version,4);
+ const cancelled=(await persistedCards(chatId)).find(message=>message.id===cardId);assert.equal(cancelled.card.status,'cancelled');assert.equal(cancelled.card.version,5);
+ assert.ok(!cancelResponse.body.cards.some(message=>message.id===cardId),'successful response excludes the cancelled card');
+ assert.equal(owner.d.querySelector('[data-date-card="'+cardId+'"]'),null);assert.equal(owner.d.querySelector('.datePlan').hidden,true);
+ peer.w.refreshDateCards();await peer.drain();assert.equal(peer.d.querySelector('[data-date-card="'+cardId+'"]'),null);assert.equal(peer.d.querySelector('.datePlan').hidden,true);assert.equal(peer.d.querySelector('.dateModal'),null,'peer removal closes an obsolete edit');
+ const peerPostsBefore=datePosts(peer).length;await peer.w.submitDateCard();assert.equal(datePosts(peer).length,peerPostsBefore,'the cancelled draft cannot be submitted');
+ for(const f of [owner,peer]){await f.w.refreshLive(true);f.w.refreshDateCards();await f.drain();assert.equal(f.d.querySelector('[data-date-card="'+cardId+'"]'),null);assert.ok(f.d.querySelector('[data-date-card="'+retained.id+'"]'));assert.match(f.d.querySelector('.dateMessages').textContent,/Existing private conversation/)}
+ assert.equal(owner.d.querySelector('#message'),composer);assert.equal(composer.value,'An ordinary message I am still typing');
+ assert.equal(owner.w.localStorage.getItem('duhwild.date-ideas.'+ids.owner),savedIdeas);
+ assert.equal(JSON.stringify((await persistedCards(chatId)).find(message=>message.id===retained.id)),retainedBefore,'another datecard is byte-for-byte unchanged');
+ assert.deepEqual(await invariants(),original);
+ for(const as of ['owner','peer']){const fresh=await fixture(as);assert.equal(fresh.d.querySelector('[data-date-card="'+cardId+'"]'),null);assert.ok(fresh.d.querySelector('[data-date-card="'+retained.id+'"]'));assert.equal(fresh.d.querySelector('.datePlan').hidden,true);assert.equal(datePosts(fresh).length,0);fresh.close()}
+ const originalSend=datePosts(owner).find(call=>call.body.action==='send');
+ const repeated=await owner.w.fetch('/api/datecards',{method:'POST',headers:{'content-type':'application/json','x-chempat-member-id':ids.owner},body:JSON.stringify(originalSend.body)});
+ assert.equal(repeated.status,200);assert.ok(!(await repeated.json()).cards.some(message=>message.id===cardId));assert.equal((await persistedCards(chatId)).find(message=>message.id===cardId).card.version,5,'retrying an old successful send cannot restore a cancelled card');
+ console.log('PASS visible cancellation of agreement removes both views and reloads while preserving the other card, normal chat, current draft and saved idea');
+
+ // A real commit with a lost response remains a single operation on retry.
+ const interrupted=owner.holdResponse((url,method,body)=>url.pathname==='/api/datecards'&&method==='POST'&&body.action==='cancel');
+ owner.d.querySelector('[data-date-focus="cancel:'+retained.id+'"]').click();await interrupted.captured;interrupted.fail();await owner.drain();
+ const uncertainBody=datePosts(owner).at(-1).body;
+ assert.equal((await persistedCards(chatId)).find(message=>message.id===retained.id).card.status,'cancelled');
+ const retryCancel=owner.d.querySelector('[data-date-focus="cancel:'+retained.id+'"]');assert.ok(retryCancel);assert.match(retryCancel.textContent,/Retry cancel/);await click(owner,'[data-date-focus="cancel:'+retained.id+'"]');
+ assert.deepEqual(datePosts(owner).at(-1).body,uncertainBody,'retry sends the same request and expected version');
+ assert.equal((await persistedCards(chatId)).find(message=>message.id===retained.id).card.version,2);
+ assert.equal(owner.d.querySelector('[data-date-card="'+retained.id+'"]'),null);
+ await click(peer,'[data-date-focus="accept:'+retained.id+'"]');assert.equal(datePosts(peer).at(-1).body.action,'accept');assert.equal(peer.d.querySelector('[data-date-card="'+retained.id+'"]'),null);assert.equal((await persistedCards(chatId)).find(message=>message.id===retained.id).card.version,2,'stale acceptance cannot revive the cancelled invitation');
+ await click(owner,'.dateIdeaStrip [data-date-focus="idea:dinner"]');input(owner,'#dateNote','A new pending invitation');await click(owner,'.dateModal [data-date-focus="send"]');
+ const recipientPending=(await persistedCards(chatId)).find(message=>message.card.status==='pending');assert.ok(recipientPending);
+ peer.w.refreshDateCards();await peer.drain();await click(owner,'[data-date-focus="change:'+recipientPending.id+'"]');input(owner,'#datePlace','This change is now stale');
+ await click(peer,'[data-date-focus="cancel:'+recipientPending.id+'"]');await click(owner,'.dateModal [data-date-focus="send"]');assert.equal(datePosts(owner).at(-1).body.action,'change');assert.equal(owner.d.querySelector('.dateModal'),null);assert.equal((await persistedCards(chatId)).find(message=>message.id===recipientPending.id).card.version,2,'stale edits cannot revive the cancelled invitation');
+ for(const f of [owner,peer])assert.equal(f.d.querySelectorAll('.sharedDateCard').length,0);
+ assert.deepEqual(await invariants(),original);
+ console.log('PASS pending-card cancellation by both participants, including a committed-response-loss retry with no repeated mutation');
+
  // UI integration for an accepted connection before ordinary chat opens.
  owner.w.selectChempat(beforeChatId);peer.w.selectChempat(beforeChatId);await owner.drain();await peer.drain();
  for(const f of [owner,peer]){
@@ -235,9 +285,29 @@ try{
  assert.equal(reopened.d.querySelector('#message'),null);
  assert.equal(datePosts(reopened).length,0,'reload does not resend or reaccept a datecard');
  assert.deepEqual(await invariants(),original);
+ // The recipient can also cancel an agreed card before ordinary chat opens.
+ await click(reopened,'[data-date-focus="cancel:'+beforeCard.id+'"]');owner.w.refreshDateCards();await owner.drain();
+ for(const f of [owner,reopened]){assert.equal(f.d.querySelectorAll('.sharedDateCard').length,0);assert.equal(f.d.querySelector('.datePlan').hidden,true);assert.equal(f.d.querySelector('#message'),null)}
+ for(const as of ['owner','peer']){const fresh=await fixture(as,beforeChatId);assert.equal(fresh.d.querySelectorAll('.sharedDateCard').length,0);assert.equal(fresh.d.querySelector('.datePlan').hidden,true);fresh.close()}
+ assert.equal((await persistedCards(beforeChatId))[0].card.status,'cancelled');assert.deepEqual(await invariants(),original);
+ console.log('PASS recipient cancellation of a pre-chat agreement clears both plan strips and survives fresh reloads');
  assert.equal(externalRequests,0);
  for(const f of [owner,peer,reopened])assert.ok(f.calls.every(call=>call.method==='GET'||call.url==='/api/datecards'||call.url==='/api/connection'&&call.body.action==='message'),'no email, sharing, progress or unrelated writes were issued');
  console.log('PASS accepted before-chat pair shares and reloads plans independently of game progress while ordinary-chat gates, rewards and existing messages remain unchanged');
+ // Removing datecards from the inbox projection must not shift the ordinary
+ // message's storage index when the existing reaction control is used later.
+ owner.w.selectChempat(chatId);await owner.drain();
+ const normal=await owner.w.fetch('/api/connection',{method:'POST',headers:{'content-type':'application/json','x-chempat-member-id':ids.owner},body:JSON.stringify({action:'message',id:chatId,text:'Ordinary message after the removed cards'})});
+ assert.equal(normal.status,200);const ordinaryResult=await normal.json();
+ const rawBeforeReaction=await messages(chatId),rawIndex=rawBeforeReaction.findIndex(message=>message.text==='Ordinary message after the removed cards');
+ const projected=ordinaryResult.messages.find(message=>message.text==='Ordinary message after the removed cards');assert.ok(projected);assert.equal(projected.messageIndex,rawIndex);assert.ok(rawIndex>ordinaryResult.messages.indexOf(projected));
+ await owner.w.refreshLive(true);await owner.drain();
+ const shownIndex=owner.w.eval(`chatSelection().messages.findIndex(message=>message.text==='Ordinary message after the removed cards')`);assert.ok(shownIndex>=0);
+ await owner.w.reactChat(shownIndex,'like');await owner.drain();
+ const afterReaction=await messages(chatId);assert.equal(afterReaction[rawIndex].reactions.member,'like');assert.deepEqual(afterReaction.slice(0,rawIndex),rawBeforeReaction.slice(0,rawIndex),'the reaction leaves every earlier ordinary message and cancelled card unchanged');
+ assert.equal(owner.calls.at(-1).body.action,'react');assert.equal(owner.calls.at(-1).body.index,rawIndex);assert.equal(externalRequests,0);
+ console.log('PASS ordinary-message reactions retain the correct storage index after cancelled cards are removed from the visible inbox');
+
 }finally{
  for(const page of pages)page.close();
  await db.close();

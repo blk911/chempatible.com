@@ -30,7 +30,7 @@ const PAIR=`SELECT c.invitation_hash,c.messages,${PAIR_HASH} AS pair_hash,CASE W
  AND ${standing('sender')} AND ${standing('prospect')}
  AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=i.sender_member_id AND b.blocked_id=c.prospect_member_id) OR (b.blocked_id=i.sender_member_id AND b.blocker_id=c.prospect_member_id))
  AND NOT EXISTS(SELECT 1 FROM connection_visibility v WHERE v.invitation_hash=i.token_hash AND v.member_id IN(i.sender_member_id,c.prospect_member_id) AND (v.frozen_at IS NOT NULL OR v.trashed_at IS NOT NULL))`;
-const VIEW=`WITH eligible AS (${PAIR}) SELECT e.side,coalesce((SELECT jsonb_agg(item ORDER BY position) FROM jsonb_array_elements(e.messages) WITH ORDINALITY AS entry(item,position) WHERE item->>'type'='dateCard'),'[]'::jsonb) AS cards FROM eligible e`;
+const VIEW=`WITH eligible AS (${PAIR}) SELECT e.side,coalesce((SELECT jsonb_agg(item ORDER BY position) FROM jsonb_array_elements(e.messages) WITH ORDINALITY AS entry(item,position) WHERE item->>'type'='dateCard' AND item->'card'->>'status' IN ('pending','accepted')),'[]'::jsonb) AS cards FROM eligible e`;
 // Use the same ascending member-lock order as block/freeze/delete and existing
 // connection writers. A separate connection lock and later statement ensure a
 // fresh READ COMMITTED snapshot after every wait, with no read/replace race.
@@ -43,6 +43,8 @@ const CONNECTION_LOCK=`SELECT c.invitation_hash FROM invitations i JOIN connecti
 // version, $9 editable fields, $10 server-owned catalog titles. Receipts never expire or get evicted. The bound
 // per-card edit cap therefore cannot turn an old lost-response retry into a new
 // mutation. Fingerprints include the bound actor, connection and normalized data.
+// Cancellation has one reserved final receipt beyond the edit cap. Its terminal
+// tombstone prevents another append, while preserving every prior retry receipt.
 const WRITE=`WITH eligible AS (${PAIR}),items AS (
  SELECT e.side,entry.item,entry.position FROM eligible e CROSS JOIN LATERAL jsonb_array_elements(e.messages) WITH ORDINALITY AS entry(item,position)
 ),cards AS (SELECT * FROM items WHERE item->>'type'='dateCard'),receipts AS (
@@ -55,21 +57,25 @@ const WRITE=`WITH eligible AS (${PAIR}),items AS (
  WHEN $4='send' AND (SELECT count(*) FROM cards)>=${DATE_CARD_LIMITS.cards} THEN 'cardLimit'
  WHEN $4='send' AND (SELECT count(*) FROM cards WHERE item->>'by'=side AND item->>'at'>=to_char((now()-interval '1 hour') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS'))>=${DATE_CARD_LIMITS.hourly} THEN 'rateLimit'
  WHEN $4<>'send' AND NOT EXISTS(SELECT 1 FROM target) THEN 'missing'
+ WHEN $4<>'send' AND (SELECT item->'card'->>'status' FROM target) IS NOT DISTINCT FROM 'cancelled' THEN 'cancelled'
  WHEN $4<>'send' AND (SELECT item->'card'->>'version' FROM target) IS DISTINCT FROM $8::text THEN 'versionConflict'
+ WHEN $4<>'send' AND (SELECT coalesce(item->'card'->>'status','') FROM target) NOT IN ('pending','accepted') THEN 'versionConflict'
  WHEN $4='accept' AND (SELECT item->'card'->>'status' FROM target) IS DISTINCT FROM 'pending' THEN 'versionConflict'
  WHEN $4='accept' AND (SELECT item->'card'->>'proposer' FROM target) IS NOT DISTINCT FROM (SELECT side FROM eligible) THEN 'ownProposal'
- WHEN $4<>'send' AND (SELECT jsonb_array_length(coalesce(item->'_dateCardRequests','[]'::jsonb)) FROM target)>=${DATE_CARD_LIMITS.receipts} THEN 'editLimit'
+ WHEN $4 NOT IN ('send','cancel') AND (SELECT jsonb_array_length(coalesce(item->'_dateCardRequests','[]'::jsonb)) FROM target)>=${DATE_CARD_LIMITS.receipts} THEN 'editLimit'
  ELSE 'write' END AS result
 ),proposal AS (
- SELECT e.*,CASE WHEN $4='accept' THEN (SELECT item->'card' FROM target)||jsonb_build_object('status','accepted','version',$8::integer+1,'acceptedBy',e.side,'updatedAt',to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+ SELECT e.*,CASE WHEN $4='cancel' THEN (SELECT item->'card' FROM target)||jsonb_build_object('status','cancelled','version',$8::integer+1,'cancelledBy',e.side,'updatedAt',to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+ WHEN $4='accept' THEN (SELECT item->'card' FROM target)||jsonb_build_object('status','accepted','version',$8::integer+1,'acceptedBy',e.side,'updatedAt',to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
  ELSE $9::jsonb||jsonb_build_object('status','pending','version',CASE WHEN $4='send' THEN 1 ELSE $8::integer+1 END,'proposer',e.side,'updatedAt',to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) END AS card
  FROM eligible e
 ),envelope AS (
- SELECT p.*,concat('Date invitation ',CASE WHEN card->>'status'='accepted' THEN 'accepted' ELSE 'pending' END,': ',coalesce($10::jsonb->>(card->>'ideaId'),'Date'),
+ SELECT p.*,concat('Date invitation ',card->>'status',': ',coalesce($10::jsonb->>(card->>'ideaId'),'Date'),
   CASE WHEN coalesce(card->>'date','')<>'' THEN E'\\nWhen: '||(card->>'date') ELSE '' END,
   CASE WHEN coalesce(card->>'place','')<>'' THEN E'\\nWhere: '||(card->>'place') ELSE '' END,
   CASE WHEN coalesce(card->>'note','')<>'' THEN E'\\nNote: '||(card->>'note') ELSE '' END,
-  E'\\nProposed by: ',card->>'proposer',CASE WHEN card->>'status'='accepted' THEN E'\\nAccepted by: '||(card->>'acceptedBy') ELSE '' END) AS summary
+  E'\\nProposed by: ',card->>'proposer',CASE WHEN card->>'acceptedBy' IN ('member','prospect') THEN E'\\nAccepted by: '||(card->>'acceptedBy') ELSE '' END,
+  CASE WHEN card->>'status'='cancelled' THEN E'\\nCancelled by: '||(card->>'cancelledBy') ELSE '' END) AS summary
  FROM proposal p
 ),saved AS (
  UPDATE connection_state c SET messages=CASE WHEN $4='send' THEN c.messages||jsonb_build_array(jsonb_build_object(
@@ -106,7 +112,7 @@ async function handler(req){
   let raw;try{raw=await readProfileBody(req,16384)}catch(error){return reply({error:error.status===413?'Request too large.':'Invalid request.'},error.status||400)}
   const body=dateCardRequest(raw);if(!body)return reply({error:'Choose a date idea and valid details. Place is limited to 160 characters and note to 500.'},400);
   const params=[session,actor.id,body.id],digest=hash(JSON.stringify({actor:actor.id,...body}));
-  const fields=body.action==='accept'?{}:{ideaId:body.ideaId,date:body.date,place:body.place,note:body.note};
+  const fields=['send','change'].includes(body.action)?{ideaId:body.ideaId,date:body.date,place:body.place,note:body.note}:{};
   const results=await sql.transaction(tx=>[
    tx.query(MEMBER_LOCKS,params.slice(1)),tx.query(CONNECTION_LOCK,params.slice(1)),tx.query(AUTH,params.slice(0,2)),
    tx.query(WRITE,[...params,body.action,body.requestId,digest,body.cardId||randomUUID(),body.version||0,JSON.stringify(fields),JSON.stringify(DATE_CARD_TITLES)])
@@ -114,7 +120,10 @@ async function handler(req){
   if(!results[2].length)return sessionChanged();
   const decision=results[3][0];
   if(!decision||decision.result==='unavailable')return reply({error:'This connection is unavailable.'},404);
-  if(decision.result==='missing')return reply({error:'This date card is no longer available.'},404);
+  if(['missing','cancelled'].includes(decision.result)){
+   const data=await view(sql,params);
+   return data?reply({...data,error:decision.result==='cancelled'?'This date invitation was cancelled.':'This date card is no longer available.',dateCardConflict:true},409):reply({error:'This connection is unavailable.'},404);
+  }
   if(decision.result==='requestConflict')return reply({error:'That request was already used for different details. Reload the date card before trying again.',dateCardConflict:true},409);
   if(decision.result==='ownProposal')return reply({error:'The other person needs to accept your proposal.',dateCardConflict:true},409);
   if(decision.result==='versionConflict')return reply({error:'This date card changed. Reload it and review the latest proposal.',dateCardConflict:true},409);

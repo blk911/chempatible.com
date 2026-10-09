@@ -20,8 +20,8 @@ function field(value,max,{multiline=false}={}){
  return value.trim();
 }
 export function dateCardRequest(body){
- if(!body||typeof body!=='object'||Array.isArray(body)||!['send','change','accept'].includes(body.action)||!validConnectionId(body.id)||!validDateCardId(body.requestId))return null;
- const {action,id,requestId}=body,editing=action!=='accept';
+ if(!body||typeof body!=='object'||Array.isArray(body)||!['send','change','accept','cancel'].includes(body.action)||!validConnectionId(body.id)||!validDateCardId(body.requestId))return null;
+ const {action,id,requestId}=body,editing=action==='send'||action==='change';
  const allowed=['action','id','requestId',...(action==='send'?[]:['cardId','version']),...(editing?['ideaId','date','place','note']:[])];
  if(Object.keys(body).some(key=>!allowed.includes(key)))return null;
  const result={action,id,requestId};
@@ -41,4 +41,15 @@ export function projectDateCardMessage(message){
  const {ideaId,date,place,note,status,version,proposer,updatedAt,acceptedBy}=message.card;
  if(!DATE_CARD_IDEAS.includes(ideaId)||!['pending','accepted'].includes(status)||!Number.isInteger(version)||version<1||!['member','prospect'].includes(proposer))return null;
  return {type:'dateCard',id:message.id,by:message.by,at:message.at,...(typeof message.text==='string'?{text:message.text}:{}),card:{ideaId,date,place,note,status,version,proposer,updatedAt,...(status==='accepted'&&['member','prospect'].includes(acceptedBy)?{acceptedBy}:{})}};
+}
+// Normal chat shares the same stored stream. Hide tombstones and internal date
+// receipts there too, without changing ordinary messages or their reaction slot.
+export function projectConnectionMessages(messages){
+ const visible=[];
+ for(const [index,message] of (messages||[]).entries()){
+  const item=message?.type==='dateCard'?projectDateCardMessage(message):message;
+  if(message?.type==='dateCard'&&!item)continue;
+  visible.push(item&&typeof item==='object'&&(index!==visible.length||Object.hasOwn(item,'messageIndex'))?{...item,messageIndex:index}:item);
+ }
+ return visible;
 }

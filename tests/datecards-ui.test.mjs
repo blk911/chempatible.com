@@ -15,10 +15,11 @@ const flush=async()=>{await new Promise(resolve=>setImmediate(resolve));await ne
 const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolve}};
 const card=(overrides={})=>({type:'dateCard',id:'00000000-0000-4000-8000-000000000001',by:'member',at:'2026-10-09T10:00:00.000Z',card:{ideaId:'dinner',date:'2026-11-04T19:30',place:'A little café',note:'Want to go together?',status:'pending',version:1,proposer:'member',updatedAt:'2026-10-09T10:00:00.000Z',...overrides}});
 function serverFixture(){return {cards:[],calls:[],receipts:new Map(),intercept:null,lose:false,fail:false}}
+const activeCards=server=>server.cards.filter(message=>message.card.status!=='cancelled');
 async function fixture({server=serverFixture(),role='member',status='chat',messages=[],name='Riley',selected=a}={}){
  const dom=new JSDOM(html,{url:'https://datecards.example.test/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
  let currentRole=role;const timers=[];w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
- const rows=()=>[a,b].map(id=>({id,kind:'vibe',channel:'email',side:currentRole,status,claimed:true,location:'active',sender_name:currentRole==='member'?'Taylor':name,prospect_name:currentRole==='member'?name:'Taylor',sender_answers:Array(5).fill(0),prospect_answers:Array(5).fill(0),own_answers:Array(5).fill(0),messages:[...messages,...server.cards]}));
+ const rows=()=>[a,b].map(id=>({id,kind:'vibe',channel:'email',side:currentRole,status,claimed:true,location:'active',sender_name:currentRole==='member'?'Taylor':name,prospect_name:currentRole==='member'?name:'Taylor',sender_answers:Array(5).fill(0),prospect_answers:Array(5).fill(0),own_answers:Array(5).fill(0),messages:[...messages,...activeCards(server)]}));
  w.fetch=async(url,options={})=>{
   const body=options.body?JSON.parse(options.body):null,account=options.headers?.['x-chempat-member-id'];
   if(url==='/api/connection?inbox=1')return response({connections:rows()});
@@ -30,15 +31,15 @@ async function fixture({server=serverFixture(),role='member',status='chat',messa
   if(!url.startsWith('/api/datecards'))return response({},401);
   const call={url,body,options,role:currentRole};server.calls.push(call);assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');assert.equal(account,currentRole);
   const intercepted=server.intercept?.(call);if(intercepted)return await intercepted;
-  if(!body)return response({cards:server.cards,side:currentRole});
+  if(!body)return response({cards:activeCards(server),side:currentRole});
   if(server.fail)return response({error:'A small hiccup. Try again.'},503);
   if(!server.receipts.has(body.requestId)){
    if(body.action==='send')server.cards.push({...card(),id:body.requestId,by:currentRole,card:{...card().card,ideaId:body.ideaId,date:body.date,place:body.place,note:body.note,proposer:currentRole}});
-   else{const message=server.cards.find(message=>message.id===body.cardId);if(message.card.version!==body.version)return response({error:'Datecard changed.',dateCardConflict:true},409);if(body.action==='accept'){assert.notEqual(message.card.proposer,currentRole);message.card.status='accepted';message.card.acceptedBy=currentRole}else{Object.assign(message.card,{ideaId:body.ideaId,date:body.date,place:body.place,note:body.note,status:'pending',proposer:currentRole});delete message.card.acceptedBy}message.card.version++;message.card.updatedAt=new Date().toISOString()}
+   else{const message=server.cards.find(message=>message.id===body.cardId);if(!message||message.card.status==='cancelled'||message.card.version!==body.version)return response({error:'Datecard changed.',dateCardConflict:true},409);if(body.action==='accept'){assert.notEqual(message.card.proposer,currentRole);message.card.status='accepted';message.card.acceptedBy=currentRole}else if(body.action==='cancel'){message.card.status='cancelled';message.card.cancelledBy=currentRole;delete message.card.acceptedBy}else{Object.assign(message.card,{ideaId:body.ideaId,date:body.date,place:body.place,note:body.note,status:'pending',proposer:currentRole});delete message.card.acceptedBy}message.card.version++;message.card.updatedAt=new Date().toISOString()}
    server.receipts.set(body.requestId,clone(body));
   }
   if(server.lose){server.lose=false;throw Error('Connection interrupted.')}
-  return response({cards:server.cards,side:currentRole});
+  return response({cards:activeCards(server),side:currentRole});
  };
  const script=d.createElement('script');script.textContent=source;d.body.append(script);
  const mount=(nextRole=role,nextStatus=status)=>{currentRole=nextRole;status=nextStatus;const own={id:nextRole,name:'Taylor',contact:`${nextRole}@example.test`,photo:'',answers:Array(5).fill(0),verified:true};w.eval(`s={...blank(),view:'dashboard',member:${JSON.stringify(own)},account:${JSON.stringify(own)},memberId:${JSON.stringify(nextRole)},liveMember:true,inbox:${JSON.stringify(rows())},selectedChempat:'${selected}',phase:${JSON.stringify(status)}};gamePieceAutoUsed=true;render()`)};
@@ -158,4 +159,143 @@ test('an ambiguous change remains safely retryable after polling its committed n
 
 test('private-save fallback is truthfully visit-only and does not persist note or place',async()=>{
  const f=await fixture();try{Object.defineProperty(f.w.Storage.prototype,'setItem',{value(){throw Error('Storage unavailable')}});await open(f,'picnic');write(f,'place','Private place');write(f,'note','Private note');f.w.saveDateIdea();assert.match(f.d.querySelector('#dateModalStatus').textContent,/for this visit/);assert.match(f.d.querySelector('.datePrivateHelp').textContent,/for this visit only/);assert.equal(f.posts().length,0)}finally{f.close()}
+});
+
+const cancelSelector=id=>`[data-date-focus="cancel:${id}"]`;
+async function cancel(f,id){const button=f.d.querySelector(cancelSelector(id));assert.ok(button,'the shared card has a Cancel pill');assert.equal(button.disabled,false);assert.match(button.textContent,/cancel/i);button.click();await flush()}
+const visibleCard=(f,id)=>f.d.querySelector(`[data-date-card="${id}"]`);
+
+test('either participant can cancel pending or agreed plans without disturbing other cards, chat or saved ideas',async()=>{
+ for(const status of ['pending','accepted'])for(const role of ['member','prospect']){
+  const target=card({status,...(status==='accepted'?{acceptedBy:'prospect'}:{})}),other={...card({ideaId:'museum',note:'Keep this separate invitation'}),id:'00000000-0000-4000-8000-000000000002'},server=serverFixture();server.cards=[target,other];
+  const ordinary=[{by:'prospect',text:'An ordinary message stays here',photo:'data:image/jpeg;base64,AA=='}],actor=await fixture({server,role,messages:ordinary}),peer=await fixture({server,role:role==='member'?'prospect':'member',messages:ordinary});
+  const reloaded=[];
+  try{
+   await open(actor,'movie');actor.w.saveDateIdea();actor.w.closeInvite();const saved=actor.w.localStorage.getItem('duhwild.date-ideas.'+role);
+   const input=actor.d.querySelector('#message');input.value='Unsent chat stays private';input.dispatchEvent(new actor.w.Event('input'));input.focus();input.setSelectionRange(6,10);
+   const unchanged=clone(other);assert.equal(actor.d.querySelector('.datePlan').hidden,status!=='accepted');
+   await cancel(actor,target.id);
+   const body=server.calls.filter(call=>call.body).at(-1).body;
+   assert.deepEqual(Object.keys(body).sort(),['action','cardId','id','requestId','version']);assert.equal(body.action,'cancel');assert.equal(body.cardId,target.id);assert.equal(body.id,a);assert.equal(body.version,1);assert.match(body.requestId,/^[a-f0-9-]{36}$/);
+   assert.equal(target.card.status,'cancelled');assert.equal(target.card.version,2);assert.equal(server.cards.length,2,'the server retains the removed card');assert.deepEqual(other,unchanged);
+   assert.equal(visibleCard(actor,target.id),null);assert.ok(visibleCard(actor,other.id));assert.equal(actor.d.querySelector('.datePlan').hidden,true);
+   assert.equal(actor.d.querySelector('#message'),input);assert.equal(input.value,'Unsent chat stays private');assert.equal(actor.d.activeElement,input);assert.equal(input.selectionStart,6);assert.equal(input.selectionEnd,10);
+   assert.match(actor.d.querySelector('.dateMessages').textContent,/An ordinary message stays here/);assert.ok(actor.d.querySelector('.chatPhoto'));assert.equal(actor.w.localStorage.getItem('duhwild.date-ideas.'+role),saved);assert.equal(actor.d.querySelectorAll('.dateIdeaStrip .dateIdeaTile').length,4);
+   peer.w.refreshDateCards();await flush();assert.equal(visibleCard(peer,target.id),null);assert.ok(visibleCard(peer,other.id));assert.equal(peer.d.querySelector('.datePlan').hidden,true);
+   for(const nextRole of ['member','prospect']){const page=await fixture({server,role:nextRole,messages:ordinary});reloaded.push(page);assert.equal(visibleCard(page,target.id),null);assert.ok(visibleCard(page,other.id));assert.equal(page.d.querySelector('.datePlan').hidden,true)}
+   assert.equal(server.calls.filter(call=>call.body).length,1,'polling and reload do not replay the cancellation');
+  }finally{actor.close();peer.close();for(const page of reloaded)page.close()}
+ }
+});
+
+test('a completed cancellation cannot be resurrected by an older GET or stale inbox projection',async()=>{
+ const server=serverFixture();server.cards=[card({status:'accepted',acceptedBy:'prospect'})];const f=await fixture({server});try{
+  const id=server.cards[0].id,old=clone(server.cards),hold=deferred();server.intercept=call=>!call.body?hold.promise:null;
+  const reading=f.w.loadDateCards(a,true);await cancel(f,id);assert.equal(visibleCard(f,id),null);
+  hold.resolve(response({cards:old,side:'member'}));await reading;assert.equal(visibleCard(f,id),null);assert.equal(f.d.querySelector('.datePlan').hidden,true);
+  server.intercept=null;f.w.eval(`s.inbox.find(c=>c.id==='${a}').messages=${JSON.stringify(old)};render(true)`);await flush();assert.equal(visibleCard(f,id),null,'a retained inbox card must not resurrect a removed datecard');
+  await f.w.loadDateCards(a,true);f.w.eval('render(true)');assert.equal(visibleCard(f,id),null);assert.equal(f.d.querySelector('.datePlan').hidden,true);
+ }finally{f.close()}
+});
+
+test('peer cancellation while an edit draft is open prevents sending stale details',async()=>{
+ const server=serverFixture();server.cards=[card()];const owner=await fixture({server}),peer=await fixture({server,role:'prospect'});try{
+  const id=server.cards[0].id;await open(peer,'dinner',id);write(peer,'place','My unfinished change');await cancel(owner,id);
+  await peer.w.loadDateCards(a,true);assert.equal(visibleCard(peer,id),null);const modal=peer.d.querySelector('.dateModal');
+  if(modal){assert.match(modal.textContent,/cancelled|canceled|no longer available/i);assert.equal(peer.d.querySelector('[data-date-focus="send"]').disabled,true)}
+  const count=server.calls.filter(call=>call.body).length;await peer.w.submitDateCard();assert.equal(server.calls.filter(call=>call.body).length,count);assert.equal(server.cards[0].card.status,'cancelled');
+  peer.w.closeInvite();await open(peer,'movie');write(peer,'note','A brand-new invitation is still possible');await peer.w.submitDateCard();assert.equal(activeCards(server).length,1);assert.equal(server.cards[0].card.status,'cancelled');
+ }finally{owner.close();peer.close()}
+});
+
+test('cancellation double clicks send one request and hold every card action while pending',async()=>{
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server,role:'prospect'});try{
+  const id=server.cards[0].id,hold=deferred();server.intercept=call=>call.body?hold.promise:null;
+  const first=f.w.cancelDateCard(a,id);await f.w.cancelDateCard(a,id);assert.equal(f.posts().length,1);assert.equal(f.posts()[0].body.action,'cancel');
+  for(const button of f.d.querySelectorAll('.sharedDateCard .dateCardActions button'))assert.equal(button.disabled,true,'all actions are disabled while cancel is pending');
+  server.cards[0].card.status='cancelled';server.cards[0].card.version=2;hold.resolve(response({cards:[],side:'prospect'}));await first;
+  assert.equal(visibleCard(f,id),null);assert.equal(f.w.eval(`datePairs.get('${a}').pending`),null);
+ }finally{f.close()}
+});
+
+test('lost cancellation responses can retry the identical request without duplicate mutation',async()=>{
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id;server.lose=true;await cancel(f,id);const first=f.posts().at(-1).body;
+  assert.equal(server.cards[0].card.status,'cancelled');assert.equal(server.cards[0].card.version,2);assert.match(f.d.querySelector('.dateStatus').textContent,/interrupted|could not|confirm|retry/i);
+  const retry=f.d.querySelector(cancelSelector(id))||f.d.querySelector('[data-date-focus^="retry-cancel:"]');assert.ok(retry,'uncertain cancellation remains visibly retryable');retry.click();await flush();
+  assert.deepEqual(f.posts().at(-1).body,first);assert.equal(server.cards[0].card.version,2);assert.equal(server.receipts.size,1);assert.equal(visibleCard(f,id),null);
+  await f.w.loadDateCards(a,true);assert.equal(visibleCard(f,id),null);
+ }finally{f.close()}
+});
+
+test('stale accept and edit responses learn cancellation without reviving a shared card',async()=>{
+ for(const action of ['accept','change']){
+  const server=serverFixture();server.cards=[card()];const owner=await fixture({server}),peer=await fixture({server,role:'prospect'});try{
+   const id=server.cards[0].id;if(action==='change'){await open(peer,'picnic',id);write(peer,'note','This edit is now stale')}
+   await cancel(owner,id);if(action==='accept')await peer.w.acceptDateCard(a,id);else await peer.w.submitDateCard();
+   assert.equal(server.cards[0].card.status,'cancelled');assert.equal(server.cards[0].card.version,2);assert.equal(visibleCard(peer,id),null);assert.equal(peer.d.querySelector('.datePlan').hidden,true);
+   const modal=peer.d.querySelector('.dateModal');if(modal)assert.equal(peer.d.querySelector('[data-date-focus="send"]').disabled,true);
+   await peer.w.loadDateCards(a,true);assert.equal(visibleCard(peer,id),null);
+  }finally{owner.close();peer.close()}
+ }
+});
+
+test('a stale cancellation refreshes newer details before an explicit new cancel',async()=>{
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id;server.cards[0].card={...server.cards[0].card,version:2,place:'Changed on another browser'};
+  await cancel(f,id);assert.equal(server.cards[0].card.status,'pending');assert.equal(visibleCard(f,id).dataset.dateVersion,'2');assert.match(visibleCard(f,id).textContent,/Changed on another browser/);
+  await cancel(f,id);assert.equal(f.posts().at(-1).body.version,2);assert.notEqual(f.posts()[0].body.requestId,f.posts()[1].body.requestId);assert.equal(server.cards[0].card.status,'cancelled');assert.equal(visibleCard(f,id),null);
+ }finally{f.close()}
+});
+
+test('cancel failures follow account and connection changes without replacing newer dialogs',async()=>{
+ for(const status of [401,403,404]){
+  const server=serverFixture();server.cards=[card()];const f=await fixture({server,messages:[{by:'prospect',text:'Ordinary conversation'}]});try{
+   const id=server.cards[0].id,input=f.d.querySelector('#message');input.value='My current chat draft';input.dispatchEvent(new f.w.Event('input'));input.focus();server.intercept=call=>call.body?response({error:'Datecards are unavailable.'},status):null;
+   await cancel(f,id);assert.equal(visibleCard(f,id),null);assert.equal(f.d.querySelector('#message'),input);assert.equal(input.value,'My current chat draft');assert.match(f.d.querySelector('.dateMessages').textContent,/Ordinary conversation/);
+  }finally{f.close()}
+ }
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id,hold=deferred();server.intercept=call=>call.body?hold.promise:null;const cancelling=f.w.cancelDateCard(a,id);
+  f.w.selectChempat(b);await flush();f.w.openDateIdea(b,'museum');await flush();write(f,'note','Keep this newer dialog');
+  server.cards[0].card.status='cancelled';hold.resolve(response({cards:[],side:'member'}));await cancelling;
+  assert.equal(f.w.eval('s.selectedChempat'),b);assert.equal(f.d.querySelector('#dateNote').value,'Keep this newer dialog');assert.equal(f.w.eval('currentDateDialog().connectionId'),b);
+  f.w.closeInvite();server.intercept=null;server.cards=[card()];f.mount('member');await flush();const swapped=deferred();server.intercept=call=>call.body?swapped.promise:null;const prior=f.w.cancelDateCard(a,id);server.intercept=null;f.mount('prospect');await flush();
+  swapped.resolve(response({cards:[],side:'member'}));await prior;assert.equal(f.w.eval('activeMemberId()'),'prospect');assert.ok(visibleCard(f,id),'old-account completion does not erase the new account snapshot');
+ }finally{f.close()}
+});
+
+test('a fresh empty date snapshot remains authoritative after delayed stale inbox data',async()=>{
+ const f=await fixture();try{
+  assert.equal(f.w.eval(`datePairs.get('${a}').loaded`),true);assert.equal(f.d.querySelector('.sharedDateCard'),null);
+  const stale=card({status:'accepted',acceptedBy:'prospect'});f.w.eval(`s.inbox.find(c=>c.id==='${a}').messages=[${JSON.stringify(stale)}];render(true)`);await flush();
+  assert.equal(f.d.querySelector('.sharedDateCard'),null);assert.equal(f.d.querySelector('.datePlan').hidden,true);assert.equal(f.posts().length,0);
+ }finally{f.close()}
+});
+
+test('uncertain cancel keeps its original request and version after polling a newer proposal',async()=>{
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id;server.fail=true;await cancel(f,id);const first=clone(f.posts().at(-1).body);server.fail=false;
+  server.cards[0].card={...server.cards[0].card,version:2,place:'A newer proposal elsewhere'};await f.w.loadDateCards(a,true);
+  assert.equal(visibleCard(f,id).dataset.dateVersion,'2');assert.match(f.d.querySelector(cancelSelector(id)).textContent,/Retry cancel/);
+  await cancel(f,id);assert.deepEqual(f.posts().at(-1).body,first);assert.equal(server.cards[0].card.status,'pending');assert.equal(server.cards[0].card.place,'A newer proposal elsewhere');
+  await cancel(f,id);assert.equal(f.posts().at(-1).body.version,2);assert.notEqual(f.posts().at(-1).body.requestId,first.requestId);assert.equal(visibleCard(f,id),null);
+ }finally{f.close()}
+});
+
+test('polling a committed cancellation clears an uncertain retry without disturbing a fresh draft',async()=>{
+ const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id;await open(f,'movie');write(f,'note','Keep this independent draft');f.w.saveDateIdea();f.w.closeInvite();
+  server.lose=true;await cancel(f,id);assert.match(f.d.querySelector('.dateStatus').textContent,/Retry cancel/);const count=f.posts().length;
+  await f.w.loadDateCards(a,true);assert.equal(visibleCard(f,id),null);assert.doesNotMatch(f.d.querySelector('.dateStatus').textContent,/interrupted|Retry cancel/);assert.equal(f.w.eval(`datePairs.get('${a}').attempts.size`),0);assert.equal(f.posts().length,count);
+  await open(f,'movie');assert.equal(f.d.querySelector('#dateNote').value,'Keep this independent draft');assert.ok(f.w.eval("dateSaved.has('movie')"));
+ }finally{f.close()}
+});
+
+test('keyboard cancellation restores a usable focus target on success and uncertain retry',async()=>{
+ for(const lost of [false,true]){const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
+  const id=server.cards[0].id,button=f.d.querySelector(cancelSelector(id));button.focus();server.lose=lost;await cancel(f,id);
+  const focused=f.d.activeElement;assert.notEqual(focused,f.d.body);assert.ok(f.d.contains(focused));assert.equal(focused.disabled,false);
+  if(lost){assert.equal(focused.dataset.dateFocus,'cancel:'+id);assert.match(focused.textContent,/Retry cancel/)}else assert.ok(focused.matches('.dateIdeaTile'));
+ }finally{f.close()}}
 });

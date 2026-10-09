@@ -5,6 +5,7 @@ import {pairBlocked,lockedWrite,targetAllowed} from './_connections.mjs';
 import {reinvite} from './_reinvite.mjs';
 import {reviewGate} from './_review.mjs';
 import {currentConnectionIdentities} from './_connection-identity.mjs';
+import {projectConnectionMessages} from './_datecards.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
@@ -42,7 +43,7 @@ const canChat=row=>!row.pair_blocked&&['chat','secondResults','email','tests'].i
 // The old secondResults state already enabled chat. New rounds use an internal
 // marker so upgrading preserves access to existing conversations.
 const publicStatus=row=>row.pair_blocked?'ended':row.status==='nextResults'?'secondResults':row.status==='secondResults'?'chat':row.status;
-function prospectView(row){if(friend(row))return {id:row.token_hash,kind:'friend',invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers:[],recipientName:'',prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:[],prospectPhone:null,prospectEmail:null,status:publicStatus(row),memberSecondDone:false,prospectSecondDone:false,messages:canChat(row)?row.messages:[]};const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:row.sender_answers.length===10,prospectSecondDone:row.prospect_answers.length===10,messages:canChat(row)?row.messages:[]}}
+function prospectView(row){if(friend(row))return {id:row.token_hash,kind:'friend',invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers:[],recipientName:'',prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:[],prospectPhone:null,prospectEmail:null,status:publicStatus(row),memberSecondDone:false,prospectSecondDone:false,messages:canChat(row)?projectConnectionMessages(row.messages):[]};const answers=closed(row)||row.status==='invited'?[]:allRevealed(row)?row.sender_answers:row.sender_answers.slice(0,5);return {id:row.token_hash,invitedAt:row.created_at||null,side:'prospect',name:row.sender_name,photo:row.sender_photo,answers,recipientName:row.recipient_name,prospectName:row.prospect_name,prospectPhoto:row.prospect_photo,prospectAnswers:closed(row)?[]:row.prospect_answers,prospectPhone:null,prospectEmail:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:row.sender_answers.length===10,prospectSecondDone:row.prospect_answers.length===10,messages:canChat(row)?projectConnectionMessages(row.messages):[]}}
 function inboxView(row,side){if(friend(row)){const view=prospectView(row);return {id:row.id||row.token_hash,kind:'friend',channel:'friend',invitedAt:row.created_at||null,side,recipient_name:side==='member'?row.recipient_name:'',recipient_email:null,claimed:!!row.prospect_member_id,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:[],prospect_phone:null,prospect_email:null,status:publicStatus(row),memberSecondDone:false,prospectSecondDone:false,own_answers:[],messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:[]}: {})}}const view=prospectView(row),full=allRevealed(row);return {id:row.id||row.token_hash,invitedAt:row.created_at||null,side,recipient_name:row.recipient_name,recipient_email:null,channel:row.channel,claimed:!!row.claimed,prospect_name:row.prospect_name,prospect_photo:row.prospect_photo,prospect_answers:closed(row)?[]:(row.prospect_answers||[]).slice(0,full?10:5),prospect_phone:null,prospect_email:shared(row)?row.prospect_email:null,status:publicStatus(row),memberSecondDone:view.memberSecondDone,prospectSecondDone:view.prospectSecondDone,own_answers:closed(row)?[]:side==='prospect'?row.prospect_answers:row.sender_answers,messages:view.messages,...(side==='prospect'?{...view,sender_name:row.sender_name,sender_photo:row.sender_photo,sender_answers:view.answers}: {})}}
 function historyAction(row){
  if(row.blocked_by_me)return 'block';
@@ -320,14 +321,14 @@ async function handler(req){
     const index=body.index,reaction=body.reaction;
     if(!Number.isInteger(index)||index<0||index>=1000||!['like','dislike',null].includes(reaction))return reply({error:'Choose a message reaction.'},400);
     const rows=await lockedWrite(sql,id,actor,tx=>tx`UPDATE connection_state SET messages=jsonb_set(messages,ARRAY[${String(index)}]::text[],(messages->${index}::int) || jsonb_build_object('reactions',coalesce(messages->${index}::int->'reactions','{}'::jsonb) || jsonb_build_object(${by}::text,${reaction}::text)),false),updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') AND jsonb_array_length(messages)>${index} RETURNING messages`);
-    return rows[0]?reply({messages:rows[0].messages}):reply({error:'Message no longer available.'},409);
+    return rows[0]?reply({messages:projectConnectionMessages(rows[0].messages)}):reply({error:'Message no longer available.'},409);
    }
    const message=String(body.text||'').trim(),photo=body.photo||null;
    if(message.length>500||photo&&!validPhoto(photo)||!message&&!photo)return reply({error:'Send a message under 500 characters or a photo.'},400);
    const item={by,text:message,at:new Date().toISOString(),...(photo?{photo}:{})};
    const rows=await lockedWrite(sql,id,actor,tx=>tx`UPDATE connection_state SET messages=messages || ${JSON.stringify([item])}::jsonb,updated_at=now() WHERE invitation_hash=${id} AND status IN ('chat','secondResults','email','tests') RETURNING messages`);
    if(rows[0])await ops.log(sql,'message',{member:actor,connection:id,detail:{by,length:message.length,photo:!!photo}});
-   return rows[0]?reply({messages:rows[0].messages}):reply({error:'Chat is not open yet.'},409);
+   return rows[0]?reply({messages:projectConnectionMessages(rows[0].messages)}):reply({error:'Chat is not open yet.'},409);
   }
   if(body.action==='unmatch'||body.action==='report'){
    const who=await participant(sql,body,req,{history:true});if(!who)return reply({error:'Connection not found.'},404);
