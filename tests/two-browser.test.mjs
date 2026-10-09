@@ -14,10 +14,11 @@ function page(role=null,url='https://chempatible.com/'){
  const d=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true}),w=d.window;
  let session=role;
  w.fetch=async(url,opt={})=>{
-  const u=new URL(url,w.location.href),b=opt.body?JSON.parse(opt.body):{};calls.push({role:session,path:u.pathname,...b});lastAction=b;
+  const u=new URL(url,w.location.href),b=opt.body?JSON.parse(opt.body):{};calls.push({role:session,path:u.pathname,...b});if(opt.method==='POST')lastAction=b;
   const connection=b.id===outgoingId?outgoing:state;
   let data={},status=200,own=session==='sender'?sender:session==='receiver'?receiver:null;
-  if(u.pathname==='/api/member'){
+  if(u.pathname==='/api/datecards'){data={cards:[],side:session==='receiver'?'prospect':'member'};}
+  else if(u.pathname==='/api/member'){
    if(!opt.method){if(own)data={member:own};else status=401;}
    else if(b.action==='code_start')data={ok:true};
    else if(b.action==='code_verify'){if(b.code!=='123456'){status=400;data={error:'Code expired or incorrect.'}}else{const m=b.email===sender.contact?sender:receiver?.contact===b.email?receiver:null;if(m){m.verified=true;session=m===sender?'sender':'receiver'}data={existing:!!m,member:m}}}

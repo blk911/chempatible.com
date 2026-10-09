@@ -65,3 +65,6 @@
 !/api/member-profile.mjs
 !/api/_member-profile.mjs
 !/api/_connection-identity.mjs
+
+!/api/datecards.mjs
+!/api/_datecards.mjs
