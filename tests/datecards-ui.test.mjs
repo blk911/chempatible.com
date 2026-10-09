@@ -44,7 +44,16 @@ async function fixture({server=serverFixture(),role='member',status='chat',messa
  const mount=(nextRole=role,nextStatus=status)=>{currentRole=nextRole;status=nextStatus;const own={id:nextRole,name:'Taylor',contact:`${nextRole}@example.test`,photo:'',answers:Array(5).fill(0),verified:true};w.eval(`s={...blank(),view:'dashboard',member:${JSON.stringify(own)},account:${JSON.stringify(own)},memberId:${JSON.stringify(nextRole)},liveMember:true,inbox:${JSON.stringify(rows())},selectedChempat:'${selected}',phase:${JSON.stringify(status)}};gamePieceAutoUsed=true;render()`)};
  mount();await flush();return {w,d,server,mount,rows,timers,posts:()=>server.calls.filter(call=>call.body),close:()=>w.close()};
 }
-function write(f,key,text){const field=f.d.querySelector({date:'#dateWhen',place:'#datePlace',note:'#dateNote'}[key]);field.value=text;field.dispatchEvent(new f.w.Event('input',{bubbles:true}));return field}
+function write(f,key,text){
+ const field=f.d.querySelector({date:'#dateWhen',place:'#datePlace',note:'#dateNote'}[key]);
+ const set=(node,value)=>{node.value=value;node.dispatchEvent(new f.w.Event('input',{bubbles:true}));node.dispatchEvent(new f.w.Event('change',{bubbles:true}))};
+ if(key==='date'){
+  const [day,time]=text.split('T');set(field,day);
+  const [hour,minute]=time?.split(':')||[];
+  for(const [selector,value] of [['#dateHour',time?String(+hour%12||12):''],['#dateMinute',minute||''],['#datePeriod',time?(+hour<12?'AM':'PM'):'']])set(f.d.querySelector(selector),value);
+ }else set(field,text);
+ return field;
+}
 async function open(f,idea='dinner',cardId=''){f.w.openDateIdea(a,idea,cardId);await flush()}
 
 test('opening, browsing, Back and account-keyed private saving never send',async()=>{
@@ -80,7 +89,7 @@ test('date polling and modal close preserve normal message text, photo, DOM, cur
  const f=await fixture();try{
   f.w.eval(`chatDrafts.set('member:${a}',{text:'Unfinished hello',photo:'data:image/jpeg;base64,AA=='});render()`);await flush();const input=f.d.querySelector('#message');input.focus();input.setSelectionRange(3,8);const photo=f.d.querySelector('.chatDraft img');
   f.server.cards=[card()];await f.w.loadDateCards(a,true);assert.equal(f.d.querySelector('#message'),input);assert.equal(f.d.activeElement,input);assert.equal(input.selectionStart,3);assert.equal(input.selectionEnd,8);assert.equal(f.d.querySelector('.chatDraft img'),photo);
-  await open(f);write(f,'note','My invitation draft');const note=f.d.querySelector('#dateNote');note.focus();note.setSelectionRange(2,6);await f.w.loadDateCards(a,true);assert.equal(f.d.activeElement.id,'dateNote');assert.equal(f.d.activeElement.selectionStart,2);assert.equal(f.d.activeElement.selectionEnd,6);
+  await open(f);write(f,'note','My invitation draft');const note=f.d.querySelector('#dateNote');note.focus();note.setSelectionRange(2,6);await f.w.loadDateCards(a,true);assert.equal(f.d.querySelector('#dateNote'),note);assert.equal(f.d.activeElement.id,'dateNote');assert.equal(f.d.activeElement.selectionStart,2);assert.equal(f.d.activeElement.selectionEnd,6);
   f.w.dateBack();f.w.closeInvite();assert.equal(f.d.activeElement,input);assert.equal(input.value,'Unfinished hello');assert.equal(input.selectionStart,3);assert.equal(input.selectionEnd,8);assert.equal(f.d.querySelector('.chatDraft img'),photo);
  }finally{f.close()}
 });

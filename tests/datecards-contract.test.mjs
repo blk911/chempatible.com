@@ -111,6 +111,13 @@ const invariants=async()=>({
  ordinary:(await messages(chatId)).filter(message=>message.type!=='dateCard')
 });
 const input=(f,selector,value)=>{const node=f.d.querySelector(selector);assert.ok(node,selector+' exists');node.value=value;node.dispatchEvent(new f.w.Event('input',{bubbles:true}));return node};
+const inputWhen=(f,value)=>{
+ const [day,time]=value.split('T'),[hour,minute]=time?.split(':')||[];
+ input(f,'#dateWhen',day);
+ for(const [selector,part] of [['#dateHour',time?String(+hour%12||12):''],['#dateMinute',minute||''],['#datePeriod',time?(+hour<12?'AM':'PM'):'']]){
+  const node=input(f,selector,part);node.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+ }
+};
 const click=async(f,selector)=>{const node=f.d.querySelector(selector);assert.ok(node,selector+' exists');assert.equal(node.disabled,false,selector+' is enabled');node.click();await f.drain();return node};
 
 // The UI contract below intentionally uses rendered controls for consent, edits
@@ -130,7 +137,7 @@ try{
  assert.equal(datePosts(owner).length,0,'browsing date ideas sends nothing');
  await click(owner,'.datePicker [data-date-focus="idea:dinner"]');
  assert.match(owner.d.querySelector('.dateModal').textContent,/Morgan/);
- input(owner,'#dateWhen','2026-10-17T18:30');
+ inputWhen(owner,'2026-10-17T18:30');
  input(owner,'#datePlace','Our little neighborhood café');
  input(owner,'#dateNote','I will bring the terrible jokes.');
  await click(owner,'.dateModal [data-date-focus="save"]');
@@ -179,7 +186,7 @@ try{
  const older=await held.captured;assert.equal(older.body.cards[0].card.version,2);
  await click(peer,'[data-date-focus="change:'+cardId+'"]');
  assert.equal(peer.d.querySelector('#datePlace').value,'Our little neighborhood café');
- input(peer,'#dateWhen','2026-10-18T12:15');input(peer,'#datePlace','The courtyard café');input(peer,'#dateNote','Could we make it lunch instead?');
+ inputWhen(peer,'2026-10-18T12:15');input(peer,'#datePlace','The courtyard café');input(peer,'#dateNote','Could we make it lunch instead?');
  await click(peer,'.dateModal [data-date-focus="send"]');
  assert.equal(datePosts(peer).at(-1).body.action,'change');assert.equal(datePosts(peer).at(-1).body.version,2);
  let revised=(await persistedCards(chatId))[0];assert.equal(revised.card.version,3);assert.equal(revised.card.proposer,'prospect');assert.equal(revised.card.status,'pending');

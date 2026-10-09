@@ -811,7 +811,7 @@ function visibleModalControl(control){
  for(let parent=control.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS'&&!parent.open){const summary=[...parent.children].find(child=>child.tagName==='SUMMARY');if(!summary?.contains(control))return false}
  return true;
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&s.modal)closeInvite();if(e.key==='Tab'&&['discovery','reward','wildcard','gamePiece','end','datecard'].includes(s.modal)){const controls=[...document.querySelectorAll('.discoveryModal button:not(:disabled),.discoveryModal input:not(:disabled),.discoveryModal a[href],.rewardModal button:not(:disabled),.rewardModal input:not(:disabled),.rewardModal summary,.rewardModal video[controls],.wildcardModal button:not(:disabled),.wildcardModal textarea:not(:disabled),.gamePieceModal button:not(:disabled),.gamePieceModal video[controls],.endModal button:not(:disabled),.endModal input:not(:disabled),.endModal textarea:not(:disabled),.dateModal button:not(:disabled),.dateModal input:not(:disabled),.dateModal textarea:not(:disabled)')].filter(visibleModalControl);if(!controls.length)return;const first=controls[0],last=controls.at(-1);if(e.shiftKey&&(document.activeElement===first||['wildcard','gamePiece','end','datecard'].includes(s.modal)&&!controls.includes(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&s.modal)closeInvite();if(e.key==='Tab'&&['discovery','reward','wildcard','gamePiece','end','datecard'].includes(s.modal)){const controls=[...document.querySelectorAll('.discoveryModal button:not(:disabled),.discoveryModal input:not(:disabled),.discoveryModal a[href],.rewardModal button:not(:disabled),.rewardModal input:not(:disabled),.rewardModal summary,.rewardModal video[controls],.wildcardModal button:not(:disabled),.wildcardModal textarea:not(:disabled),.gamePieceModal button:not(:disabled),.gamePieceModal video[controls],.endModal button:not(:disabled),.endModal input:not(:disabled),.endModal textarea:not(:disabled),.dateModal button:not(:disabled),.dateModal input:not(:disabled),.dateModal select:not(:disabled),.dateModal textarea:not(:disabled)')].filter(visibleModalControl);if(!controls.length)return;const first=controls[0],last=controls.at(-1);if(e.shiftKey&&(document.activeElement===first||['wildcard','gamePiece','end','datecard'].includes(s.modal)&&!controls.includes(document.activeElement))){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}});
 // Optional discovery games are scoped to an authenticated owner and one active
 // Vibe connection. Private drafts/results never enter sessionStorage or chat.
 let discoveryOwner=null,discoveryAccount='',discoveryPairs=new Map(),discoveryDrafts=new Map(),discoveryExpandedPieces=new Set(),discoveryDraftEpoch=0,discoveryPieces=null,discoveryPiecesRequest=null,discoveryPiecesError='',discoveryPiecesRevision=0,discoveryDialog=null;
@@ -1432,7 +1432,7 @@ function paintDateCards(){
   const plan=region.querySelector('.datePlan'),content=datePlanHTML(c);plan.hidden=!content;if(plan.innerHTML!==content)plan.innerHTML=content;
   const status=region.querySelector('.dateStatus');status.innerHTML=dateStatusHTML(c);
  }
- if(s.modal==='datecard'&&!currentDateDialog()){changeModal('');renderModal()}
+ if(s.modal==='datecard'&&!currentDateDialog()){changeModal('');renderModal()}else if(s.modal==='datecard')renderDateModal();
 }
 function syncDateUI(){syncDateOwner();paintDateCards();const c=dateConnection();if(document.querySelector('[data-date-connection]')&&c)loadDateCards(c.id)}
 async function dateAPI(url,options){
@@ -1466,21 +1466,85 @@ function beginDateDialog(id,screen,ideaId='',cardId=''){
 function openDateChooser(id=s.selectedChempat,cardId=''){beginDateDialog(id,'ideas','',cardId)}
 function openDateIdea(id,ideaId,cardId=''){if(dateIdea(ideaId))beginDateDialog(id,'invite',ideaId,cardId)}
 function dateBack(){const d=currentDateDialog();if(!d)return;d.screen='ideas';d.error='';renderDateModal('heading')}
-function updateDateDraft(key,value){const d=currentDateDialog();if(!d||!['date','place','note'].includes(key)||dateEntry(dateConnection(d.connectionId)).pending||d.draft.attempt?.uncertain)return;d.draft[key]=value;d.draft.attempt=null;d.error=''}
+// Keep date and time parts independently, including unfinished choices. A blank
+// clock means a date-only plan; no time zone conversion or default time is used.
+function dateWhenParts(value=''){
+ const match=/^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(value);
+ return {day:match?.[1]||'',hour:match?.[2]!==undefined?String(+match[2]%12||12):'',minute:match?.[3]||'',period:match?.[2]!==undefined?(+match[2]<12?'AM':'PM'):''};
+}
+function dateWhenValue(parts){
+ const hasTime=!!(parts.hour||parts.minute||parts.period);
+ if(!hasTime)return parts.day||'';
+ if(!parts.day||!/^(?:[1-9]|1[0-2])$/.test(parts.hour)||!/^[0-5]\d$/.test(parts.minute)||!['AM','PM'].includes(parts.period))return null;
+ const hour=+parts.hour%12+(parts.period==='PM'?12:0);
+ return `${parts.day}T${String(hour).padStart(2,'0')}:${parts.minute}`;
+}
+function editableDateDraft(){const d=currentDateDialog();return d&&d.screen==='invite'&&!dateEntry(dateConnection(d.connectionId)).pending&&!d.draft.attempt?.uncertain?d:null}
+function updateDateDraft(key,value){const d=editableDateDraft();if(!d||!['date','place','note'].includes(key))return;d.draft[key]=value;if(key==='date')d.draft.when=dateWhenParts(value);d.draft.attempt=null;d.error=''}
+function updateDateWhenPart(part,value){
+ const d=editableDateDraft();if(!d||!['day','hour','minute','period'].includes(part))return;
+ const parts=d.draft.when||(d.draft.when=dateWhenParts(d.draft.date));parts[part]=value;
+ // The partial parts remain the editor source of truth. Submission validates
+ // them before using draft.date, so a partial clock cannot become date-only.
+ d.draft.date=dateWhenValue(parts)??parts.day;d.draft.attempt=null;d.error='';renderDateModal();
+}
+function clearDateTime(){
+ const d=editableDateDraft();if(!d)return;const parts=d.draft.when||(d.draft.when=dateWhenParts(d.draft.date));
+ Object.assign(parts,{hour:'',minute:'',period:''});d.draft.date=parts.day;d.draft.attempt=null;d.error='';
+ for(const id of ['dateHour','dateMinute','datePeriod'])if($(id))$(id).value='';renderDateModal();
+}
 function saveDateIdea(){const d=currentDateDialog();if(!d)return;dateSaved.add(d.draft.ideaId);if(dateSaveMode==='device')try{localStorage.setItem(`duhwild.date-ideas.${activeMemberId()}`,JSON.stringify([...dateSaved]))}catch{dateSaveMode='visit'}d.notice=dateSaveMode==='device'?'Saved privately on this device.':'Saved privately for this visit.';renderDateModal();const region=document.querySelector('.dateIdeas');if(region){const c=dateConnection(d.connectionId);region.outerHTML=renderDateIdeas(c)}}
+function renderDateWhen(draft){
+ const parts=draft.when||(draft.when=dateWhenParts(draft.date));
+ const options=(values,current)=>values.map(value=>`<option value="${value}" ${value===current?'selected':''}>${value}</option>`).join('');
+ return `<label for="dateWhen">When <span>optional · local time, as entered</span><input id="dateWhen" data-date-focus="date" type="date" min="1900-01-01" max="9999-12-31" value="${esc(parts.day)}" oninput="updateDateWhenPart('day',this.value)" onchange="updateDateWhenPart('day',this.value)"></label><fieldset class="dateTimeFields"><legend>Time <span>optional</span></legend><div class="dateTimeParts"><label for="dateHour">Hour<select id="dateHour" data-date-focus="hour" oninput="updateDateWhenPart('hour',this.value)" onchange="updateDateWhenPart('hour',this.value)"><option value="">Hour</option>${options(Array.from({length:12},(_,i)=>String(i+1)),parts.hour)}</select></label><label for="dateMinute">Minute<select id="dateMinute" data-date-focus="minute" oninput="updateDateWhenPart('minute',this.value)" onchange="updateDateWhenPart('minute',this.value)"><option value="">Minute</option>${options(Array.from({length:60},(_,i)=>String(i).padStart(2,'0')),parts.minute)}</select></label><label for="datePeriod">AM / PM<select id="datePeriod" data-date-focus="period" oninput="updateDateWhenPart('period',this.value)" onchange="updateDateWhenPart('period',this.value)"><option value="">AM / PM</option>${options(['AM','PM'],parts.period)}</select></label></div><div class="dateTimeHelp"><small>Leave time blank to choose the day only.</small>${dateButton('Clear time','clearDateTime()',{key:'clear-time'})}</div></fieldset>`;
+}
+function patchDateModal(modal,d,c,entry){
+ const draft=d.draft,message=d.cardId&&dateFindMessage(c,d.cardId),conflict=!!message&&message.card.version!==draft.version&&!draft.attempt?.uncertain,busy=!!entry.pending,locked=busy||!!draft.attempt?.uncertain;
+ const text=(selector,value)=>{const node=modal.querySelector(selector);if(node&&node.textContent!==value)node.textContent=value};
+ const disable=(selector,value)=>{for(const node of modal.querySelectorAll(selector))if(node.disabled!==value)node.disabled=value};
+ const hide=(selector,value)=>{const node=modal.querySelector(selector);if(node&&node.hidden!==value)node.hidden=value};
+ const scroll=modal.scrollTop;
+ text('#dateModalStatus',busy?'Sending your datecard…':d.notice);text('#dateModalError',d.error||entry.error);
+ disable('.dateInviteFields input,.dateInviteFields select,.dateInviteFields textarea,[data-date-focus="clear-time"]',locked);
+ disable('[data-date-focus="back"],[data-date-focus="latest"]',busy);disable('[data-date-focus="send"]',busy||conflict);
+ hide('#dateConflict',!conflict);hide('#dateRetryHelp',!draft.attempt?.uncertain);
+ text('[data-date-focus="send"]',`${draft.attempt?.uncertain?'Retry send':d.cardId?'Send change':'Send'} to ${c.name}`);
+ text('[data-date-focus="save"]',dateSaved.has(draft.ideaId)?'Idea saved':'Save idea');
+ text('#dateShareHelp',`Send shares this datecard with ${c.name}. Save idea is private, ${dateSaveMode==='device'?'on this device only':'for this visit only'}.`);
+ if(modal.scrollTop!==scroll)modal.scrollTop=scroll;
+}
 function renderDateModal(focusKey){
  const d=currentDateDialog();if(!d){if(s.modal==='datecard'){changeModal('');$('modalHost').innerHTML=''}return}
- const c=dateConnection(d.connectionId),entry=dateEntry(c),draft=d.draft,idea=dateIdea(draft.ideaId),message=d.cardId&&dateFindMessage(c,d.cardId),conflict=!!message&&message.card.version!==draft.version&&!draft.attempt?.uncertain,busy=!!entry.pending,locked=busy||!!draft.attempt?.uncertain;
+ const c=dateConnection(d.connectionId),entry=dateEntry(c),draft=d.draft,idea=dateIdea(draft.ideaId),viewKey=`${d.screen}:${draft.ideaId}:${d.editorRevision||0}`,previous=$('modalHost').querySelector('.dateModal');
+ // Polling, private saving and mutation feedback update only status/action nodes.
+ // Never replace live editors or reassign their values: native pickers can own
+ // focus outside the DOM, and a text cursor is not enough to restore a popup.
+ if(previous?._dateDialog===d&&previous.dataset.dateView===viewKey){patchDateModal(previous,d,c,entry);return}
  let content;if(d.screen==='ideas')content=`<h2 id="dateTitle" tabindex="-1">${d.cardId?'Try another idea':'What sounds like you two?'}</h2><p class="dateModalLead">Pick a little adventure with ${esc(c.name)}.</p><div class="datePicker">${DATE_IDEAS.map(idea=>dateIdeaTile(c,idea,d.cardId)).join('')}</div><p class="datePrivateHelp">Looking is just looking. You choose when to send.</p><small class="dateBrandNote">Independent date ideas. No venue or show affiliation.</small>`;
- else content=`${dateButton('← More ideas','dateBack()',{key:'back',disabled:busy})}<div class="dateInviteHero dateTone-${idea.tone}">${dateArt(idea.art)}<span>A date with ${esc(c.name)}</span></div><h2 id="dateTitle" tabindex="-1">${esc(idea.title)}</h2><p class="dateModalLead">${esc(idea.line)}</p><div class="dateInviteFields"><label for="dateWhen">When <span>optional · local time, as entered</span><input id="dateWhen" data-date-focus="date" type="${draft.date&&!draft.date.includes('T')?'date':'datetime-local'}" value="${esc(draft.date)}" oninput="updateDateDraft('date',this.value)" ${locked?'disabled':''}></label><label for="datePlace">Where <span>optional</span><input id="datePlace" data-date-focus="place" maxlength="160" placeholder="Your favorite place, or decide together" value="${esc(draft.place)}" oninput="updateDateDraft('place',this.value)" ${locked?'disabled':''}></label><label for="dateNote">Make it yours <span>optional</span><textarea id="dateNote" data-date-focus="note" maxlength="500" rows="3" placeholder="I thought this would be fun with you…" oninput="updateDateDraft('note',this.value)" ${locked?'disabled':''}>${esc(draft.note)}</textarea></label></div>${conflict?`<p class="dateConflict">This datecard has changed. Load the latest details before sending a new suggestion.</p>${dateButton('Use latest details','resetDateConflict()',{key:'latest',disabled:busy})}`:''}<div class="dateInviteActions">${dateButton(`${draft.attempt?.uncertain?'Retry send':d.cardId?'Send change':'Send'} to ${c.name}`,'submitDateCard()',{primary:true,disabled:busy||conflict,key:'send'})}${dateButton(dateSaved.has(idea.id)?'Idea saved':'Save idea','saveDateIdea()',{key:'save'})}</div><p class="datePrivateHelp">Send shares this datecard with ${esc(c.name)}. Save idea is private, ${dateSaveMode==='device'?'on this device only':'for this visit only'}.</p>${draft.attempt?.uncertain?'<p class="datePrivateHelp">The last send could not be confirmed. Retry checks the same send, without creating a duplicate.</p>':''}`;
- const previous=$('modalHost').querySelector('.dateModal'),focused=previous?.contains(document.activeElement),key=focused?document.activeElement.dataset.dateFocus:null,selection=focused&&typeof document.activeElement.selectionStart==='number'?{start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:null,scroll=previous?.scrollTop||0;
- $('modalHost').innerHTML=`<div class="modalBackdrop" onclick="closeInvite(event)"><section class="modal dateModal" role="dialog" aria-modal="true" aria-labelledby="dateTitle"><button type="button" class="close" data-date-focus="close" aria-label="Close date ideas" onclick="closeInvite()">×</button><div class="eyebrow">MAKE A LITTLE PLAN</div>${content}<p class="dateModalStatus" id="dateModalStatus" role="status">${esc(busy?'Sending your datecard…':d.notice)}</p><p class="error" id="dateModalError" role="alert">${esc(d.error||entry.error)}</p></section></div>`;
- const modal=$('modalHost').querySelector('.dateModal');modal.scrollTop=focusKey?0:scroll;
- if(focusKey||!previous||focused){const target=[...modal.querySelectorAll('[data-date-focus]')].find(button=>button.dataset.dateFocus===(focusKey||key)&&!button.disabled);(target||$('dateTitle')).focus({preventScroll:true});if(target&&selection&&target.setSelectionRange&&['text','textarea'].includes(target.type))target.setSelectionRange(selection.start,selection.end)}
+ else content=`${dateButton('← More ideas','dateBack()',{key:'back'})}<div class="dateInviteHero dateTone-${idea.tone}">${dateArt(idea.art)}<span>A date with ${esc(c.name)}</span></div><h2 id="dateTitle" tabindex="-1">${esc(idea.title)}</h2><p class="dateModalLead">${esc(idea.line)}</p><div class="dateInviteFields">${renderDateWhen(draft)}<label for="datePlace">Where <span>optional</span><input id="datePlace" data-date-focus="place" maxlength="160" placeholder="Your favorite place, or decide together" value="${esc(draft.place)}" oninput="updateDateDraft('place',this.value)"></label><label for="dateNote">Make it yours <span>optional</span><textarea id="dateNote" data-date-focus="note" maxlength="500" rows="3" placeholder="I thought this would be fun with you…" oninput="updateDateDraft('note',this.value)">${esc(draft.note)}</textarea></label></div><div id="dateConflict" hidden><p class="dateConflict">This datecard has changed. Load the latest details before sending a new suggestion.</p>${dateButton('Use latest details','resetDateConflict()',{key:'latest'})}</div><div class="dateInviteActions">${dateButton(`Send to ${c.name}`,'submitDateCard()',{primary:true,key:'send'})}${dateButton('Save idea','saveDateIdea()',{key:'save'})}</div><p class="datePrivateHelp" id="dateShareHelp"></p><p class="datePrivateHelp" id="dateRetryHelp" hidden>The last send could not be confirmed. Retry checks the same send, without creating a duplicate.</p>`;
+ $('modalHost').innerHTML=`<div class="modalBackdrop" onclick="closeInvite(event)"><section class="modal dateModal" data-date-view="${esc(viewKey)}" role="dialog" aria-modal="true" aria-labelledby="dateTitle"><button type="button" class="close" data-date-focus="close" aria-label="Close date ideas" onclick="closeInvite()">×</button><div class="eyebrow">MAKE A LITTLE PLAN</div>${content}<p class="dateModalStatus" id="dateModalStatus" role="status"></p><p class="error" id="dateModalError" role="alert"></p></section></div>`;
+ const modal=$('modalHost').querySelector('.dateModal');modal._dateDialog=d;patchDateModal(modal,d,c,entry);
+ const target=[...modal.querySelectorAll('[data-date-focus]')].find(button=>button.dataset.dateFocus===focusKey&&!button.disabled);(target||$('dateTitle')).focus({preventScroll:true});
 }
-function resetDateConflict(){const d=currentDateDialog(),c=d&&dateConnection(d.connectionId),message=c&&dateFindMessage(c,d.cardId);if(!message)return;Object.assign(d.draft,{...message.card,attempt:null});d.error='Latest details loaded. Review them before sending.';renderDateModal('heading')}
+function resetDateConflict(){const d=currentDateDialog(),c=d&&dateConnection(d.connectionId),message=c&&dateFindMessage(c,d.cardId);if(!message||dateEntry(c).pending||d.draft.attempt?.uncertain)return;Object.assign(d.draft,{...message.card,when:dateWhenParts(message.card.date),attempt:null});d.editorRevision=(d.editorRevision||0)+1;d.error='Latest details loaded. Review them before sending.';renderDateModal('heading')}
 function dateUUID(){if(globalThis.crypto?.randomUUID)return crypto.randomUUID();const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=bytes[6]&15|64;bytes[8]=bytes[8]&63|128;const hex=[...bytes].map(value=>value.toString(16).padStart(2,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`}
-async function submitDateCard(){const d=currentDateDialog(),c=d&&dateConnection(d.connectionId);if(!d||d.screen!=='invite'||!c)return;const draft=d.draft;if(draft.place.length>160||draft.note.length>500){d.error='Use up to 160 characters for a place and 500 for your note.';renderDateModal();return}const message=d.cardId&&dateFindMessage(c,d.cardId);if(d.cardId&&(!message||message.card.version!==draft.version)&&!draft.attempt?.uncertain){renderDateModal();return}return mutateDateCard(c,d.cardId?'change':'send',{ideaId:draft.ideaId,date:draft.date,place:draft.place.trim(),note:draft.note.trim(),...(d.cardId?{cardId:d.cardId,version:draft.version}:{})},d)}
+async function submitDateCard(){
+ const d=currentDateDialog(),c=d&&dateConnection(d.connectionId);if(!d||d.screen!=='invite'||!c||dateEntry(c).pending)return;const draft=d.draft;
+ if(!draft.attempt?.uncertain){
+  const parts=draft.when||(draft.when=dateWhenParts(draft.date)),day=$('dateWhen');
+  // Read the visible controls on this explicit send as well as listening to
+  // input/change. Some native pickers commit only when the user leaves them.
+  for(const [part,id] of [['day','dateWhen'],['hour','dateHour'],['minute','dateMinute'],['period','datePeriod']])if($(id))parts[part]=$(id).value;
+  for(const [key,id] of [['place','datePlace'],['note','dateNote']])if($(id))draft[key]=$(id).value;
+  if(day&&!day.validity.valid){d.error='Choose a complete date between 1900 and 9999, or clear the date.';renderDateModal();return}
+  const value=dateWhenValue(parts);if(value===null){d.error=parts.day?'Choose an hour, minute and AM or PM, or clear the time.':'Choose a date for your time, or clear the time.';renderDateModal();return}
+  draft.date=value;
+ }
+ if(draft.place.length>160||draft.note.length>500){d.error='Use up to 160 characters for a place and 500 for your note.';renderDateModal();return}
+ const message=d.cardId&&dateFindMessage(c,d.cardId);if(d.cardId&&(!message||message.card.version!==draft.version)&&!draft.attempt?.uncertain){renderDateModal();return}
+ return mutateDateCard(c,d.cardId?'change':'send',{ideaId:draft.ideaId,date:draft.date,place:draft.place.trim(),note:draft.note.trim(),...(d.cardId?{cardId:d.cardId,version:draft.version}:{})},d)
+}
 async function acceptDateCard(id,cardId){syncDateOwner();const c=dateConnection(id);if(!c||s.selectedChempat!==id)return;const message=dateFindMessage(c,cardId),entry=dateEntry(c);if(!message||message.card.status!=='pending'||message.card.proposer===entry.side)return;return mutateDateCard(c,'accept',{cardId,version:message.card.version})}
 async function mutateDateCard(c,action,fields,dialog=null){
  const entry=dateEntry(c);if(entry.pending||entry.unavailable)return;const attemptKey=`${action}:${fields.cardId||'new'}`,fingerprint=JSON.stringify(fields);let attempt=dialog?.draft.attempt||entry.attempts.get(attemptKey);
