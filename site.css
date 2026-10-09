@@ -480,3 +480,46 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .navProfile{border:1px solid #d8c7e6;border-radius:8px;background:#f8f3fc;color:#643886;padding:8px 10px;font-size:.75rem;font-weight:750;min-height:36px;white-space:nowrap}.navProfile[aria-current="page"]{background:#71439c;color:#fff}#navUser,.nav .user,.navIdentity{min-width:0}.navIdentity b{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.memberProfileEditor{max-width:580px;margin:22px auto;min-width:0}.memberProfileHeading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}.memberProfileHeading h1{font-size:1.7rem;margin:5px 0}.memberProfileHeading .link{font-size:.8rem}.memberProfilePhotoRow{display:flex;align-items:center;gap:18px;min-width:0}.memberProfilePreview{margin:0;width:104px;flex:none;text-align:center}.memberProfilePreview img,.memberProfilePreview>span{display:grid;place-items:center;width:104px;height:104px;object-fit:cover;border-radius:15px;background:#edf3f0;color:#71439c;font-size:2rem}.memberProfilePreview figcaption{font-size:.7rem;color:#60747b;margin-top:5px}.memberProfilePhotoActions{display:flex;flex-wrap:wrap;gap:8px;min-width:0}.memberProfilePhotoActions .button{font-size:.8rem;padding:9px 12px;min-height:42px}.memberProfilePhotoActions p{flex-basis:100%;font-size:.72rem;margin:0}.memberProfileEditor .cameraPreview{max-width:100%;max-height:300px;margin-top:14px}.memberProfileEditor .field input{min-width:0}.memberProfileEditor input[readonly]{background:#f4f7f5;color:#5a6c72}.memberProfileDisclosure{font-size:.79rem}.memberProfileDiscovery{display:flex;align-items:flex-start;gap:10px;font-size:.8rem;line-height:1.5;margin:14px 0;color:#3c514f}.memberProfileDiscovery input{width:20px;height:20px;flex:none;margin:1px 0}.memberProfileActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.memberProfileActions>.button{flex:1;min-width:0}.memberProfileEditor [role="status"]{font-size:.82rem;color:#41614b}.memberProfileEditor [role="status"]:empty,.memberProfileEditor [role="alert"]:empty{display:none}.memberProfileConflict{border:1px solid #d7b983;border-radius:10px;padding:12px;background:#fffbf2}.memberProfileConflict p{font-size:.8rem}.memberProfileConflict img{display:block;width:70px;height:70px;border-radius:9px;object-fit:cover;margin:8px 0}.memberProfileConflict .rewardButton{margin:5px 5px 0 0;font-size:.8rem}.memberProfileEditor #memberProfilePhonePanel{border-top:1px solid #e2e8e3;margin-top:22px;padding-top:16px}.memberProfileEditor .rewardPrivatePhone{margin:0}.memberProfileEditor .rewardPrivatePhoneActions .rewardButton{font-size:.8rem;min-height:42px;padding:9px 12px}.memberProfileEditor #memberProfilePhonePanel>p{font-size:.82rem}
 @media(max-width:520px){.nav .user{gap:5px;flex-wrap:wrap;justify-content:flex-end}.navIdentity b{max-width:65px}.navProfile{padding:7px;font-size:.7rem;min-height:34px}.memberProfileEditor{margin:14px auto;padding:16px}.memberProfileHeading{gap:8px;margin-bottom:16px}.memberProfileHeading h1{font-size:1.5rem}.memberProfileHeading .link{max-width:106px;text-align:right;line-height:1.5}.memberProfilePhotoRow{gap:12px}.memberProfilePreview{width:88px}.memberProfilePreview img,.memberProfilePreview>span{width:88px;height:88px}.memberProfilePhotoActions .button{width:auto;flex:1 1 110px;text-align:center}.memberProfileActions>.button{width:auto;flex:1 1 100px}.memberProfileEditor .rewardPrivatePhoneActions>.rewardButton{width:100%;margin:0}}
 @media(max-width:360px){.navIdentity b{display:none}.navProfile{font-size:.68rem}.memberProfilePhotoRow{align-items:flex-start}.memberProfilePhotoActions .button{flex-basis:100%}}
+
+/* Connection-first member entry. Profile unlocks live in the quiet disclosure below. */
+.socialMemberHeader{grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:18px;padding:22px 0 20px;align-items:center}
+.socialMemberIdentity{gap:12px}
+.socialMemberIdentity>.face{width:56px;height:60px;border-radius:12px;font-size:1.4rem}
+.socialMemberIdentity h1{font-size:1.4rem;line-height:1.15;margin:3px 0}
+.socialMemberIdentity p{font-size:.83rem;line-height:1.4;color:#526c74;margin:0}
+.socialMemberAction{gap:7px;align-items:flex-end;justify-content:center}
+.socialVibeAction{display:flex;justify-content:flex-end;gap:9px;width:100%;flex-wrap:wrap}
+.socialMemberAction .button{min-height:46px;font-size:.86rem;padding:10px 18px;white-space:normal}
+.socialMemberAction .friendShareButton{font-size:.86rem;background:#fff}
+.connectionEntryHint{font-size:.73rem;line-height:1.45;text-align:right;color:#526c74;margin:0;max-width:390px}
+.connectionsCount{font-size:.8rem;font-variant-numeric:tabular-nums;color:#60747b}
+.emptyFocus{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:270px;padding:28px}
+.emptyFocus h2{font-size:1.35rem;line-height:1.3;margin:12px 0 8px}
+.emptyFocus p{max-width:340px;margin:0;color:#526c74;line-height:1.6;font-size:.9rem}
+.emptyConnectionMark{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:#f2eafa;color:#71439c;font-size:1.6rem}
+.profileProgressNote{font-size:.83rem;line-height:1.5;color:#526c74;margin:0 0 14px}
+.profileProgress .rewardLadder{border:0;padding:0;background:transparent}
+.profileProgress .rewardLadderHeading{margin-bottom:12px}
+.profileProgress .rewardSlot{min-height:120px;padding:11px 8px}
+.profileProgress .rewardSlot b{font-size:.81rem}
+.profileProgress .rewardSlotBenefit{font-size:.75rem}
+.profileProgress .rewardSlotStatus{font-size:.7rem}
+@media(max-width:700px){
+ .socialMemberHeader{grid-template-columns:minmax(0,1fr);gap:14px;padding:16px 0}
+ .socialMemberIdentity>.face{width:48px;height:52px;border-radius:10px}
+ .socialMemberIdentity h1{font-size:1.3rem}
+ .socialMemberAction{width:100%;align-items:stretch;gap:8px}
+ .socialVibeAction{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .socialMemberAction .button{width:100%;min-height:48px;padding:10px 12px;font-size:.83rem}
+ .connectionEntryHint{max-width:none;text-align:left;font-size:.73rem}
+ .emptyFocus{min-height:190px;padding:22px 18px}
+ .emptyFocus h2{font-size:1.15rem}
+ .profileProgress .rewardSlots{grid-template-columns:minmax(0,1fr);gap:7px}
+ .profileProgress .rewardSlot{display:grid;grid-template-columns:20px 28px minmax(0,1fr) auto;grid-template-rows:auto auto;gap:3px 9px;align-items:center;min-height:64px;padding:10px 12px;text-align:left}
+ .profileProgress .rewardSlotTop{grid-column:1;grid-row:1 / 3;align-self:center;justify-content:center;font-size:.7rem;padding:0}
+ .profileProgress .rewardSlotState{display:none}
+ .profileProgress .rewardSlotMark{grid-column:2;grid-row:1 / 3;width:24px;height:24px}
+ .profileProgress .rewardSlot b{grid-column:3;grid-row:1;font-size:.83rem}
+ .profileProgress .rewardSlotBenefit{grid-column:3;grid-row:2;font-size:.73rem}
+ .profileProgress .rewardSlotStatus{grid-column:4;grid-row:1 / 3;align-self:center;margin:0;padding:0;font-size:.68rem}
+}

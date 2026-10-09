@@ -63,8 +63,8 @@ async function fixture({level=1,otherLevel=2,actor='member',status='chat',answer
 function answer(f,level,value){for(const q of REWARD_ROUNDS.find(r=>r.level===level).questions)f.w.chooseRewardAnswer(q.id,value??q.choices[0].value)}
 function hold(f,match){const h=deferred();f.server.hold={...h,match};return h}
 
-test('header has five functional slots and exact CTA; optional games are secondary',async()=>{
- const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader');assert.equal(header.querySelector('.ctaPrompt').textContent,'Caught their vibe?');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.deepEqual([...header.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['Email','Cell','Duhwildcards','Be discovered','Your 15 seconds']);assert.equal(header.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(header.querySelectorAll('.rewardSlot.current').length,1);assert.equal(header.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/First unlock Mutual phone exchange/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
+test('header prioritizes invitations and five functional reward slots stay in secondary progress',async()=>{
+ const f=await fixture();try{const header=f.d.querySelector('.socialMemberHeader'),progress=f.d.querySelector('#profileProgress');assert.equal(header.querySelector('.socialVibeAction button').textContent,'Send a vibe →');assert.equal(header.querySelector('.friendShareButton').getAttribute('onclick'),'openFriendShare()');assert.equal(header.querySelector('#rewardLadder'),null);assert.equal(progress.open,false);assert.deepEqual([...progress.querySelectorAll('.rewardSlot b')].map(b=>b.textContent),['Email','Cell','Duhwildcards','Be discovered','Your 15 seconds']);assert.equal(progress.querySelectorAll('.rewardSlot.unlocked').length,1);assert.equal(progress.querySelectorAll('.rewardSlot.current').length,1);assert.equal(progress.querySelectorAll('.rewardSlot.locked').length,3);assert.equal(f.d.querySelector('#profileProgressCount').textContent,'1 / 5');assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(f.d.querySelector('.moreReflections').open,false);f.w.openRewardLevel(5);assert.match(f.d.querySelector('.rewardModal').textContent,/First unlock Mutual phone exchange/);assert.ok(f.d.querySelector('.rewardModal button:not(.close)'));assert.equal(f.posts().length,0);assert.ok(f.d.querySelector('#message'))}finally{f.close()}
 });
 test('first five uses existing flow and friend-only pages remain usable',async()=>{
  const f=await fixture({level:0});try{f.w.openRewardLevel(1);assert.ok(f.d.querySelector('.quickChoices'));f.w.goHome();f.w.selectChempat(friend);assert.ok(f.d.querySelector('#message'));assert.equal(f.d.querySelector('.rewardConnection'),null)}finally{f.close()}
@@ -216,7 +216,7 @@ test('reward-first tiles explain all rewards without posting or changing consent
  for(const level of [0,1,2,3,4,5]){
   const f=await fixture({level});try{
    const card=f.d.querySelector('#rewardLadder');
-   assert.equal(card.querySelector('h2').textContent,'Make your next move');
+  assert.equal(card.querySelector('h2').textContent,'Your profile steps');
    assert.deepEqual([...card.querySelectorAll('.rewardSlot b')].map(el=>el.textContent),labels);
    assert.equal(card.querySelectorAll('.rewardSlotMark svg').length,5);
    assert.deepEqual([...card.querySelectorAll('.rewardSlotBenefit')].map(el=>el.textContent),['Invite by email','Both choose to share','3 each per connection','Opt-in name & photo','Private until you publish']);

@@ -258,17 +258,17 @@ test('a pending global draft save re-enables the same game opened in another pai
 });
 
 
-test('five rewards occupy the header and optional reflections stay secondary without sharing mutations',async()=>{
+test('connection actions occupy the header and rewards and optional reflections stay secondary without sharing mutations',async()=>{
  const f=await fixture({pieces:[piece,{...piece,moduleId:'closeness',title:'Closeness',version:1}]});try{
   const header=f.d.querySelector('.socialMemberHeader'),collection=f.d.querySelector('#earnedPieces');
-  assert.ok(collection.parentElement.matches('.moreReflections.dashboardDisclosure'));assert.equal(header.querySelectorAll('.rewardSlot').length,5);assert.equal(header.querySelector('#earnedPieces'),null);assert.equal(header.querySelector('.friendShareButton'),null);
+  assert.ok(collection.parentElement.matches('.moreReflections.dashboardDisclosure'));assert.equal(header.querySelectorAll('.rewardSlot').length,0);assert.equal(f.d.querySelectorAll('#profileProgress .rewardSlot').length,5);assert.equal(f.d.querySelector('#profileProgress').open,false);assert.equal(header.querySelector('#earnedPieces'),null);assert.ok(header.querySelector('.friendShareButton'));
   assert.equal(f.d.querySelectorAll('#earnedPieces').length,1);assert.equal(f.d.querySelectorAll('#earnedPiecesTitle').length,1);
   const ids=[...f.d.querySelectorAll('[id]')].map(el=>el.id);assert.equal(new Set(ids).size,ids.length);
   assert.equal(collection.querySelectorAll('.earnedPiece').length,2);assert.equal(collection.querySelector('progress,input[type="checkbox"]'),null);
   assert.doesNotMatch(header.textContent,/Your first five are ready to share|0 \/ 3|complete your profile/i);
   const summaries=collection.querySelectorAll('.earnedPieceResult summary');assert.match(summaries[0].textContent,/Feel Loved/);summaries[0].click();await flush();assert.equal(collection.querySelector('.earnedPieceResult').open,true);
   summaries[1].click();await flush();assert.equal(collection.querySelectorAll('.earnedPieceResult[open]').length,2);assert.equal(f.posts().length,0,'viewing earned pieces never offers or shares them');
-  f.d.querySelector('.connectionsHeading .friendShareButton').click();assert.equal(f.state().modal,'friendShare');f.w.closeInvite();
+  f.d.querySelector('.socialMemberHeader .friendShareButton').click();assert.equal(f.state().modal,'friendShare');f.w.closeInvite();
   f.d.querySelector('#connectionGames .discoveryHeading button').click();await flush();assert.equal(f.state().modal,'discovery');assert.ok(f.d.querySelector('.discoveryPicker'));
  }finally{f.close()}
 });
@@ -299,9 +299,9 @@ test('dashboard sections are compact named disclosures with inline notes and liv
  const f=await fixture({pieces:[piece]});try{
   const rows=[...f.d.querySelectorAll('.dashboardDisclosure')];
   assert.equal(rows.length,4);assert.ok(rows.every(row=>row.tagName==='DETAILS'&&!row.open));
-  assert.deepEqual(rows.map(row=>row.querySelector('summary strong').textContent),['My secrets','Game Pieces','My game results','Freezer']);
-  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureNote').textContent),['Your saved answers','Five little unlocks. Where will you take them?','Optional games · Private until shared','Ended connections & cancelled invites']);
-  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureCount').textContent),['10','2 / 5','1','0']);
+  assert.deepEqual(rows.map(row=>row.querySelector('summary strong').textContent),['My progress','My secrets','My game results','Freezer']);
+  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureNote').textContent),['Saved to your profile','Your saved answers','Optional games · Private until shared','Ended connections & cancelled invites']);
+  assert.deepEqual(rows.map(row=>row.querySelector('.dashboardDisclosureCount').textContent),['2 / 5','10','1','0']);
   assert.ok(rows.every(row=>row.querySelector(':scope > summary > svg[aria-hidden="true"]')));
   const collection=f.d.querySelector('#earnedPieces');
   assert.equal(collection.querySelector('.discoveryHeading,.earnedPiecesNote'),null);assert.equal(f.d.getElementById(collection.getAttribute('aria-labelledby')).textContent,'My game results');
@@ -316,7 +316,7 @@ test('dashboard sections are compact named disclosures with inline notes and liv
 
 test('dashboard disclosure choices and summary focus survive immediate rerenders, polling and connection changes',async()=>{
  const f=await fixture({pieces:[piece]});try{
-  for(const key of ['secrets','pieces','results','freezer']){
+  for(const key of ['progress','secrets','results','freezer']){
    const summary=f.d.querySelector(`[data-dashboard-disclosure="${key}"] > summary`);summary.click();summary.focus();f.w.eval('render(true)');
    assert.equal(f.d.querySelector(`[data-dashboard-disclosure="${key}"]`).open,true,'capture native open state before queued toggle event');
    assert.equal(f.d.activeElement,f.d.querySelector(`[data-dashboard-disclosure="${key}"] > summary`));
