@@ -565,3 +565,42 @@ body:has(.landingEntry) .logo .landingWordmark{display:inline-block;font-size:2.
 .dateConversation.dateUnavailable{grid-template-columns:minmax(0,1fr)}
 
 @media(prefers-reduced-motion: reduce){.dateConversation,.dateIdeas{transition:none}}
+/* Responder invitation and short setup: completed answers stay in their existing flow. */
+.responderEntry{max-width:520px}
+.responderInviter{display:flex;align-items:center;gap:16px;margin:0 0 22px}
+.responderInviter>.face{width:88px;height:96px;flex:none;font-size:2rem;border-radius:16px}
+.responderInviter small{display:block;color:#71439c;letter-spacing:.1em;font-size:.68rem;font-weight:850;margin-bottom:5px}
+.responderInviter b{display:block;font-size:1.45rem;overflow-wrap:anywhere}
+.responderEntry h2{font-size:clamp(1.65rem,4vw,2rem);line-height:1.12}
+.responderContinue{width:100%;margin-top:12px}
+.responderEntry .responderSaved{font-size:.76rem;text-align:center;margin:12px 0 0;color:#65777d}
+.responderSetupModal{width:min(100%,480px);max-height:calc(100dvh - 32px);overflow-y:auto}
+.responderSetupModal h2{padding-right:24px}
+.responderSetupModal .photoActions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.responderSetupModal .photoActions>.button{flex:1;min-height:44px}
+.responderPhotoPreview{display:flex;align-items:center;gap:12px;margin:14px 0;font-size:.85rem}
+.responderPhotoPreview>.face{width:60px;height:66px;flex:none}
+.responderSetupModal .cameraPreview{display:block;width:min(100%,260px);aspect-ratio:1;object-fit:cover;margin:12px auto;border-radius:12px}
+.responderSetupModal [hidden]{display:none}
+.responderSetupModal .field{display:block;margin-top:10px}
+.responderSetupModal .joinInput{margin-top:5px}
+.responderPrivacy{font-size:.75rem;line-height:1.45;color:#65777d;margin:10px 0 0}
+.responderSetupModal .error:empty{display:none}
+.responderSetupModal .close{min-width:44px;min-height:44px}
+.responderEntry button:focus-visible,.responderSetupModal button:focus-visible{outline:3px solid #246d7d;outline-offset:3px}
+/* The two identities follow the same viewer-relative columns as the answers. */
+.socialWorkspace .secretsFocusHeader{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 8px;align-items:start}
+.secretPeople{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px;width:100%;padding-right:0}
+.secretPerson[data-secret-person="other"]{padding-right:0}
+.secretPerson .focusConversation small{display:block;font-size:.72rem;line-height:1.35;color:#65777d;overflow-wrap:anywhere}
+.secretsFocusHeader>.activeConnectionActions{grid-column:2;grid-row:2;position:static;justify-self:end;flex-wrap:wrap;justify-content:flex-end}
+.secretConnectionMeta{grid-column:1;grid-row:2;min-width:0;align-self:center}
+@media(max-width:700px){
+ .secretPeople{gap:5px}
+ .secretPerson{flex-direction:column;align-items:flex-start;gap:7px}
+ .secretPerson .focusConversation small{font-size:.68rem}
+ .responderInviter{gap:12px;margin-bottom:18px}
+ .responderSetupModal{max-height:calc(100dvh - 20px)}
+}
+
+@media(max-width:380px){.socialWorkspace .secretsFocusHeader{grid-template-columns:minmax(0,1fr)}.secretConnectionMeta{grid-row:2}.secretsFocusHeader>.activeConnectionActions{grid-column:1;grid-row:3;justify-self:end}}
