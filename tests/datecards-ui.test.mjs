@@ -16,10 +16,10 @@ const deferred=()=>{let resolve;return {promise:new Promise(r=>resolve=r),resolv
 const card=(overrides={})=>({type:'dateCard',id:'00000000-0000-4000-8000-000000000001',by:'member',at:'2026-10-09T10:00:00.000Z',card:{ideaId:'dinner',date:'2026-11-04T19:30',place:'A little café',note:'Want to go together?',status:'pending',version:1,proposer:'member',updatedAt:'2026-10-09T10:00:00.000Z',...overrides}});
 function serverFixture(){return {cards:[],calls:[],receipts:new Map(),intercept:null,lose:false,fail:false}}
 const activeCards=server=>server.cards.filter(message=>message.card.status!=='cancelled');
-async function fixture({server=serverFixture(),role='member',status='chat',messages=[],name='Riley',selected=a}={}){
+async function fixture({server=serverFixture(),role='member',status='chat',messages=[],name='Riley',selected=a,friendIds=[],extraRows=[]}={}){
  const dom=new JSDOM(html,{url:'https://datecards.example.test/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
  let currentRole=role;const timers=[];w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
- const rows=()=>[a,b].map(id=>({id,kind:'vibe',channel:'email',side:currentRole,status,claimed:true,location:'active',sender_name:currentRole==='member'?'Taylor':name,prospect_name:currentRole==='member'?name:'Taylor',sender_answers:Array(5).fill(0),prospect_answers:Array(5).fill(0),own_answers:Array(5).fill(0),messages:[...messages,...activeCards(server)]}));
+ const rows=()=>[a,b].map(id=>({id,kind:friendIds.includes(id)?'friend':'vibe',channel:friendIds.includes(id)?'friend':'email',side:currentRole,status,claimed:true,location:'active',sender_name:currentRole==='member'?'Taylor':name,prospect_name:currentRole==='member'?name:'Taylor',sender_answers:Array(5).fill(0),prospect_answers:Array(5).fill(0),own_answers:Array(5).fill(0),messages:[...messages,...activeCards(server)]})).concat(extraRows);
  w.fetch=async(url,options={})=>{
   const body=options.body?JSON.parse(options.body):null,account=options.headers?.['x-chempat-member-id'];
   if(url==='/api/connection?inbox=1')return response({connections:rows()});
@@ -97,7 +97,7 @@ test('date polling and modal close preserve normal message text, photo, DOM, cur
 
 test('keyboard wraps within date dialog and Escape restores the invoking idea',async()=>{
  const f=await fixture();try{
-  const trigger=f.d.querySelector('.dateIdeaTile');trigger.focus();trigger.click();await flush();assert.equal(f.d.activeElement.id,'dateTitle');const close=f.d.querySelector('.dateModal .close');close.focus();const tab=new f.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true});f.d.dispatchEvent(tab);assert.equal(tab.defaultPrevented,true);assert.equal(f.d.activeElement.dataset.dateFocus,'save');f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert.equal(f.d.activeElement.dataset.dateFocus,'close');f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(f.d.querySelector('.dateModal'),null);assert.equal(f.d.activeElement,trigger);assert.equal(f.posts().length,0);
+  f.d.querySelector('#dateIdeasToggle').click();const trigger=f.d.querySelector('.dateIdeaTile');trigger.focus();trigger.click();await flush();assert.equal(f.d.activeElement.id,'dateTitle');const close=f.d.querySelector('.dateModal .close');close.focus();const tab=new f.w.KeyboardEvent('keydown',{key:'Tab',shiftKey:true,bubbles:true,cancelable:true});f.d.dispatchEvent(tab);assert.equal(tab.defaultPrevented,true);assert.equal(f.d.activeElement.dataset.dateFocus,'save');f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));assert.equal(f.d.activeElement.dataset.dateFocus,'close');f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(f.d.querySelector('.dateModal'),null);assert.equal(f.d.activeElement,trigger);assert.equal(f.posts().length,0);
  }finally{f.close()}
 });
 
@@ -136,11 +136,11 @@ test('request timeout releases pending state and retries with the same request I
  }finally{f.close()}
 });
 
-test('mobile CSSOM uses a horizontal strip above composer, desktop a slim right column; long text wraps',async()=>{
+test('drawer CSSOM is collapsed by default, slides from the right, and stays bounded across mobile and desktop',async()=>{
  const f=await fixture({name:'Alexandria'.repeat(12)});try{
   f.server.cards=[card({place:'Place'.repeat(40),note:'LongNote'.repeat(60)})];await f.w.loadDateCards(a,true);await open(f,'grocery-games');const sourceStyle=f.d.createElement('style');sourceStyle.textContent=css;f.d.head.append(sourceStyle);const rules=[...sourceStyle.sheet.cssRules];sourceStyle.remove();
   const at=(rules,width)=>rules.map(rule=>{if(rule.constructor.name==='CSSContainerRule')return '';if(rule.type!==f.w.CSSRule.MEDIA_RULE)return rule.cssText;const matches=rule.conditionText.split(/\s+and\s+/).every(part=>{const m=part.match(/^\((min|max)-width:\s*(\d+)px\)$/);return m&&(m[1]==='min'?width>=+m[2]:width<=+m[2])});return matches?at([...rule.cssRules],width):''}).join('\n');
-  for(const width of [320,375,768,1000,1001,1280]){const style=f.d.createElement('style');style.textContent=at(rules,width);f.d.head.append(style);const get=selector=>f.w.getComputedStyle(f.d.querySelector(selector));assert.equal(get('.dateConversation').display,width<=1000?'flex':'grid');assert.equal(get('.dateIdeaStrip').flexDirection,width<=1000?'row':'column');assert.equal(get('.dateConversation').minWidth,'0px');assert.equal(get('.dateCardNote').overflowWrap,'anywhere');assert.equal(get('.dateCardContext').overflowWrap,'anywhere');assert.equal(get('.dateModal h2').overflowWrap,'anywhere');assert.equal(get('.dateInviteFields input').maxWidth,'100%');if(width<=1000){assert.equal(get('.dateIdeas').order,'3');assert.equal(get('.dateComposer').order,'4');assert.equal(get('.dateIdeaStrip').overflowX,'auto');assert.equal(get('.dateCardActions .dateButton').minHeight,'44px')}else assert.equal(get('.dateConversation').gridTemplateColumns,'minmax(0,1fr) 136px');style.remove()}
+  for(const width of [320,375,768,1000,1001,1280]){const style=f.d.createElement('style');style.textContent=at(rules,width);f.d.head.append(style);const get=selector=>f.w.getComputedStyle(f.d.querySelector(selector));assert.equal(get('.dateConversation').display,width<=1000?'flex':'grid');assert.equal(get('.dateIdeaStrip').flexDirection,'column');assert.equal(get('.dateConversation').minWidth,'0px');assert.equal(get('.dateCardNote').overflowWrap,'anywhere');assert.equal(get('.dateCardContext').overflowWrap,'anywhere');assert.equal(get('.dateModal h2').overflowWrap,'anywhere');assert.equal(get('.dateInviteFields input').maxWidth,'100%');assert.equal(get('.dateIdeas').position,'absolute');assert.equal(get('.dateIdeas').maxWidth,'85%');assert.equal(get('.dateIdeas').overflowY,'auto');assert.equal(get('.dateIdeas').visibility,'hidden');assert.equal(get('.dateIdeas').transform,'translateX(100%)');if(width<=1000){assert.equal(get('.dateComposer').order,'4');assert.equal(get('.dateCardActions .dateButton').minHeight,'44px')}else assert.equal(get('.dateConversation').gridTemplateColumns,'minmax(0,1fr) 0px');f.w.toggleDateIdeas(a);assert.equal(get('.dateIdeas').visibility,'visible');assert.equal(get('.dateIdeas').transform,'translateX(0)');if(width>1000)assert.equal(get('.dateConversation').gridTemplateColumns,'minmax(0,1fr) 164px');f.w.closeDateIdeas();style.remove()}
   assert.ok([...f.d.querySelectorAll('.dateIllustration')].every(svg=>svg.getAttribute('aria-hidden')==='true'&&svg.getAttribute('focusable')==='false'));
  }finally{f.close()}
 });
@@ -296,6 +296,84 @@ test('keyboard cancellation restores a usable focus target on success and uncert
  for(const lost of [false,true]){const server=serverFixture();server.cards=[card()];const f=await fixture({server});try{
   const id=server.cards[0].id,button=f.d.querySelector(cancelSelector(id));button.focus();server.lose=lost;await cancel(f,id);
   const focused=f.d.activeElement;assert.notEqual(focused,f.d.body);assert.ok(f.d.contains(focused));assert.equal(focused.disabled,false);
-  if(lost){assert.equal(focused.dataset.dateFocus,'cancel:'+id);assert.match(focused.textContent,/Retry cancel/)}else assert.ok(focused.matches('.dateIdeaTile'));
+  if(lost){assert.equal(focused.dataset.dateFocus,'cancel:'+id);assert.match(focused.textContent,/Retry cancel/)}else assert.ok(focused.matches('.dateIdeasToggle'));
+ }finally{f.close()}}
+});
+
+test('Friends have no date-ideas launcher or drawer, while existing shared cards remain cancellable',async()=>{
+ const server=serverFixture();server.cards=[card({status:'accepted',acceptedBy:'prospect'})];const f=await fixture({server,friendIds:[a,b],messages:[{by:'prospect',text:'Hello, friend'}]});try{
+  assert.equal(f.d.querySelector('#dateIdeasToggle,.dateIdeas'),null);
+  assert.match(f.d.querySelector('.inlineChat').textContent,/Hello, friend/);
+  f.w.toggleDateIdeas(a);assert.equal(f.w.eval('dateIdeasOpenFor'),'');
+  assert.ok(f.d.querySelector('#message'));await cancel(f,server.cards[0].id);
+  assert.equal(f.d.querySelector('.sharedDateCard'),null);assert.equal(f.d.querySelector('#dateIdeasToggle,.dateIdeas'),null);
+ }finally{f.close()}
+});
+
+test('header disclosure slides repeatedly without sending, replacing the composer, or changing history',async()=>{
+ const f=await fixture();try{
+  const toggle=f.d.querySelector('#dateIdeasToggle'),panel=f.d.querySelector('#dateIdeasPanel'),input=f.d.querySelector('#message'),history=f.w.history.length;
+  assert.ok(toggle.closest('.focusHeader .activeConnectionActions'));
+  assert.equal(toggle.nextElementSibling.classList.contains('connectionMenu'),true);
+  assert.equal(toggle.textContent.trim(),'Date ideas ♡');assert.equal(toggle.getAttribute('aria-controls'),panel.id);
+  assert.equal(toggle.getAttribute('aria-expanded'),'false');assert.equal(panel.getAttribute('aria-hidden'),'true');assert.ok(panel.hasAttribute('inert'));
+  input.value='Unsent hello';input.dispatchEvent(new f.w.Event('input'));input.focus();input.setSelectionRange(2,7);
+  for(let n=0;n<4;n++){
+   toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'true');assert.equal(panel.getAttribute('aria-hidden'),'false');assert.equal(panel.hasAttribute('inert'),false);assert.ok(panel.closest('.dateConversation').classList.contains('dateIdeasOpen'));
+   toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'false');assert.ok(panel.hasAttribute('inert'));assert.equal(panel.closest('.dateConversation').classList.contains('dateIdeasOpen'),false);
+  }
+  assert.equal(f.d.querySelector('#message'),input);assert.equal(input.value,'Unsent hello');assert.equal(f.d.activeElement,input);assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,7);assert.equal(f.w.history.length,history);assert.equal(f.posts().length,0);
+ }finally{f.close()}
+});
+
+test('Close and Escape restore the header control; closing a date modal keeps its drawer open',async()=>{
+ const f=await fixture();try{
+  const toggle=f.d.querySelector('#dateIdeasToggle');toggle.click();const close=f.d.querySelector('.dateIdeasClose');close.focus();close.click();assert.equal(f.d.activeElement,toggle);assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  toggle.click();const tile=f.d.querySelector('.dateIdeaTile');tile.focus();f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));assert.equal(f.d.activeElement,toggle);assert.equal(toggle.getAttribute('aria-expanded'),'false');
+  toggle.click();tile.focus();tile.click();await flush();f.d.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(f.d.querySelector('.dateModal'),null);assert.equal(toggle.getAttribute('aria-expanded'),'true');assert.equal(f.d.activeElement,tile);
+ }finally{f.close()}
+});
+
+test('polling preserves an open drawer, but switching threads, Friends, accounts and reloading collapse it',async()=>{
+ const f=await fixture({friendIds:[b]});try{
+  f.w.toggleDateIdeas(a);await f.w.loadDateCards(a,true);assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'true');
+  f.w.eval('render(true)');await flush();assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'true');
+  f.w.selectChempat(b);await flush();assert.equal(f.d.querySelector('#dateIdeasToggle,.dateIdeas'),null);assert.equal(f.w.eval('dateIdeasOpenFor'),'');
+  f.w.toggleDateIdeas(a);assert.equal(f.w.eval('dateIdeasOpenFor'),'','stale handlers cannot reopen an old thread');
+  f.w.selectChempat(a);await flush();assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'false');
+  f.w.toggleDateIdeas(a);f.mount('prospect');await flush();assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'false');
+  f.w.toggleDateIdeas(a);f.mount('prospect');await flush();assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'false');
+  assert.equal(f.posts().length,0);assert.doesNotMatch(JSON.stringify({...f.w.localStorage}),/dateIdeasOpenFor|dateIdeasSelection/);
+ }finally{f.close()}
+});
+
+test('date authorization loss hides the launcher and makes an open drawer inert without disturbing chat',async()=>{
+ for(const status of [401,403,404]){const f=await fixture();try{
+  f.w.toggleDateIdeas(a);f.server.intercept=()=>response({error:'Datecards unavailable.'},status);await f.w.loadDateCards(a,true);
+  assert.equal(f.d.querySelector('#dateIdeasToggle').hidden,true);assert.equal(f.d.querySelector('#dateIdeasPanel').getAttribute('aria-hidden'),'true');assert.ok(f.d.querySelector('#dateIdeasPanel').hasAttribute('inert'));assert.equal(f.w.eval('dateIdeasOpenFor'),'');assert.ok(f.d.querySelector('#message'));
+ }finally{f.close()}}
+});
+
+
+test('an unrelated pending QR menu cannot collapse the selected thread drawer during rendering',async()=>{
+ const pending={id:'c'.repeat(64),kind:'vibe',channel:'qr',side:'member',status:'invited',claimed:false,location:'active',sender_name:'Taylor',prospect_name:'',sender_answers:Array(5).fill(0),messages:[]};
+ const f=await fixture({extraRows:[pending]});try{
+  assert.ok(f.d.querySelector('.pendingInvite'));f.w.toggleDateIdeas(a);f.w.eval('render(true)');await flush();
+  assert.equal(f.d.querySelectorAll('#dateIdeasToggle').length,1);assert.equal(f.d.querySelector('#dateIdeasToggle').getAttribute('aria-expanded'),'true');assert.ok(f.d.querySelector('.dateConversation').classList.contains('dateIdeasOpen'));assert.equal(f.d.querySelector('#dateIdeasPanel').hasAttribute('inert'),false);
+ }finally{f.close()}
+});
+
+
+test('reduced-motion preference removes the drawer and conversation transitions',async()=>{
+ const f=await fixture();try{
+  const style=f.d.createElement('style');style.textContent=css;f.d.head.append(style);const motion=[...style.sheet.cssRules].find(rule=>rule.conditionText==='(prefers-reduced-motion: reduce)');assert.ok(motion);const reduced=f.d.createElement('style');reduced.textContent=[...motion.cssRules].map(rule=>rule.cssText).join('\n');f.d.head.append(reduced);f.w.toggleDateIdeas(a);for(const selector of ['.dateConversation','.dateIdeas'])assert.equal(f.w.getComputedStyle(f.d.querySelector(selector)).transition,'none');
+ }finally{f.close()}
+});
+
+
+test('standalone Private Chat keeps its header launcher reachable and still omits it for Friends',async()=>{
+ for(const friend of [false,true]){const f=await fixture({friendIds:friend?[a,b]:[]});try{
+  f.w.openConversation();await flush();assert.equal(f.w.eval('s.view'),friend?'dashboard':'conversation');assert.ok(f.d.querySelector('#message'));assert.match(f.d.querySelector(friend?'.focusHeader h2':'.dateThreadHeader h2').textContent,/Riley/);
+  if(friend){assert.equal(f.d.querySelector('#dateIdeasToggle,.dateIdeas'),null)}else{const toggle=f.d.querySelector('.dateThreadHeader #dateIdeasToggle');assert.ok(toggle);assert.equal(toggle.getAttribute('aria-expanded'),'false');toggle.click();assert.equal(toggle.getAttribute('aria-expanded'),'true');assert.equal(f.d.querySelector('#dateIdeasPanel').hasAttribute('inert'),false);f.w.closeDateIdeas();assert.equal(toggle.getAttribute('aria-expanded'),'false')}
  }finally{f.close()}}
 });

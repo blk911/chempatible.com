@@ -68,6 +68,7 @@ try{
    return containerWidth<=limit?cssAtWidth([...rule.cssRules],width,containerWidth,rootSize):'';
   }
   if(rule.type!==w.CSSRule.MEDIA_RULE)return rule.cssText;
+  if(rule.conditionText==='(prefers-reduced-motion: reduce)')return ''; // These viewport checks use the default motion preference.
   const matches=rule.conditionText.split(/\s+and\s+/).every(condition=>{
    const match=condition.match(/^\((min|max)-width:\s*(\d+)px\)$/);
    assert.ok(match,`layout test must handle media condition ${condition}`);

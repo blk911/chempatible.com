@@ -11,9 +11,11 @@ const member=(id='owner',extra={})=>({id,name:'Taylor',contact:id+'@example.test
 const reply=(body,status=200)=>({ok:status<400,status,json:async()=>JSON.parse(JSON.stringify(body))});
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}};
 const flush=async()=>{for(let i=0;i<4;i++)await new Promise(r=>setImmediate(r))};
-function fixture({saved={},account=null,intercept=null,storagePressure=false,url='https://auth.example.test/'}={}){
+function fixture({saved={},account=null,intercept=null,storagePressure=false,manualStatusTimers=false,url='https://auth.example.test/'}={}){
  const dom=new JSDOM(html,{url,runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document,calls=[];
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};w.HTMLMediaElement.prototype.play=async()=>{};
+ const statusTimers=[];
+ if(manualStatusTimers){const set=w.setTimeout.bind(w),clear=w.clearTimeout.bind(w);w.setTimeout=(callback,delay,...args)=>{if(delay!==600)return set(callback,delay,...args);const id=-statusTimers.length-2;statusTimers.push({id,callback,cancelled:false});return id};w.clearTimeout=id=>{const timer=statusTimers.find(t=>t.id===id);if(timer)timer.cancelled=true;else clear(id)}}
  for(const [key,value] of Object.entries(saved))w.sessionStorage.setItem(key,typeof value==='string'?value:JSON.stringify(value));
  const server={account,intercept,challenge:0,emailVerified:false};
  if(storagePressure){const original=w.Storage.prototype.setItem;w.Storage.prototype.setItem=function(key,value){if(key===KEY||key===AUTH&&this.getItem(KEY))throw new w.DOMException('Storage full','QuotaExceededError');return original.call(this,key,value)}}
@@ -43,10 +45,25 @@ function fixture({saved={},account=null,intercept=null,storagePressure=false,url
   return reply({},503);
  };
  const script=d.createElement('script');script.textContent=source;d.body.append(script);
- return {w,d,server,calls,state:()=>JSON.parse(w.eval('JSON.stringify(s)')),saved:()=>Object.fromEntries(Object.keys(w.sessionStorage).map(key=>[key,w.sessionStorage.getItem(key)])),close:()=>w.close(),async start(email='owner@example.test'){await flush();w.showSignin();d.getElementById('signinEmail').value=email;await w.signinStart()},get posts(){return calls.filter(c=>c.body)}};
+ return {w,d,server,calls,statusTimers,state:()=>JSON.parse(w.eval('JSON.stringify(s)')),saved:()=>Object.fromEntries(Object.keys(w.sessionStorage).map(key=>[key,w.sessionStorage.getItem(key)])),close:()=>w.close(),async start(email='owner@example.test'){await flush();w.showSignin();d.getElementById('signinEmail').value=email;await w.signinStart()},get posts(){return calls.filter(c=>c.body)}};
 }
 function cached(extra={}){return {view:'dashboard',actor:'member',account:member(),member:member(),memberId:'owner',liveMember:true,...extra}}
 function pending(extra={}){return {version:1,purpose:'signin',email:'owner@example.test',challengeId:'00000000-0000-4000-8000-000000000001',expiresAt:Date.now()+600000,resendAt:Date.now()+60000,context:{view:'landing',actor:'member',name:'',agreed:false,friendToken:'',pendingVibeToken:'',liveToken:'',returnModal:''},...extra}}
+
+test('quick refreshes never show the checking card and still shield all private content',async()=>{
+ for(const account of [member(),null]){const hold=deferred(),f=fixture({saved:{[KEY]:cached()},account,manualStatusTimers:true,intercept:c=>c.url==='/api/member'&&!c.body?hold.promise:null});
+  try{const gate=f.d.querySelector('#authStatus');assert.equal(gate.hidden,true);assert.equal(gate.textContent,'');for(const id of ['root','navUser','modalHost']){assert.equal(f.d.getElementById(id).hidden,true);assert.equal(f.d.getElementById(id).inert,true)}assert.equal(f.w.eval('authBlocked()'),true);assert.equal(f.statusTimers.length,1);hold.resolve(account?reply({member:account}):reply({},401));await flush();assert.equal(f.d.querySelector('#authStatus'),null);assert.equal(f.d.querySelector('#root').hidden,false);assert.equal(f.state().memberId,account?.id||'');assert.equal(f.statusTimers[0].cancelled,true);f.statusTimers[0].callback();assert.equal(f.d.querySelector('#authStatus'),null);assert.equal(f.posts.length,0)}finally{f.close()}}
+});
+test('quick focus and bfcache checks remain silent without skipping cookie validation',async()=>{
+ for(const event of ['focus','pageshow']){const f=fixture({account:member(),manualStatusTimers:true});try{await flush();const hold=deferred();f.server.intercept=c=>c.url==='/api/member'&&!c.body?hold.promise:null;if(event==='pageshow')f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));f.w.dispatchEvent(event==='pageshow'?new f.w.PageTransitionEvent(event,{persisted:true}):new f.w.Event(event));assert.equal(f.calls.filter(c=>c.url==='/api/member'&&!c.body).length,2);assert.equal(f.d.querySelector('#root').hidden,true);assert.equal(f.d.querySelector('#authStatus').hidden,true);assert.equal(f.d.querySelector('#authStatus').textContent,'');hold.resolve(reply({member:member()}));await flush();assert.equal(f.d.querySelector('#authStatus'),null);assert.equal(f.d.querySelector('#root').hidden,false);assert.ok(f.statusTimers.every(timer=>timer.cancelled));for(const timer of f.statusTimers)timer.callback();assert.equal(f.d.querySelector('#authStatus'),null)}finally{f.close()}}
+});
+test('slow session bodies show delayed status while private content stays shielded',async()=>{
+ const body=deferred(),f=fixture({saved:{[KEY]:cached()},account:member(),manualStatusTimers:true,intercept:c=>c.url==='/api/member'&&!c.body?{ok:true,status:200,json:()=>body.promise}:null});
+ try{await flush();assert.equal(f.d.querySelector('#authStatus').hidden,true);f.statusTimers[0].callback();assert.equal(f.d.querySelector('#authStatus').hidden,false);assert.match(f.d.querySelector('#authStatus').textContent,/Checking your sign-in/);assert.ok(f.d.querySelector('#authStatus [role="status"]'));for(const id of ['root','navUser','modalHost']){assert.equal(f.d.getElementById(id).hidden,true);assert.equal(f.d.getElementById(id).inert,true)}assert.equal(f.w.eval('authBlocked()'),true);body.resolve({member:member()});await flush();assert.equal(f.statusTimers[0].cancelled,true);assert.equal(f.d.querySelector('#authStatus'),null);assert.equal(f.d.querySelector('#root').hidden,false)}finally{f.close()}
+});
+test('quick failures show an actionable retry immediately and stale status timers cannot replace it',async()=>{
+ const f=fixture({saved:{[KEY]:cached()},account:member(),manualStatusTimers:true,intercept:c=>c.url==='/api/member'&&!c.body?reply({},503):null});try{await flush();const gate=f.d.querySelector('#authStatus');assert.equal(gate.hidden,false);assert.match(gate.textContent,/Reconnecting/);assert.equal(gate.querySelector('button').textContent,'Try again');assert.equal(f.statusTimers[0].cancelled,true);f.statusTimers[0].callback();assert.match(gate.textContent,/Reconnecting/);assert.doesNotMatch(gate.textContent,/Checking your sign-in/);assert.equal(f.d.querySelector('#root').hidden,true);f.server.intercept=null;await f.w.resumeMember();assert.equal(f.d.querySelector('#authStatus'),null);assert.equal(f.state().memberId,'owner')}finally{f.close()}
+});
 
 test('every startup checks cookie before cached identity, including an empty saved name',async()=>{
  for(const name of ['Taylor','']){const hold=deferred(),f=fixture({saved:{[KEY]:cached({member:member('owner',{name})})},account:member('owner',{name:''}),intercept:c=>c.url==='/api/member'&&!c.body?hold.promise:null});
