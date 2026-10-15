@@ -1,3 +1,4 @@
+// Isolated fixture resets explicitly reseed session rows; revoked production tokens never revive.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
 process.env.DATABASE_URL='postgres://local-test-only';
 process.env.SENDGRID_API_KEY='isolated-fake-provider-key';
@@ -12,7 +13,9 @@ const hash=value=>createHash('sha256').update(value).digest('hex');
 const photo='data:image/jpeg;base64,AA==',secretPhoto='data:image/jpeg;base64,BBBB';
 const tokens={owner:'a'.repeat(64),visitor:'b'.repeat(64),other:'c'.repeat(64),fourth:'d'.repeat(64)};
 const ids={owner:'11111111-1111-4111-8111-111111111111',visitor:'22222222-2222-4222-8222-222222222222',other:'33333333-3333-4333-8333-333333333333',fourth:'44444444-4444-4444-8444-444444444444'};
-await db.exec(`CREATE TABLE members(id uuid PRIMARY KEY,session_hash text UNIQUE,name text,photo text,answers jsonb DEFAULT '[]',contact text,email_verified_at timestamptz,suspended_until timestamptz,blocked_at timestamptz); CREATE TABLE invitations(token_hash text PRIMARY KEY,created_at timestamptz DEFAULT now(),sender_email text NOT NULL,sender_name text,sender_photo text,sender_answers jsonb NOT NULL,recipient_name text,recipient_email text,sender_member_id uuid,channel text,expires_at timestamptz); CREATE TABLE connection_state(invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,prospect_member_id uuid,prospect_name text,prospect_photo text,prospect_answers jsonb DEFAULT '[]',prospect_phone text,prospect_email text,status text DEFAULT 'invited',claim_hash text,messages jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now()); CREATE TABLE email_sessions(token_hash text,email text,expires_at timestamptz);`);
+await db.exec(`CREATE TABLE members(updated_at timestamptz NOT NULL DEFAULT now(),id uuid PRIMARY KEY,session_hash text UNIQUE,name text,photo text,answers jsonb DEFAULT '[]',contact text,email_verified_at timestamptz,suspended_until timestamptz,blocked_at timestamptz); CREATE TABLE invitations(token_hash text PRIMARY KEY,created_at timestamptz DEFAULT now(),sender_email text NOT NULL,sender_name text,sender_photo text,sender_answers jsonb NOT NULL,recipient_name text,recipient_email text,sender_member_id uuid,channel text,expires_at timestamptz); CREATE TABLE connection_state(invitation_hash text PRIMARY KEY REFERENCES invitations(token_hash) ON DELETE CASCADE,prospect_member_id uuid,prospect_name text,prospect_photo text,prospect_answers jsonb DEFAULT '[]',prospect_phone text,prospect_email text,status text DEFAULT 'invited',claim_hash text,messages jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now()); CREATE TABLE email_sessions(token_hash text,email text,expires_at timestamptz);`);
+await db.exec("CREATE TABLE email_codes(email text PRIMARY KEY,code_hash text NOT NULL,expires_at timestamptz NOT NULL,last_sent_at timestamptz NOT NULL DEFAULT now(),attempts integer NOT NULL DEFAULT 0)");
+await db.exec(fs.readFileSync(new URL('../migrations/20261015_member_device_sessions.sql',import.meta.url),'utf8'));
 await db.exec("CREATE TABLE activity(kind text,connection_id text); ALTER TABLE connection_state ADD COLUMN ended_at timestamptz; ALTER TABLE connection_state ADD COLUMN ended_by text");
 await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_freezer.sql',import.meta.url),'utf8'));
 await db.exec(fs.readFileSync(new URL('../migrations/20261001_connection_trash.sql',import.meta.url),'utf8'));
@@ -37,7 +40,7 @@ sql.transaction=async(fn,options)=>{
 const logs=[];
 globalThis.__friendSql=sql;
 globalThis.__friendOps={
- memberIdFromToken:async(_sql,token)=>{const row=await sql`SELECT id FROM members WHERE session_hash=${hash(token||'')}`;return row[0]?.id||null},
+ memberIdFromToken:async(_sql,token)=>{const row=await sql`SELECT id FROM members WHERE id=duhwild_session_member(${hash(token||'')})`;return row[0]?.id||null},
  standing:async(_sql,id)=>{const [m]=await sql`SELECT suspended_until,blocked_at FROM members WHERE id=${id}`;return m?.blocked_at||m?.suspended_until&&new Date(m.suspended_until)>new Date()?{error:'Paused'}:null},
  requireVerified:async(_sql,id)=>{const [m]=await sql`SELECT email_verified_at FROM members WHERE id=${id}`;return m?.email_verified_at?null:{error:'Verify',needsVerify:true}},
  log:async(_sql,kind,data)=>logs.push({kind,...data}),
@@ -270,7 +273,7 @@ for(const interruption of ['accept','freeze','expire','senderPause','recipientPa
  };
  assert.equal((await decline(target)).status,409,interruption);assert.deepEqual(await state(target.id),interruptedState,`${interruption} wins over a stale Pass`);
  await sql`UPDATE members SET email_verified_at=now(),suspended_until=NULL WHERE id IN (${ids.owner},${ids.visitor})`;
- await sql`UPDATE members SET session_hash=${hash(tokens.visitor)},contact='visitor@example.com' WHERE id=${ids.visitor}`;
+ await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.visitor)]);await sql`UPDATE members SET session_hash=${hash(tokens.visitor)},contact='visitor@example.com' WHERE id=${ids.visitor}`;
  await sql`DELETE FROM member_blocks`;await clear();
 }
 const retryGuard=await create();assert.equal((await decline(retryGuard)).status,200);
@@ -278,7 +281,7 @@ const retryState=await state(retryGuard.id);
 for(const interruption of ['rotate','block']){
  beforeTransaction=async()=>{if(interruption==='rotate')await sql`UPDATE members SET session_hash=${hash('e'.repeat(64))} WHERE id=${ids.visitor}`;else await sql`INSERT INTO member_blocks(blocker_id,blocked_id) VALUES(${ids.owner},${ids.visitor})`};
  assert.equal((await decline(retryGuard)).status,409,`fresh ${interruption} guard on retry`);assert.deepEqual(await state(retryGuard.id),retryState);
- await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;await sql`DELETE FROM member_blocks`;
+ await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.visitor)]);await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;await sql`DELETE FROM member_blocks`;
 }
 await clear();
 const race=await create();const raced=await Promise.all([accept(race,'visitor'),accept(race,'other')]);assert.deepEqual(raced.map(r=>r.status).sort(),[200,409]);const winner=(await state(race.id)).prospect_member_id;assert([ids.visitor,ids.other].includes(winner));
@@ -289,7 +292,7 @@ for(const interruption of ['end','expire','pause','rotate']){
  const target=await create();
  beforeTransaction=async()=>{if(interruption==='end')await sql`UPDATE connection_state SET status='ended' WHERE invitation_hash=${target.id}`;if(interruption==='expire')await sql`UPDATE invitations SET expires_at=now()-interval '1 day' WHERE token_hash=${target.id}`;if(interruption==='pause')await sql`UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=${ids.owner}`;if(interruption==='rotate')await sql`UPDATE members SET session_hash=${hash('e'.repeat(64))} WHERE id=${ids.visitor}`};
  assert.equal((await accept(target)).status,409,interruption);assert.equal((await state(target.id)).prospect_member_id,null);
- await sql`UPDATE members SET suspended_until=NULL WHERE id=${ids.owner}`;await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;
+ await sql`UPDATE members SET suspended_until=NULL WHERE id=${ids.owner}`;await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.visitor)]);await sql`UPDATE members SET session_hash=${hash(tokens.visitor)} WHERE id=${ids.visitor}`;
 }
 // Explicit blocks govern future contact; an ended Vibe alone does not block a fresh Friend invitation.
 await clear();

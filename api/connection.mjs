@@ -17,7 +17,7 @@ const validAnswers=(a,n)=>Array.isArray(a)&&a.length===n&&a.every(x=>Number.isIn
 const validEmail=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 function cookie(req){return Object.fromEntries((req.headers.get('cookie')||'').split(';').map(x=>x.trim().split('=')))}
 async function senderEmail(req,sql){const token=cookie(req).chempat_session;if(!validToken(token))return null;const rows=await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(token)} AND expires_at>now()`;return rows[0]?.email||null}
-async function senderMember(req,sql){const token=cookie(req).chempat_member;if(!validToken(token))return null;const rows=await sql`SELECT id FROM members WHERE session_hash=${hash(token)}`;return rows[0]?.id||null}
+async function senderMember(req,sql){const token=cookie(req).chempat_member;if(!validToken(token))return null;const rows=await sql`SELECT id FROM members WHERE id=duhwild_session_member(${hash(token)})`;return rows[0]?.id||null}
 const claimCookie=id=>`chempat_pair_${id.slice(0,16)}`;
 async function connectionRow(sql,id){const rows=await sql`SELECT i.token_hash,i.created_at,i.sender_name,i.sender_photo,i.sender_answers,i.recipient_name,i.recipient_email,i.sender_member_id,i.sender_email,i.channel,i.expires_at,i.intended_member_id,i.intended_email,i.reinvite_from,i.delivery_status,c.claim_hash,c.prospect_member_id,c.prospect_name,c.prospect_photo,c.prospect_answers,c.prospect_phone,c.prospect_email,c.status,c.messages,c.ended_at,c.ended_by,EXISTS(SELECT 1 FROM activity a WHERE a.connection_id=i.token_hash AND ((i.channel='email' AND a.kind='invite_emailed') OR (i.channel='friend' AND a.kind='friend_invited'))) AS invitation_sent FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE i.token_hash=${id}`;return rows[0]||null}
 const friend=row=>row.channel==='friend';
@@ -253,7 +253,7 @@ async function handler(req){
    const memberToken=cookie(req).chempat_member;
    const prospect=await senderMember(req,sql);
    if(!prospect||prospect===row.sender_member_id)return reply({error:'Open your own member page to reveal your five.'},401);
-   const visitor=validToken(memberToken)?await sql`SELECT name FROM members WHERE session_hash=${hash(memberToken)}`:[];
+   const visitor=validToken(memberToken)?await sql`SELECT name FROM members WHERE id=duhwild_session_member(${hash(memberToken)})`:[];
    const visitorName=visitor[0]?.name||row.recipient_name;
    if(!visitorName)return reply({error:'Finish your member page to reveal your five.'},400);
    const updated=await lockedWrite(sql,row.token_hash,actor,tx=>tx`UPDATE connection_state SET prospect_name=${visitorName},prospect_photo=${body.photo},prospect_answers=${JSON.stringify(body.answers)}::jsonb,prospect_member_id=${prospect},status='firstResults',updated_at=now() WHERE invitation_hash=${row.token_hash} AND status=${row.status} RETURNING status`);

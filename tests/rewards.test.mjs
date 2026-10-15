@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Real rewards SQL against disposable local PostgreSQL. This suite never uses
 // deployed databases, real accounts, mail providers, or external network calls.
 process.env.CHEMPAT_REVIEW_DATA = 'isolated-confirmed';
@@ -345,7 +346,7 @@ await test('session rotation and standing changes after validation prevent perso
 await test('a token reassigned during lock waits never retargets personal progress or phone consent',async()=>{
   const reassign=async()=>{
     await sql`UPDATE members SET session_hash=${hash('unused-owner-session')} WHERE id=${ids.owner}`;
-    await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.visitor}`;
+    await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.visitor}`;await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor]);
   };
   for(const [operation,level] of [['save',2],['complete',2],['complete',3],['offerPhone',null],['withdrawPhone',null]]){
     await reset();const id=await invite();
@@ -554,7 +555,7 @@ await test('token reassignment between authorization and personal or phone reads
     await reset();const id=await invite();await advance(2);await advance(2,'visitor');status(await offer(id));status(await offer(id,'visitor'));
     beforeRead={matches:text=>text.startsWith(boundary),run:async()=>{
       await sql`UPDATE members SET session_hash=${hash('unused-read-session')} WHERE id=${ids.owner}`;
-      await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.visitor}`;
+      await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.visitor}`;await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor]);
     }};
     const result=await read('owner',boundary==='WITH eligible AS'?id:undefined);status(result,404,boundary+' remains bound to the originally verified account');assert.equal(beforeRead,null);
     assert.equal('answers' in result.data,false);assert.equal('connection' in result.data,false);assert.equal(JSON.stringify(result.data).includes(phones.visitor),false);

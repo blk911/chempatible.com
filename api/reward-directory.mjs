@@ -13,7 +13,7 @@ const route=(kind,id)=>`/api/reward-directory?${kind}=${id}`;
 const firstName=name=>String(name||'').trim().split(/\s+/u)[0].slice(0,50);
 const level=(member='m',state='s')=>`greatest(coalesce(${state}.completed_level,0),CASE WHEN jsonb_typeof(${member}.answers)='array' THEN CASE WHEN jsonb_array_length(${member}.answers)>=10 THEN 2 WHEN jsonb_array_length(${member}.answers)>=5 THEN 1 ELSE 0 END ELSE 0 END)`;
 const active=alias=>`${alias}.email_verified_at IS NOT NULL AND ${alias}.blocked_at IS NULL AND (${alias}.suspended_until IS NULL OR ${alias}.suspended_until<=now())`;
-const AUTH=`SELECT m.id,m.name,m.photo,${level()} AS completed_level FROM members m LEFT JOIN member_reward_state s ON s.member_id=m.id WHERE m.session_hash=$1 AND ${active('m')}`;
+const AUTH=`SELECT m.id,m.name,m.photo,${level()} AS completed_level FROM members m LEFT JOIN member_reward_state s ON s.member_id=m.id WHERE m.id=duhwild_session_member($1) AND ${active('m')}`;
 // Eligibility is repeated in the statement that selects the actual bytes/rows.
 // An old ended/declined/frozen/trashed pair cannot be bypassed by a newer pair.
 const privatePair=`NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=a.id AND b.blocked_id=m.id) OR (b.blocker_id=m.id AND b.blocked_id=a.id))
@@ -22,7 +22,7 @@ const privatePair=`NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=
  OR (i.sender_member_id=m.id AND (c.prospect_member_id=a.id OR i.intended_member_id=a.id OR (c.prospect_member_id IS NULL AND i.intended_member_id IS NULL AND lower(coalesce(i.intended_email,i.recipient_email))=(SELECT lower(contact) FROM members WHERE id=a.id)))))
  AND (c.status IN ('ended','declined') OR c.ended_at IS NOT NULL OR EXISTS(SELECT 1 FROM connection_visibility v WHERE v.invitation_hash=i.token_hash AND (v.frozen_at IS NOT NULL OR v.trashed_at IS NOT NULL))))`;
 const PUBLIC=`a.completed_level>=4 AND p.listed AND ${active('m')} AND ${level()}>=4 AND ${privatePair}`;
-const LOCK=`SELECT id FROM members WHERE id=$2::uuid OR session_hash=$1 ORDER BY id FOR UPDATE`;
+const LOCK=`SELECT id FROM members WHERE id=$2::uuid OR id=duhwild_session_member($1) ORDER BY id FOR UPDATE`;
 
 function photoBytes(photo){
  if(typeof photo!=='string'||photo.length>=250000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo))return null;

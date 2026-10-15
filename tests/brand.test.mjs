@@ -3,22 +3,23 @@ import fs from 'node:fs';
 import {JSDOM} from 'jsdom';
 const read=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8');
 const files=['api/_ops.mjs','api/admin.mjs','api/email.mjs','api/friend.mjs','api/member.mjs','game.js','index.html','friend.html','admin-login.html','admin/index.html','admin.js','admin-ops.js'];
-for(const file of files){const source=read(file);assert.doesNotMatch(source,/Chem-patible|chem-PATIBLE|Chem-<em>patible|brand-logo\.png/,file+' retains old visible branding');assert.doesNotMatch(source,/duhwild\.com/i,file+' must keep the existing domain');}
-for(const file of ['api/_ops.mjs','api/email.mjs','api/friend.mjs'])assert.match(read(file),/from:\{email:'hello@chempatible\.com',name:'Duh Wild'\}/,'new display name preserves verified sender');
+for(const file of files){const source=read(file);assert.doesNotMatch(source,/Chem-patible|chem-PATIBLE|Chem-<em>patible|brand-logo\.png/,file+' retains old visible branding');}
+for(const file of ['api/_ops.mjs','api/email.mjs','api/friend.mjs']){assert.match(read(file),/from:\{email:'hello@duhwild\.com',name:'Duh Wild'\}/,'verified independent sender');assert.match(read(file),/reply_to:\{email:'hello@chempatible\.com',name:'Duh Wild'\}/,'working reply inbox remains until replacement is confirmed');}
 for(const file of ['api/member.mjs','api/admin.mjs','api/email.mjs'])assert.match(read(file),/is your Duh Wild (?:admin )?code/,'generated subject spelling');
 const game=read('game.js');assert.match(game,/button\('Send a vibe →','createMyVibe\(\)'\)/,'existing explicit invitation action');assert.match(game,/Catch a vibe\.<br><em>In Duhwild\.<\/em>/,'approved landing headline');assert.match(game,/const KEY='chempatibility\.walkthrough\.v7'/,'saved state key retained');
 for(const file of ['friend.html','privacy.html','terms.html','admin-login.html','admin/index.html']){const source=read(file);assert.match(source,/class="brandWordmark">Duh <em>Wild<\/em>/,'consistent wordmark');assert.doesNotMatch(source,/<img[^>]+brand-logo/,'old raster logo is not rendered');}
-assert.match(read('terms.html'),/These Terms are an agreement between you and Chem-patible/,'legal counterparty preserved');assert.match(read('privacy.html'),/This policy explains how Chem-patible/,'existing operator preserved');
+assert.match(read('terms.html'),/These Terms are an agreement between you and Duh Wild/,'independent service branding');assert.match(read('privacy.html'),/This policy explains how Duh Wild/,'independent service branding');
 for(const file of ['privacy.html','terms.html'])assert.match(read(file),/mailto:hello@chempatible\.com/,'real support address preserved');
-for(const file of ['index.html','friend.html']){assert.match(read(file),/https:\/\/chempatible\.com\/duh-wild-og\.png/,'branded social image on unchanged domain');assert.match(read(file),/\/duh-wild-icon\.png/);}
+for(const file of ['index.html','friend.html']){assert.match(read(file),/https:\/\/duhwild\.com\/duh-wild-og\.png/,'branded social image on independent domain');assert.match(read(file),/\/duh-wild-icon\.png/);}
 const allowlist=read('.vercelignore');for(const file of ['duh-wild-og.png','duh-wild-icon.png','duh-wild-apple.png']){assert.ok(allowlist.split('\n').includes('!/'+file));const bytes=fs.readFileSync(new URL('../'+file,import.meta.url));assert.equal(bytes.subarray(1,4).toString(),'PNG');}
 for(const old of ['brand-logo.png','og-image.png','favicon.png','apple-touch-icon.png'])assert.ok(!allowlist.split('\n').includes('!/'+old),'obsolete brand bitmap stays out of deployment');
 // Verify the public copy sits immediately above working entry controls and stays
 // scoped to the public opening when sign-in, verification, and photo steps render.
-const dom=new JSDOM(read('index.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''),{url:'https://brand.example/',runScripts:'dangerously'}),w=dom.window,d=w.document;
+const dom=new JSDOM(read('index.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/g,''),{url:'https://brand.example/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
 w.fetch=async()=>({ok:false,status:401,json:async()=>({})});w.setInterval=()=>0;w.scrollTo=()=>{};
 const style=d.createElement('style');style.textContent=read('site.css');d.head.append(style);
 const script=d.createElement('script');script.textContent=game;d.body.append(script);
+await new Promise(resolve=>setImmediate(resolve));
 try{
  const entry=d.querySelector('.landingEntry');assert.ok(entry);
  // Match the layout suite's explicit media-rule activation. JSDOM cannot

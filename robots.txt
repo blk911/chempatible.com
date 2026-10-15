@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://chempatible.com/sitemap.xml
+Sitemap: https://duhwild.com/sitemap.xml

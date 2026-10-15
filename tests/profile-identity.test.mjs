@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Real endpoint PostgreSQL projections on a disposable local PGlite database.
 // Identity refresh never changes the original invitation or accepted snapshots.
 import fs from 'node:fs';
@@ -179,7 +180,7 @@ await test('late session rotation and reassignment or pair mutation cannot cross
   await reset();const pair=await invite();
   beforeIdentity=async()=>{
    if(race==='pair')await db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[pair.id,ids.other]);
-   else {await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('rotated')]);if(race==='reassign')await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.owner)])}
+   else {await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('rotated')]);if(race==='reassign'){await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.owner)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.other])}}
   };
   const view=(await inbox()).find(row=>row.id===pair.id);assert.equal(view.prospect_name,'Accepted visitor',race);assert.equal(view.prospect_photo,snapshotPhoto,race);
  }

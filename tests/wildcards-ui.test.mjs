@@ -29,6 +29,7 @@ async function fixture({level=3,rows=[row(),row(b)],saved,actor='member',catalog
   if(url.startsWith('/api/game-pieces?'))return response({pieces:[],pendingCount:0});
   if(url==='/api/rewards?phoneRequests=1')return response({phoneRequests:[]});
   const body=options.body?JSON.parse(options.body):null;server.calls.push({url,body,options});
+  if(url==='/api/member'&&!body)return response({member:own});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(url==='/api/connection?inbox=1')return response({connections:server.rows.slice(0,inboxLimit)});
   if(url.startsWith('/api/wildcards?targets=1')){

@@ -13,7 +13,7 @@ const REVISION="encode(sha256(convert_to(jsonb_build_array(m.name,m.photo)::text
 const LEVEL=`greatest(coalesce(r.completed_level,0),CASE WHEN jsonb_typeof(m.answers)='array' THEN CASE WHEN jsonb_array_length(m.answers)>=10 THEN 2 WHEN jsonb_array_length(m.answers)>=5 THEN 1 ELSE 0 END ELSE 0 END)`;
 const AUTH=`SELECT m.id,m.name,m.contact,m.photo,${REVISION} AS revision,${LEVEL} AS completed_level,coalesce(p.listed,false) AS listed
  FROM members m LEFT JOIN member_reward_state r ON r.member_id=m.id LEFT JOIN reward_directory_profile p ON p.member_id=m.id
- WHERE m.session_hash=$1 AND m.id=$2::uuid AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
+ WHERE m.id=duhwild_session_member($1) AND m.id=$2::uuid AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
 const view=row=>({profile:{id:row.id,name:row.name,contact:row.contact,photo:row.photo,revision:row.revision},discovery:{listed:row.listed===true,eligible:row.completed_level>=4}});
 // Directory rows are copied only after explicit consent and only while an
 // existing listing is still active. Listing/video flags and bytes never change.

@@ -7,7 +7,7 @@ export const connectionIdentityJoin=({viewer,session,alias='current_identity'})=
  prospect.name AS prospect_name,prospect.photo AS prospect_photo
  FROM members sender JOIN members prospect ON prospect.id=c.prospect_member_id
  JOIN members identity_viewer ON identity_viewer.id=${viewer}::uuid
- AND identity_viewer.session_hash=${session} AND identity_viewer.id IN(sender.id,prospect.id)
+ AND identity_viewer.id=duhwild_session_member(${session}) AND identity_viewer.id IN(sender.id,prospect.id)
  WHERE sender.id=i.sender_member_id AND sender.id<>prospect.id
  AND sender.email_verified_at IS NOT NULL AND prospect.email_verified_at IS NOT NULL
  AND sender.blocked_at IS NULL AND prospect.blocked_at IS NULL

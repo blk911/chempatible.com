@@ -1,3 +1,4 @@
+// Isolated fixture resets explicitly reseed session rows; revoked production tokens never revive.
 // Real discovery SQL, disposable local PostgreSQL via PGlite. No network,
 // deployed database, accounts, mail, or third-party data is used by this suite.
 process.env.CHEMPAT_REVIEW_DATA = 'isolated-confirmed';
@@ -121,7 +122,7 @@ async function reset() {
   assert.equal(beforeTransaction,null,'write race hook ran');
   assert.equal(beforeRead,null,'read race hook ran');
   failTransactionAt=null;
-  await db.exec('DELETE FROM invitations;DELETE FROM discovery_drafts;DELETE FROM discovery_pieces;DELETE FROM member_blocks');
+  await db.exec('DELETE FROM member_sessions;DELETE FROM invitations;DELETE FROM discovery_drafts;DELETE FROM discovery_pieces;DELETE FROM member_blocks');
   for (const name of Object.keys(ids)) await sql`UPDATE members SET session_hash=${hash(tokens[name])},email_verified_at=now(),blocked_at=NULL,suspended_until=NULL WHERE id=${ids[name]}`;
 }
 async function start(id,as='owner',extra={}) {const result=await action('start',id,as,extra);badStatus(result,200,'start');return result}
@@ -420,7 +421,7 @@ await test('read-time reauthorization prevents stale session and relationship sn
   const id=await invite();await finish(id);await finish(id,'visitor',alternate);await action('share',id);await action('share',id,'visitor');
   beforeRead={matches:text=>text.startsWith('WITH eligible AS'),run:async()=>sql`UPDATE members SET session_hash=${hash('read-rotation')} WHERE id=${ids.owner}`};
   badStatus(await read(id),404);assert.equal(beforeRead,null);
-  await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.owner}`;
+  await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.owner)]);await sql`UPDATE members SET session_hash=${hash(tokens.owner)} WHERE id=${ids.owner}`;
   beforeRead={matches:text=>text.startsWith('SELECT p.module_id'),run:async()=>sql`UPDATE members SET blocked_at=now() WHERE id=${ids.owner}`};
   const result=await pieceList();badStatus(result,200);assert.deepEqual(result.data.pieces,[]);
 });

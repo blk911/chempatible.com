@@ -9,7 +9,7 @@ const headers={'cache-control':'no-store','x-content-type-options':'nosniff','cr
 const reply=(data,status=200)=>Response.json(data,{status,headers});
 const sessionChanged=()=>reply({error:'Your sign-in or account standing changed. Refresh your page before continuing.',sessionExpired:true},403);
 const standing=alias=>`${alias}.email_verified_at IS NOT NULL AND ${alias}.blocked_at IS NULL AND (${alias}.suspended_until IS NULL OR ${alias}.suspended_until<=now())`;
-const LOOKUP=`SELECT m.id FROM members m WHERE m.session_hash=$1 AND ${standing('m')}`;
+const LOOKUP=`SELECT m.id FROM members m WHERE m.id=duhwild_session_member($1) AND ${standing('m')}`;
 const AUTH=`${LOOKUP} AND m.id=$2::uuid`;
 // A genuine accepted member pair is enough: this intentionally has no reward,
 // answer-count or normal-chat gate. Both counterpart rows must still exist.

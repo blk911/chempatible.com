@@ -25,6 +25,7 @@ async function fixture({level=2,prospect=false,listed=false,server={profiles:pro
    if(body){if(body.profileRevision!==data.profile.revision)return reply({error:'Profile changed elsewhere.',profileConflict:true},409);if(body.updateDiscovery&&(!data.discovery.listed||!data.discovery.eligible))return reply({error:'Listing changed.',discoveryConflict:true},409);data.profile={...data.profile,name:body.name,photo:body.photo,revision:revision(Number.parseInt(data.profile.revision,16)+1)}}
    return reply(data);
   }
+  if(url==='/api/member'&&!body)return reply({member:{...server.profiles[w.eval('activeMemberId()')||'owner'].profile,answers:[],verified:true}});
   if(url==='/api/member'&&body?.action==='logout')return reply({ok:true});
   if(url==='/api/connection?inbox=1')return reply({connections:[]});
   if(url.startsWith('/api/discovery'))return reply({modules:[],games:[],pieces:[]});

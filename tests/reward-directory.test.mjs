@@ -1,3 +1,5 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
+// Isolated fixture resets explicitly reseed session rows; revoked production tokens never revive.
 // Real directory SQL in disposable PostgreSQL (PGlite). Synthetic fixtures only;
 // never connects to an account, deployed database, mail, or storage provider.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
@@ -40,7 +42,7 @@ sql.transaction=async(callback,options)=>{
  return db.transaction(async tx=>{
   const statements=callback({query:(text,params=[])=>({text,params})});
   assert.match(statements[0].text,/ORDER BY id FOR UPDATE/,'ordered member locks precede mutations');
-  assert.match(statements[1].text,/session_hash=\$1/,'session authorization rechecked after locks');
+  assert.match(statements[1].text,/m\.id=duhwild_session_member\(\$1\)/,'session authorization rechecked after locks');
   assert.match(statements[1].text,/email_verified_at IS NOT NULL/,'standing rechecked after locks');
   const result=[];for(let index=0;index<statements.length;index++){if(failTransaction&&index===1){failTransaction=false;throw Error('Synthetic rollback')}result.push(await run(tx,statements[index]))}return result;
  });
@@ -80,7 +82,7 @@ async function reset(){
  assert.equal(beforeRead,null,'read race hook executed');assert.equal(beforeTransaction,null,'write race hook executed');
  await db.exec('DELETE FROM invitations;DELETE FROM member_blocks;DELETE FROM reward_directory_profile');
  await db.query('DELETE FROM members WHERE id NOT IN($1,$2,$3)',Object.values(ids));
- await db.exec("UPDATE members SET session_hash='reset:'||id::text");
+ await db.exec("DELETE FROM member_sessions; UPDATE members SET session_hash=encode(sha256(convert_to('reset:'||id::text,'UTF8')),'hex')");
  for(const [name,id] of Object.entries(ids)){
   await db.query('UPDATE members SET session_hash=$1,name=$2,photo=$3,answers=$4,email_verified_at=now(),blocked_at=NULL,suspended_until=NULL WHERE id=$5',[hash(tokens[name]),name+' PrivateSurname',photo(jpeg),'[0,1,2,0,1,2,0,1,2,0]',id]);await setLevel(name,5);
  }
@@ -245,7 +247,7 @@ await test('a token reassigned to another member while waiting for locks cannot 
  for(const operation of ['list','unlist','upload','publishVideo','hideVideo']){
   await listAndPublish();status(await action('list','viewer'),200);status(await upload('viewer'),200);status(await action('publishVideo','viewer'),200);
   const before=(await db.query('SELECT * FROM reward_directory_profile ORDER BY member_id')).rows;
-  beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('owner-new-session'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.viewer])};
+  beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('owner-new-session'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.viewer]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.viewer])};
   status(operation==='upload'?await upload():await action(operation),409);
   assert.deepEqual((await db.query('SELECT * FROM reward_directory_profile ORDER BY member_id')).rows,before,'neither old nor newly bound member profile changed');await reset();
  }
@@ -253,7 +255,7 @@ await test('a token reassigned to another member while waiting for locks cannot 
 await test('a token reassigned after initial authentication cannot redirect profile, directory, or media reads',async()=>{
  for(const query of ['profile=1','directory=1','photo='+ids.owner,'video='+ids.owner]){
   await listAndPublish();
-  beforeRead={matches:text=>text.startsWith('WITH actor'),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('viewer-new-session'),ids.viewer]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.viewer),ids.owner])}};
+  beforeRead={matches:text=>text.startsWith('WITH actor'),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('viewer-new-session'),ids.viewer]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.viewer),ids.owner]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.viewer),ids.owner])}};
   status(await response({as:'viewer',query}),['profile=1','directory=1'].includes(query)?403:404);await reset();
  }
 });
@@ -268,7 +270,7 @@ await test('read authorization is fresh after initial authentication, including 
  await listAndPublish();
  for(const query of ['profile=1','directory=1','photo='+ids.owner,'video='+ids.owner]){
   beforeRead={matches:text=>text.startsWith('WITH actor'),run:()=>db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('revoked'),ids.viewer])};
-  status(await response({as:'viewer',query}),['profile=1','directory=1'].includes(query)?403:404);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.viewer),ids.viewer]);
+  status(await response({as:'viewer',query}),['profile=1','directory=1'].includes(query)?403:404);await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.viewer)]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.viewer),ids.viewer]);
  }
  beforeRead={matches:text=>text.startsWith('WITH actor'),run:()=>db.query('UPDATE reward_directory_profile SET listed=false,video_published=false WHERE member_id=$1',[ids.owner])};status(await media('video'),404);
  status(await action('list'),200);status(await action('publishVideo'),200);

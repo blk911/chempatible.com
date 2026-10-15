@@ -23,12 +23,13 @@ function fakeClock(w){
 function fixture(rows=[frozen(),row()],{saved}={}){
  const dom=new JSDOM(html,{url:'https://notice.example/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document,clock=fakeClock(w);
  const server={rows:clone(rows),calls:[],fail:false},response=(data,status=200)=>({ok:status<400,status,json:async()=>clone(data)});
- w.fetch=async()=>response({},401);w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
+ w.fetch=async(url)=>url==='/api/member'?response({member:own}):response({},401);w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  if(saved)w.sessionStorage.setItem(key,JSON.stringify(saved));
  const script=d.createElement('script');script.textContent=source;d.body.append(script);
  if(!saved)w.eval(`s={...blank(),view:'dashboard',member:${JSON.stringify(own)},memberId:'owner',account:${JSON.stringify(own)},liveMember:true,inbox:${JSON.stringify(rows.filter(c=>c.location!=='trash'))},trashRows:${JSON.stringify(rows.filter(c=>c.location==='trash'))},selectedChempat:'active',phase:'chat'};render()`);
  const fetch=async(url,options={})=>{
   assert.ok(url.startsWith('/api/'),'all network requests use isolated local stubs');const body=options.body?JSON.parse(options.body):null;server.calls.push({url,body});
+  if(url==='/api/member'&&!body)return response({member:own});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(url==='/api/connection?inbox=1')return server.fail?response({error:'Connections could not be loaded.'},503):response({connections:server.rows.filter(c=>c.location!=='trash')});
   if(url.startsWith('/api/connection?trash='))return response({connections:server.rows.filter(c=>c.location==='trash')});
@@ -76,7 +77,7 @@ test('keyboard-generated control clicks dismiss the success',async()=>{
 });
 
 test('pagehide clears owned success for BFCache return and preserves persistent errors',async()=>{
- const f=fixture();try{await action(f);const timer=f.clock.last();f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));assert.equal(f.notice(),null);assert.equal(f.state().notice,'');assert.equal(f.saved().notice,'');assert.equal(f.clock.active().filter(t=>t.delay===5000).length,0);f.w.dispatchEvent(new f.w.PageTransitionEvent('pageshow',{persisted:true}));assert.equal(f.notice(),null);f.w.eval("setNotice('Connections could not be loaded.');render()");f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));f.clock.force(timer.id);assert.equal(f.notice().textContent,'Connections could not be loaded.');assert.equal(f.saved().notice,'Connections could not be loaded.')}finally{f.close()}
+ const f=fixture();try{await action(f);const timer=f.clock.last();f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));assert.equal(f.notice(),null);assert.equal(f.state().notice,'');assert.equal(f.saved().notice,'');assert.equal(f.clock.active().filter(t=>t.delay===5000).length,0);f.w.dispatchEvent(new f.w.PageTransitionEvent('pageshow',{persisted:true}));await flush();assert.equal(f.notice(),null);f.w.eval("setNotice('Connections could not be loaded.');render()");f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));f.clock.force(timer.id);assert.equal(f.notice().textContent,'Connections could not be loaded.');assert.equal(f.saved().notice,'Connections could not be loaded.')}finally{f.close()}
 });
 
 test('expiry changes only the notice, preserving composer focus, selection, and newer modal drafts',async()=>{
@@ -111,9 +112,9 @@ test('late action completion leaves a newer modal and its draft alone',async()=>
  const f=fixture();try{const wait=deferred();f.w.fetch=async(url,options)=>{if(options?.method==='POST')await wait.promise;return f.fetch(url,options)};f.w.openEnd('history','trash');const pending=f.w.confirmEnd();f.w.closeInvite();f.w.openFriendShare();const field=f.d.querySelector('#friendName');field.value='Newer draft';wait.resolve();await pending;assert.equal(f.d.querySelector('#friendName'),field);assert.equal(field.value,'Newer draft');assert.equal(f.state().modal,'friendShare');assert.equal(f.notice(),null);assert.equal(f.clock.active().filter(t=>t.delay===5000).length,0)}finally{f.close()}
 });
 
-for(const notice of ['Record moved to your Trash.','New Vibe invitation sent. They need to accept again.','Connections could not be loaded.'])test(`reload handles stored notice: ${notice}`,()=>{
+for(const notice of ['Record moved to your Trash.','New Vibe invitation sent. They need to accept again.','Connections could not be loaded.'])test(`reload handles stored notice: ${notice}`,async()=>{
  const saved={view:'dashboard',member:own,memberId:'owner',account:own,notice},f=fixture([],{saved});
- try{const isError=notice==='Connections could not be loaded.';assert.equal(f.state().notice,isError?notice:'');assert.equal(f.saved().notice,isError?notice:'');f.clock.tick(10000);assert.equal(f.notice()?.textContent||'',isError?notice:'')}finally{f.close()}
+ try{await flush();const isError=notice==='Connections could not be loaded.';assert.equal(f.state().notice,isError?notice:'');assert.equal(f.saved().notice,isError?notice:'');f.clock.tick(10000);assert.equal(f.notice()?.textContent||'',isError?notice:'')}finally{f.close()}
 });
 
 test('friend-send confirmation retains its existing 1.8-second duration and modal behavior',async()=>{

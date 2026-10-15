@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {sendFriendMail} from './friend.mjs';
 import {sendVibeMail} from './email.mjs';
-import {reviewRecipientAllowed} from './_review.mjs';
+import {reviewRecipientAllowed,publicSiteUrl} from './_review.mjs';
 import {pairBlocked,deliveryBlocked} from './_connections.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
@@ -75,7 +75,7 @@ export async function reinvite(sql,{body,req,row,side,actor,ops}){
   await sql`UPDATE connection_state SET status='ended',ended_at=coalesce(ended_at,now()),ended_by=coalesce(ended_by,'member'),updated_at=now() WHERE invitation_hash=${id} AND status='invited'`;
   return result({error:'This invitation is unavailable.'},403);
  }
- const reservedSender=reserved[1][0],link=new URL(kind==='friend'?`/friend?friend=${freshToken}`:`/?invite=${freshToken}`,req.url).href;
+ const reservedSender=reserved[1][0],link=publicSiteUrl(kind==='friend'?`/friend?friend=${freshToken}`:`/?invite=${freshToken}`,req.url);
  try{
   if(kind==='friend')await sendFriendMail(email,name,reservedSender.sender_name,reservedSender.sender_photo,link);
   else await sendVibeMail(email,name,reservedSender.sender_name,reservedSender.sender_photo,link);

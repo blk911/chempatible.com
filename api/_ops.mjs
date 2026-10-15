@@ -70,7 +70,7 @@ export async function markVerified(sql,email){
 }
 export async function memberIdFromToken(sql,token){
  if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))return null;
- const rows=await sql`SELECT id FROM members WHERE session_hash=${hash(token)}`;
+ const rows=await sql`SELECT id FROM members WHERE id=duhwild_session_member(${hash(token)})`;
  return rows[0]?.id||null;
 }
 // Ties the person who answered an invitation to their member page, so reports add up per person.
@@ -87,7 +87,7 @@ export function strikeAction(strikes){return strikes>=4?'block':strikes===3?'sus
 export async function sendMail(to,subject,text){
  requireReviewRecipient(to);
  if(!process.env.SENDGRID_API_KEY)throw Error('Email is not configured.');
- const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Duh Wild'},subject,content:[{type:'text/plain',value:text}]})});
+ const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({personalizations:[{to:[{email:to}]}],from:{email:'hello@duhwild.com',name:'Duh Wild'},reply_to:{email:'hello@chempatible.com',name:'Duh Wild'},subject,content:[{type:'text/plain',value:text}]})});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
 }
 
@@ -127,7 +127,7 @@ async function applyStrikes(sql,filed,reporterName,connectionId){
  }
  try{if(!ADMIN_EMAIL)throw Error('Admin email is not configured.');
   await sendMail(ADMIN_EMAIL,`Duh Wild report: ${filed.reportedName||'unknown member'}${strikes?` (strike ${strikes})`:''}`,
-  `${reporterName||'A member'} reported ${filed.reportedName||'someone'} (${filed.reportedContact||'no contact on file'}).\n\nReason: ${REPORT_REASONS[filed.reason]}\n${filed.note?`Note: ${filed.note}\n`:''}\n${strikes?`Strikes: ${strikes}. Action: ${action==='suspend'?`suspended ${SUSPEND_DAYS} days`:action==='block'?'blocked':'flagged for review'}.`:'Not linked to a member page yet. Review it in admin.'}\n\nhttps://chempatible.com/admin#reports`)}
+  `${reporterName||'A member'} reported ${filed.reportedName||'someone'} (${filed.reportedContact||'no contact on file'}).\n\nReason: ${REPORT_REASONS[filed.reason]}\n${filed.note?`Note: ${filed.note}\n`:''}\n${strikes?`Strikes: ${strikes}. Action: ${action==='suspend'?`suspended ${SUSPEND_DAYS} days`:action==='block'?'blocked':'flagged for review'}.`:'Not linked to a member page yet. Review it in admin.'}\n\nhttps://duhwild.com/admin#reports`)}
  catch(error){console.error('Report alert error:',error)}
 }
 

@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Synthetic PGlite integration only. No deployed database, real members, mail,
 // provider calls or remotely hosted media are used.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
@@ -58,7 +59,7 @@ const count=async table=>(await db.query('SELECT count(*) AS n FROM '+table)).ro
 async function pending(){const res=await request();status(res,200);assert.equal(res.data.status,'pending');assert.equal(res.data.connectionId,null);return res.data.id}
 async function reset(){
  assert.equal(beforeTransaction,null);assert.equal(beforeRead,null);failAt=null;
- await db.exec('DELETE FROM reward_discovery_requests;DELETE FROM invitations;DELETE FROM member_blocks;DELETE FROM reward_directory_profile');await db.query('DELETE FROM members WHERE id NOT IN($1,$2,$3)',Object.values(ids));await db.exec("UPDATE members SET session_hash='reset:'||id::text");
+ await db.exec('DELETE FROM reward_discovery_requests;DELETE FROM invitations;DELETE FROM member_blocks;DELETE FROM reward_directory_profile');await db.query('DELETE FROM members WHERE id NOT IN($1,$2,$3)',Object.values(ids));await db.exec("DELETE FROM member_sessions; UPDATE members SET session_hash=encode(sha256(convert_to('reset:'||id::text,'UTF8')),'hex')");
  for(const [name,id] of Object.entries(ids)){
   await db.query('UPDATE members SET session_hash=$1,name=$2,photo=$3,answers=$4,email_verified_at=now(),blocked_at=NULL,suspended_until=NULL WHERE id=$5',[hash(tokens[name]),name+' PrivateSurname',photo(name==='sender'?jpeg:jpeg2),JSON.stringify(name==='sender'?senderAnswers:targetAnswers),id]);
   await db.query('UPDATE member_reward_state SET completed_level=4 WHERE member_id=$1',[id]);
@@ -175,7 +176,7 @@ await test('ordered member locks recheck target listing/block/lifecycle before c
 await test('session rotation/reassignment during a lock wait cannot redirect a request or transition',async()=>{
  for(const operation of ['request','accept','pass','cancel']){
   const id=operation==='request'?null:await pending(),as=['accept','pass'].includes(operation)?'target':'sender';
-  beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('rotated'),ids[as]]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens[as]),ids.other])};
+  beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('rotated'),ids[as]]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens[as]),ids.other]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens[as]),ids.other])};
   status(operation==='request'?await request():await action(operation,id,as),409);assert.equal(await count('invitations'),0);if(id)assert.equal((await db.query('SELECT status FROM reward_discovery_requests')).rows[0].status,'pending');else assert.equal(await count('reward_discovery_requests'),0);await reset();
  }
 });
@@ -187,7 +188,7 @@ await test('unlisting, blocking, expiry and standing races cannot create a conne
 await test('read snapshot revalidates actor and pair for metadata and private photo bytes',async()=>{
  for(const query of ['', 'photo']){
   const id=await pending();beforeRead={matches:text=>text.startsWith('WITH '),run:()=>db.query('UPDATE reward_directory_profile SET listed=false WHERE member_id=$1',[ids.target])};const res=await response({as:'target',query:query?'photo='+id:''});status(res,query?404:200);if(!query)assert.deepEqual(await res.json(),{incoming:[],outgoing:[]});await reset();
-  const next=await pending();beforeRead={matches:text=>text.startsWith('WITH '),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('rotated'),ids.target]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.target),ids.other])}};status(await response({as:'target',query:query?'photo='+next:''}),query?404:403);await reset();
+  const next=await pending();beforeRead={matches:text=>text.startsWith('WITH '),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('rotated'),ids.target]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.target),ids.other]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.target),ids.other])}};status(await response({as:'target',query:query?'photo='+next:''}),query?404:403);await reset();
  }
 });
 await test('acceptance SQL failure rolls back invitation, connection and status together',async()=>{

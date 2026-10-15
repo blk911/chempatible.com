@@ -1,3 +1,5 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
+// Isolated fixture resets explicitly reseed session rows; revoked production tokens never revive.
 // Disposable local PostgreSQL only. Real API SQL and atomic source triggers;
 // PGlite serializes transactions, so race hooks + lock assertions cover safety
 // without claiming a multi-server deadlock/load test.
@@ -34,7 +36,7 @@ sql.transaction=async(build,options)=>{
   assert.match(statements[0].text,/ORDER BY id FOR UPDATE/);
   if(statements.some(s=>s.text.includes('UPDATE game_piece_events e SET'))){
    assert.equal(statements.length,3);assert.match(statements[1].text,/connection_state.*FOR UPDATE/);
-   assert.match(statements[2].text,/m\.session_hash=\$1 AND m\.id='[a-f0-9-]+'::uuid/);
+   assert.match(statements[2].text,/m\.id=duhwild_session_member\(\$1\) AND m\.id='[a-f0-9-]+'::uuid/);
   }
   const result=[];
   for(let i=0;i<statements.length;i++){
@@ -199,7 +201,7 @@ await test('wrong recipient, logout, expired/rotated tokens, and missing/stale P
 });
 await test('GET projects fresh bound actor after token rotation or token reassignment between reads',async()=>{
  await invite();beforeRead={matches:t=>t.includes('SELECT coalesce((SELECT jsonb_agg'),run:async()=>{
-  await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('d'.repeat(64))]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.owner)]);
+  await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('d'.repeat(64))]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.owner)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.other]);
  }};status(await read(),403);
 });
 await test('POST reauthorizes rotated sessions and original pair after participant locks',async()=>{
@@ -289,7 +291,7 @@ await test('hydration requires the actual eligible piece, original recipient and
 });
 await test('hydration rechecks session and lifecycle in the statement selecting private source data',async()=>{
  const id=await invite(),p=(await pieces())[0];beforeRead={matches:t=>t.includes('AS hydrated_piece'),run:()=>db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('e'.repeat(64))])};status(await hydrate(p),404);
- await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash(tokens.owner)]);beforeRead={matches:t=>t.includes('AS hydrated_piece'),run:()=>db.query("UPDATE connection_state SET status='ended' WHERE invitation_hash=$1",[id])};status(await hydrate(p),404);
+ await db.query('DELETE FROM member_sessions WHERE token_hash=$1',[hash(tokens.owner)]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash(tokens.owner)]);beforeRead={matches:t=>t.includes('AS hydrated_piece'),run:()=>db.query("UPDATE connection_state SET status='ended' WHERE invitation_hash=$1",[id])};status(await hydrate(p),404);
 });
 await test('hydration cannot bypass source-specific phone, directory or wildcard revocation',async()=>{
  await setLevel(5);await setLevel(4,'visitor');const id=await invite();status(await phone(id));const offer=(await pieces('visitor','phone-offer'))[0];status(await hydrate(offer,'visitor'));status(await withdraw(id));status(await hydrate(offer,'visitor'),404);

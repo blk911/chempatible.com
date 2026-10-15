@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Exercise the actual endpoint and SQL in disposable local PostgreSQL (PGlite).
 // No external database, credentials, real members, browser or email is used.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
@@ -42,7 +43,7 @@ sql.transaction=async(build,options)=>{
   assert.match(batch[1].text,/reward_directory_profile.*FOR UPDATE/);
   assert.deepEqual(batch[0].values,[batch[2].values[1]],'locks the expected member, never a session-reassigned member');
   for(const index of [2,3]){
-   assert.match(batch[index].text,/m\.session_hash=\$1 AND m\.id=\$2::uuid/);
+   assert.match(batch[index].text,/m\.id=duhwild_session_member\(\$1\) AND m\.id=\$2::uuid/);
    assert.match(batch[index].text,/email_verified_at IS NOT NULL/);assert.match(batch[index].text,/blocked_at IS NULL/);assert.match(batch[index].text,/suspended_until<=now\(\)/);
   }
   for(let index=0;index<batch.length;index++){
@@ -199,7 +200,7 @@ await test('session, expected account and standing are rechecked after lock acqu
   ['blocked',()=>db.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.owner])],
   ['suspended',()=>db.query("UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=$1",[ids.owner])],
   ['rotated',()=>db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-rotation'),ids.owner])],
-  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor])}]
+  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])}]
  ];
  for(const [label,change] of changes){
   await reset();let protectedState;beforeTransaction=async()=>{await change();protectedState=await snapshot()};
@@ -222,7 +223,7 @@ await test('the mutation statement repeats revision, session and discovery check
 });
 await test('the final read remains owner-bound if authorization changes after a committed save',async()=>{
  let count=0;beforeRead={matches:text=>text.startsWith('SELECT m.id')&&++count===3,run:async()=>{
-  await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('post-save-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);
+  await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('post-save-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor]);
  }};
  const result=await save();status(result,403);assert.equal(result.data.sessionExpired,true);assert.equal('profile' in result.data,false);assert.equal((await owner()).name,'Renamed Member');
  assert.equal(JSON.stringify(result.data).includes('visitor'),false);

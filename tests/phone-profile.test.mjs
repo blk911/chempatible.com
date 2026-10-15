@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Actual reward/profile SQL in disposable local PostgreSQL (PGlite). No external
 // database, real member, email, SMS, credentials, or network requests are used.
 process.env.CHEMPAT_REVIEW_DATA='isolated-confirmed';
@@ -35,7 +36,7 @@ sql.transaction=async(build,options)=>{
    const boundMember=statements[1].text.match(/m\.id='([a-f0-9-]+)'::uuid/)?.[1];
    assert.ok(boundMember);assert.deepEqual(statements[0].values,[boundMember],'profile locks exactly the initially authorized member');
    for(const index of [1,2]){
-    assert.match(statements[index].text,/m\.session_hash=\$1 AND m\.id='[a-f0-9-]+'::uuid/,'post-lock authorization remains account-bound');
+    assert.match(statements[index].text,/m\.id=duhwild_session_member\(\$1\) AND m\.id='[a-f0-9-]+'::uuid/,'post-lock authorization remains account-bound');
     assert.match(statements[index].text,/email_verified_at IS NOT NULL/);assert.match(statements[index].text,/blocked_at IS NULL/);assert.match(statements[index].text,/suspended_until<=now\(\)/);
    }
    assert.match(statements[2].text,/WHERE level>=2/);
@@ -212,7 +213,7 @@ await test('pair readiness is hidden for Friend, lower-level, lifecycle-restrict
   ['blocked pair',()=>db.query('INSERT INTO member_blocks(blocker_id,blocked_id) VALUES($1,$2)',[ids.visitor,ids.owner]),404],
   ['counterpart suspended',()=>db.query("UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=$1",[ids.visitor]),404],
   ['counterpart unverified',()=>db.query('UPDATE members SET email_verified_at=NULL WHERE id=$1',[ids.visitor]),404],
-  ['actor reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('readiness-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.other])},404]
+  ['actor reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('readiness-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.other]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.other])},404]
  ];
  for(const [label,restrict,expected] of gates){
   await reset();const id=await invite();status(await confirm());status(await confirm(phones.visitor,0,{as:'visitor'}));
@@ -286,7 +287,7 @@ await test('post-lock checks reject lost session, standing, account reassignment
   ['blocked',()=>db.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.owner])],
   ['suspended',()=>db.query("UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=$1",[ids.owner])],
   ['rotated',()=>db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-rotation'),ids.owner])],
-  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor])}],
+  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('wait-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])}],
   ['level revoked',()=>setLevel(1)]
  ];
  for(const [label,change] of changes){
@@ -301,7 +302,7 @@ await test('authorization is repeated in the write, not only the post-lock prefl
 });
 await test('GET and post-save projection stay bound when a session is revoked or reassigned',async()=>{
  for(const reassign of [false,true]){
-  await reset();status(await confirm());beforeRead={matches:text=>text.startsWith('WITH owner AS'),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('read-unused'),ids.owner]);if(reassign)await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor])}};
+  await reset();status(await confirm());beforeRead={matches:text=>text.startsWith('WITH owner AS'),run:async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('read-unused'),ids.owner]);if(reassign){await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])}}};
   const result=await read();status(result,404);assert.equal('phoneProfile' in result.data,false);assert.equal(JSON.stringify(result.data).includes(phones.owner),false);
  }
  await reset();beforeRead={matches:text=>text.startsWith('WITH owner AS'),run:()=>db.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.owner])};
@@ -369,7 +370,7 @@ await test('incoming phone summary rechecks lifecycle and account binding in the
   ['actor suspended',()=>db.query("UPDATE members SET suspended_until=now()+interval '1 day' WHERE id=$1",[ids.owner]),403],
   ['actor unverified',()=>db.query('UPDATE members SET email_verified_at=NULL WHERE id=$1',[ids.owner]),403],
   ['rotated',()=>db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('summary-rotation'),ids.owner]),403],
-  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('summary-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor])},403]
+  ['reassigned',async()=>{await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash('summary-unused'),ids.owner]);await db.query('UPDATE members SET session_hash=$1 WHERE id=$2',[hash(tokens.owner),ids.visitor]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])},403]
  ];
  for(const [label,change,expected] of changes){
   await reset();const id=await invite();status(await call({as:'visitor',body:{action:'offerPhone',connectionId:id,phone:phones.visitor}}));

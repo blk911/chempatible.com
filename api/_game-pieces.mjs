@@ -2,7 +2,7 @@ import {WILDCARD_CATEGORIES} from './_wildcard-questions.mjs';
 import {connectionIdentityJoin,connectionIdentityFields} from './_connection-identity.mjs';
 // This feed carries counterpart milestones, never private responses or media.
 // All targets are hints for existing authorized controls, not action grants.
-export const GAME_PIECE_AUTH=`SELECT m.id FROM members m WHERE m.session_hash=$1 AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
+export const GAME_PIECE_AUTH=`SELECT m.id FROM members m WHERE m.id=duhwild_session_member($1) AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
 const level=(member,state)=>`greatest(coalesce(${state}.completed_level,0),CASE WHEN jsonb_array_length(${member}.answers)>=10 THEN 2 WHEN jsonb_array_length(${member}.answers)>=5 THEN 1 ELSE 0 END)`;
 const ownLevel=level('viewer','vr'),otherLevel=level('author','ar');
 // Match reward-directory's current media restriction across all prior pairs;

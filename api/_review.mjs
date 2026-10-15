@@ -21,3 +21,7 @@ export function reviewRecipientAllowed(value){
 export function requireReviewRecipient(value){
  if(!reviewRecipientAllowed(value))throw Error('Review email is limited to approved test recipients.');
 }
+
+// Public invitations always open the independent site; isolated review links
+// stay in their own environment and cannot point real users at test data.
+export const publicSiteUrl=(path,requestUrl)=>new URL(path,deploymentMode()==='live'?'https://duhwild.com':requestUrl).href;

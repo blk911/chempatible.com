@@ -7,6 +7,6 @@ export function expectedRewardMember(req,memberId){
 }
 export function bindRewardMember(sql,memberId){
  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(memberId))throw Error('Invalid member identity');
- const scope=query=>query.replaceAll('m.session_hash=$1',`m.session_hash=$1 AND m.id='${memberId}'::uuid`);
+ const scope=query=>query.replaceAll('m.id=duhwild_session_member($1)',`m.id=duhwild_session_member($1) AND m.id='${memberId}'::uuid`);
  return {query:(query,params)=>sql.query(scope(query),params),transaction:(build,options)=>sql.transaction(tx=>build({query:(query,params)=>tx.query(scope(query),params)}),options)};
 }

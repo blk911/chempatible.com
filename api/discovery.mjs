@@ -8,7 +8,7 @@ const validId=s=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
 // Repeated inside every statement after locks: sessions, lifecycle and standing may
 // change between the initial request and a transaction acquiring its locks.
-const AUTH=`SELECT m.id FROM members m WHERE m.session_hash=$1 AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
+const AUTH=`SELECT m.id FROM members m WHERE m.id=duhwild_session_member($1) AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
 const PAIR=`SELECT i.token_hash,i.sender_member_id,c.prospect_member_id,m.id AS actor,m.name AS actor_name,
  CASE WHEN m.id=i.sender_member_id THEN c.prospect_member_id ELSE i.sender_member_id END AS other
  FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash
@@ -75,7 +75,7 @@ async function handler(req){
   const allowed=await sql.query(PAIR,args.slice(0,2));if(!allowed[0])return reply({error:'Games are unavailable for this connection.'},404);
   const statements=[];
   // Every game mutation uses the same member lock order as block/freeze/chat.
-  statements.push([`SELECT id FROM members WHERE id IN (SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR session_hash=$1 ORDER BY id FOR UPDATE`,args.slice(0,2)]);
+  statements.push([`SELECT id FROM members WHERE id IN (SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR id=duhwild_session_member($1) ORDER BY id FOR UPDATE`,args.slice(0,2)]);
   statements.push([`SELECT invitation_hash FROM connection_state WHERE invitation_hash=$1 FOR UPDATE`,[id]]);
   if(['start','reuse'].includes(action)){
    const hasPiece=action==='reuse'?` AND EXISTS(SELECT 1 FROM discovery_pieces WHERE ${pieceMatch})`:'';

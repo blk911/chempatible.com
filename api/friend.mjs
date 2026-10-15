@@ -2,7 +2,7 @@ import {createHash,randomBytes} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
 import {pairBlocked,reserveInvitation,deliveryBlocked,targetAllowed} from './_connections.mjs';
-import {reviewGate,requireReviewRecipient} from './_review.mjs';
+import {reviewGate,requireReviewRecipient,publicSiteUrl} from './_review.mjs';
 
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const reply=(body,status=200)=>Response.json(body,{status,headers:{'cache-control':'no-store'}});
@@ -17,7 +17,7 @@ export async function sendFriendMail(to,recipientName,senderName,senderPhoto,lin
  const senderFirst=first(senderName),recipientFirst=first(recipientName),safeSender=escape(senderFirst),safeRecipient=escape(recipientFirst);
  const html=`<div style="font-family:Arial,sans-serif;max-width:440px;margin:auto;color:#17262e;text-align:center;padding:22px 12px"><p style="font-size:12px;letter-spacing:2px;color:#7440b3;font-weight:bold">Duh <em>Wild</em> · FRIEND INVITATION</p><img src="cid:inviter-photo" width="160" height="160" alt="${safeSender}" style="width:160px;height:160px;object-fit:cover;border-radius:18px"><p style="font-size:14px;letter-spacing:1px;font-weight:bold;color:#7440b3;margin:18px 0 5px">HEY ${safeRecipient}</p><h1 style="font-size:31px;line-height:1.12;margin:7px 0 16px">Come try Duh Wild with me.</h1><p style="font-size:17px;line-height:1.5;margin:0 0 22px">Connect as friends and open a private chat. No dating questions required.</p><a href="${link}" style="display:inline-block;background:#7440b3;color:#fff;padding:16px 25px;border-radius:9px;text-decoration:none;font-weight:bold;font-size:16px">CONNECT AS FRIENDS →</a><p style="font-size:14px;color:#53656e;margin-top:24px">— ${safeSender}</p></div>`;
  const text=`Hey ${recipientFirst},\n\nCome try Duh Wild with me. Connect as friends and open a private chat. No dating questions required.\n\n${link}\n\n— ${senderFirst}`;
- const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Duh Wild'},subject:`${senderFirst} invited you to Duh Wild`,content:[{type:'text/plain',value:text},{type:'text/html',value:html}],attachments:[{content:senderPhoto.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}]};
+ const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@duhwild.com',name:'Duh Wild'},reply_to:{email:'hello@chempatible.com',name:'Duh Wild'},subject:`${senderFirst} invited you to Duh Wild`,content:[{type:'text/plain',value:text},{type:'text/html',value:html}],attachments:[{content:senderPhoto.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}]};
  const response=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
  if(!response.ok)throw Error(`Email provider returned ${response.status}`);
 }
@@ -76,7 +76,7 @@ async function handler(req){
   if(!['create','accept','decline'].includes(body.action))return reply({error:'Unknown action.'},400);
   const session=tokenFrom(req);
   if(!session)return reply({error:'Open your member page to connect with friends.'},401);
-  const members=await sql`SELECT id,name,photo,contact FROM members WHERE session_hash=${hash(session)}`;
+  const members=await sql`SELECT id,name,photo,contact FROM members WHERE id=duhwild_session_member(${hash(session)})`;
   const member=members[0];
   if(!member)return reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
   const denied=await ops.standing(sql,member.id)||await ops.requireVerified(sql,member.id);
@@ -86,7 +86,7 @@ async function handler(req){
    if(!process.env.SENDGRID_API_KEY)return reply({error:'Friend email invitations are being set up. Please try again shortly.'},503);
    const recipientName=String(body.recipient?.name||'').trim(),recipientEmail=String(body.recipient?.email||'').trim().toLowerCase();
    if(!validName(recipientName)||!validEmail(recipientEmail))return reply({error:'Enter your friend’s name and a valid email address.'},400);
-   const token=randomBytes(32).toString('hex'),id=hash(token),link=new URL(`/friend?friend=${token}`,req.url).href;
+   const token=randomBytes(32).toString('hex'),id=hash(token),link=publicSiteUrl(`/friend?friend=${token}`,req.url);
    // Friend invitations stay separate from Vibe invitations. The recipient fields
    // identify the intended friend; answers and private contact details are never exposed.
    const rows=await reserveInvitation(sql,member.id,recipientEmail,tx=>tx`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id,channel,expires_at) SELECT ${id},${''},${member.name},${member.photo},'[]'::jsonb,${recipientName},${recipientEmail},${member.id},'friend',now()+interval '7 days' WHERE NOT EXISTS(SELECT 1 FROM member_blocks b JOIN members recipient ON recipient.id=CASE WHEN b.blocker_id=${member.id} THEN b.blocked_id ELSE b.blocker_id END WHERE (b.blocker_id=${member.id} OR b.blocked_id=${member.id}) AND lower(recipient.contact)=${recipientEmail}) RETURNING token_hash,expires_at), connection AS (INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash) SELECT invitation.token_hash AS id,invitation.expires_at FROM invitation JOIN connection ON connection.invitation_hash=invitation.token_hash`);
@@ -114,7 +114,7 @@ async function handler(req){
     tx`SELECT id FROM members WHERE id IN (${member.id},${row.sender_member_id}) ORDER BY id FOR UPDATE`,
     tx`WITH eligible AS (
      SELECT i.token_hash,i.expires_at,recipient.id FROM invitations i JOIN members sender ON sender.id=i.sender_member_id JOIN members recipient ON recipient.id=${member.id}
-     WHERE i.token_hash=${id} AND i.channel='friend' AND sender.id=${row.sender_member_id} AND sender.id<>recipient.id AND recipient.session_hash=${hash(session)}
+     WHERE i.token_hash=${id} AND i.channel='friend' AND sender.id=${row.sender_member_id} AND sender.id<>recipient.id AND recipient.id=duhwild_session_member(${hash(session)})
      AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
      AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=sender.id AND b.blocked_id=recipient.id) OR (b.blocked_id=sender.id AND b.blocker_id=recipient.id))
      AND (i.intended_member_id=recipient.id OR i.intended_member_id IS NULL AND lower(recipient.contact)=lower(coalesce(i.intended_email,i.recipient_email)))
@@ -138,7 +138,7 @@ async function handler(req){
    tx`SELECT id FROM members WHERE id IN (${member.id},${row.sender_member_id}) ORDER BY id FOR UPDATE`,
    tx`WITH existing_friend AS (SELECT i.token_hash FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE i.channel='friend' AND c.status='chat' AND ((i.sender_member_id=${member.id} AND c.prospect_member_id=${row.sender_member_id}) OR (i.sender_member_id=${row.sender_member_id} AND c.prospect_member_id=${member.id})) ORDER BY i.created_at LIMIT 1)
    UPDATE connection_state c SET prospect_member_id=recipient.id,prospect_name=recipient.name,prospect_photo=recipient.photo,prospect_answers='[]'::jsonb,prospect_phone=NULL,prospect_email=NULL,claim_hash=(SELECT token_hash FROM existing_friend),status=CASE WHEN EXISTS(SELECT 1 FROM existing_friend) THEN 'declined' ELSE 'chat' END,updated_at=now()
-   FROM invitations i,members sender,members recipient WHERE c.invitation_hash=${id} AND i.token_hash=c.invitation_hash AND i.channel='friend' AND i.sender_member_id=sender.id AND sender.id=${row.sender_member_id} AND recipient.id=${member.id} AND recipient.session_hash=${hash(session)} AND c.prospect_member_id IS NULL AND c.status='invited' AND i.expires_at>now()
+   FROM invitations i,members sender,members recipient WHERE c.invitation_hash=${id} AND i.token_hash=c.invitation_hash AND i.channel='friend' AND i.sender_member_id=sender.id AND sender.id=${row.sender_member_id} AND recipient.id=${member.id} AND recipient.id=duhwild_session_member(${hash(session)}) AND c.prospect_member_id IS NULL AND c.status='invited' AND i.expires_at>now()
    AND sender.email_verified_at IS NOT NULL AND sender.blocked_at IS NULL AND (sender.suspended_until IS NULL OR sender.suspended_until<=now()) AND recipient.email_verified_at IS NOT NULL AND recipient.blocked_at IS NULL AND (recipient.suspended_until IS NULL OR recipient.suspended_until<=now())
    AND NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=sender.id AND b.blocked_id=recipient.id) OR (b.blocked_id=sender.id AND b.blocker_id=recipient.id))
    AND (i.intended_member_id IS NULL OR i.intended_member_id=recipient.id) AND (i.intended_member_id IS NOT NULL OR i.intended_email IS NULL OR (lower(recipient.contact)=i.intended_email AND recipient.email_verified_at IS NOT NULL))

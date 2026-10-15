@@ -20,7 +20,7 @@ async function sql(strings,...v){const q=strings.join('?').replace(/\s+/g,' ').t
  if(q.startsWith('INSERT INTO activity')){activity.push({kind:v[0],member_id:v[1],connection_id:v[2],detail:JSON.parse(v[3])});return []}
  if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE id='))return members[v[0]]?[members[v[0]]]:[];
  if(q.startsWith('SELECT suspended_until,blocked_at FROM members WHERE contact='))return Object.values(members).filter(m=>m.contact===v[0]&&(m.blocked_at||m.suspended_until>new Date()));
- if(q.startsWith('SELECT id FROM members WHERE session_hash='))return v[0]===hash('c'.repeat(64))?[{id:bad.id}]:[];
+ if(q.startsWith('SELECT id FROM members WHERE id=duhwild_session_member('))return v[0]===hash('c'.repeat(64))?[{id:bad.id}]:[];
  if(q.startsWith('SELECT id FROM members WHERE contact='))return Object.values(members).filter(m=>m.contact===v[0]).map(m=>({id:m.id}));
  if(q.startsWith('UPDATE connection_state SET prospect_member_id=')){const c=connections[v[1]];if(c&&!c.prospect_member_id)c.prospect_member_id=v[0];return []}
  if(q.startsWith('SELECT i.token_hash,i.sender_member_id'))return connections[v[0]]?[connections[v[0]]]:[];

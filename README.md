@@ -81,15 +81,15 @@ Vercel can deploy the repository with the `Other` framework preset and no build 
 For development email and gameplay:
 
 1. Verify the development project's `DATABASE_URL` points to its own isolated Neon database. `schema.sql` and the existing API schema helpers describe the required tables and columns; review initialization separately before using a new database.
-2. Verify `SENDGRID_API_KEY` and the authenticated sender `hello@chempatible.com` belong to the approved development mail setup. Never commit keys.
+2. Verify `SENDGRID_API_KEY` and the authenticated sender `hello@duhwild.com` belong to the approved development mail setup. Never commit keys.
 3. In **chempatible-dev / Production** (Vercel's name for the stable development target), use `CHEMPAT_REVIEW_EMAILS` for the exact approved test inboxes. Only after database and mail isolation are verified, set `CHEMPAT_REVIEW_DATA=isolated-confirmed`. Review-branch Preview variables do not configure the stable development URL.
 4. Use approved test inboxes in separate browsers to verify email codes, photos, first-five answers, tap-created QR invitations, separate email invitations, both Keep going choices, next-five reveal, and mutual chat. A successful SendGrid API response means accepted for delivery, not proof of inbox arrival.
 
-QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and an authenticated `chempatible.com` sender domain.
+QR codes require `DATABASE_URL`; email also requires `SENDGRID_API_KEY` and an authenticated `duhwild.com` sender domain.
 
 ## Development and live
 
-`main` serves the `chempatible-dev` project's development URL. `live` serves the separate `chempatible` public project. Each project must retain its **own Neon database** and `DATABASE_URL`. The outgoing From address is `hello@chempatible.com` with display name `Chem-patible`.
+`main` serves the `chempatible-dev` project's development URL. `live` serves the separate `chempatible` public project. Each project must retain its **own Neon database** and `DATABASE_URL`. The outgoing From address is `hello@duhwild.com` with display name `Duh Wild`. Until the DUHWILD reply inbox is confirmed, Reply-To and support links retain the working `hello@chempatible.com` mailbox.
 
 The obsolete whole-database reset script has been removed. Source cleanup does not delete stored members, contacts, invitations, messages, or browser sessions. Any future data cleanup requires identifying the specific database and records, checking a recovery plan, and obtaining separate authorization. Never reset a database to roll back code.
 

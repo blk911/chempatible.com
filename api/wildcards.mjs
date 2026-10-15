@@ -13,7 +13,7 @@ const ANSWER_MAX_LENGTH=1000;
 const validAnswer=value=>typeof value==='string'&&value.trim().length>0&&value.trim().length<=ANSWER_MAX_LENGTH&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 const reply=(data,status=200)=>Response.json(data,{status,headers:{'cache-control':'no-store'}});
 const level=`greatest(coalesce(r.completed_level,0),CASE WHEN jsonb_array_length(m.answers)>=10 THEN 2 WHEN jsonb_array_length(m.answers)>=5 THEN 1 ELSE 0 END)`;
-const AUTH=`SELECT m.id,${level} AS level FROM members m LEFT JOIN member_reward_state r ON r.member_id=m.id WHERE m.session_hash=$1 AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
+const AUTH=`SELECT m.id,${level} AS level FROM members m LEFT JOIN member_reward_state r ON r.member_id=m.id WHERE m.id=duhwild_session_member($1) AND m.email_verified_at IS NOT NULL AND m.blocked_at IS NULL AND (m.suspended_until IS NULL OR m.suspended_until<=now())`;
 // Match the established chat gate, including legacy secondResults chats. The new
 // pre-consent nextResults/chatRequested states never qualify. Earning a personal
 // level cannot open chat or bypass the other person's existing consent. Friends
@@ -98,7 +98,7 @@ function snapshot(row,id){
   categories:eligible?WILDCARD_CATEGORIES:[]};
 }
 const lockedTransaction=(sql,session,id,pair,write,args,read,readArgs)=>sql.transaction(tx=>[
- tx.query(`SELECT id FROM members WHERE id IN($3::uuid,$4::uuid) OR id IN(SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR session_hash=$1 ORDER BY id FOR UPDATE`,[session,id,pair.sender_member_id,pair.prospect_member_id]),
+ tx.query(`SELECT id FROM members WHERE id IN($3::uuid,$4::uuid) OR id IN(SELECT sender_member_id FROM invitations WHERE token_hash=$2 UNION SELECT prospect_member_id FROM connection_state WHERE invitation_hash=$2) OR id=duhwild_session_member($1) ORDER BY id FOR UPDATE`,[session,id,pair.sender_member_id,pair.prospect_member_id]),
  tx.query(`SELECT invitation_hash FROM connection_state WHERE invitation_hash=$1 FOR UPDATE`,[id]),
  tx.query(write,args),tx.query(read,readArgs)
 ],{isolationLevel:'ReadCommitted'});

@@ -1,8 +1,8 @@
-import {createHash,randomBytes,randomInt,timingSafeEqual} from 'node:crypto';
+import {createHash,randomBytes,randomInt,randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
 import {reserveInvitation,deliveryBlocked} from './_connections.mjs';
-import {reviewGate,reviewRecipientAllowed,requireReviewRecipient} from './_review.mjs';
+import {reviewGate,reviewRecipientAllowed,requireReviewRecipient,publicSiteUrl} from './_review.mjs';
 
 const hash=s=>createHash('sha256').update(s).digest('hex');
 const email=s=>typeof s==='string'&&s.length<255&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
@@ -13,7 +13,7 @@ const cookie=req=>Object.fromEntries((req.headers.get('cookie')||'').split(';').
 const photoData=s=>typeof s==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(s)&&s.length<250000;
 async function sendMail(to,subject,html,text,photo){
  requireReviewRecipient(to);
- const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@chempatible.com',name:'Duh Wild'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
+ const body={personalizations:[{to:[{email:to}]}],from:{email:'hello@duhwild.com',name:'Duh Wild'},reply_to:{email:'hello@chempatible.com',name:'Duh Wild'},subject,content:[{type:'text/plain',value:text},{type:'text/html',value:html}]};
  if(photo)body.attachments=[{content:photo.slice('data:image/jpeg;base64,'.length),filename:'invitation.jpg',type:'image/jpeg',disposition:'inline',content_id:'inviter-photo'}];
  const res=await fetch('https://api.sendgrid.com/v3/mail/send',{method:'POST',headers:{authorization:`Bearer ${process.env.SENDGRID_API_KEY}`,'content-type':'application/json'},body:JSON.stringify(body)});
  if(!res.ok)throw Error(`Email provider returned ${res.status}`);
@@ -42,34 +42,45 @@ async function handler(req){
   if(body.action==='start'){
    const address=String(body.email||'').trim().toLowerCase();if(!email(address))return json({error:'Enter a valid email address.'},400);
    if(!reviewRecipientAllowed(address))return json({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
-   const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${address}`;
-   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return json({error:'A code was just sent. Wait a minute before trying again.'},429);
-   const code=String(randomInt(100000,1000000));
-   await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${address},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
+   const code=String(randomInt(100000,1000000)),challengeId=randomUUID();
+   const challenges=await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts,challenge_id,consumed_at) VALUES(${address},${hash(code)},now()+interval '10 minutes',now(),0,${challengeId},NULL) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0,challenge_id=excluded.challenge_id,consumed_at=NULL WHERE email_codes.last_sent_at<=now()-interval '1 minute' RETURNING expires_at,last_sent_at`;
+   if(!challenges[0])return json({error:'A code was just sent. Wait a minute before trying again.'},429);
    await sendMail(address,`${code} is your Duh Wild code`,`<p>Your code is <strong>${code}</strong>. It expires in ten minutes.</p>`,`Your Duh Wild code is ${code}. It expires in ten minutes.`);
-   return json({ok:true});
+   return json({ok:true,challengeId,expiresAt:new Date(challenges[0].expires_at).toISOString(),resendAt:new Date(new Date(challenges[0].last_sent_at).getTime()+60000).toISOString()});
   }
   if(body.action==='verify'){
    const address=String(body.email||'').trim().toLowerCase(),code=String(body.code||'');if(!email(address)||!/^\d{6}$/.test(code))return json({error:'Enter the six digit code from your email.'},400);
-   const rows=await sql`UPDATE email_codes SET attempts=attempts+1 WHERE email=${address} AND expires_at>now() AND attempts<5 RETURNING code_hash`;
-   if(!rows[0]||!timingSafeEqual(Buffer.from(hash(code)),Buffer.from(rows[0].code_hash)))return json({error:'Code expired or incorrect.'},400);
-   await sql`DELETE FROM email_codes WHERE email=${address}`;
-   await ops.markVerified(sql,address);
-   const token=randomBytes(32).toString('hex');await sql`INSERT INTO email_sessions(token_hash,email,expires_at) VALUES(${hash(token)},${address},now()+interval '30 days')`;
+   const challengeId=body.challengeId??null;
+   if(challengeId!==null&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(challengeId))return json({error:'Code expired or incorrect.'},400);
+   await ops.ensureOps(sql);
+   const token=randomBytes(32).toString('hex'),memberToken=cookie(req).chempat_member;
+   const memberHash=/^[a-f0-9]{64}$/.test(memberToken||'')?hash(memberToken):null;
+   const [result]=await sql.query(`WITH attempted AS (
+    UPDATE email_codes SET attempts=attempts+1,consumed_at=CASE WHEN code_hash=$2 THEN now() ELSE consumed_at END
+    WHERE email=$1 AND expires_at>now() AND attempts<5 AND consumed_at IS NULL AND ($3::uuid IS NULL OR challenge_id=$3)
+    RETURNING code_hash=$2 AS accepted
+   ),proven AS (
+    INSERT INTO email_sessions(token_hash,email,expires_at,member_session_hash)
+    SELECT $4,$1,now()+interval '30 days',CASE WHEN EXISTS(SELECT 1 FROM members WHERE id=duhwild_session_member($5) AND contact=$1) THEN $5 ELSE NULL END
+    WHERE EXISTS(SELECT 1 FROM attempted WHERE accepted) RETURNING token_hash
+   ),confirmed AS (
+    UPDATE members SET email_verified_at=coalesce(email_verified_at,now()) WHERE contact=$1 AND EXISTS(SELECT 1 FROM proven) RETURNING id
+   ) SELECT EXISTS(SELECT 1 FROM proven) AS accepted`,[address,hash(code),challengeId,hash(token),memberHash]);
+   if(!result?.accepted)return json({error:'Code expired or incorrect.'},400);
    return json({ok:true,email:address},200,{'set-cookie':`chempat_session=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`});
   }
   if(body.action==='send'){
    const sender=await session(req,sql);if(!sender)return json({error:'Verify your email before sending.'},401);
    const memberToken=cookie(req).chempat_member;
    if(!/^[a-f0-9]{64}$/.test(memberToken||''))return json({error:'Open your member page before sending.'},401);
-   const memberRows=await sql`SELECT id,name,contact,photo,answers FROM members WHERE session_hash=${hash(memberToken)}`;
+   const memberRows=await sql`SELECT id,name,contact,photo,answers FROM members WHERE id=duhwild_session_member(${hash(memberToken)})`;
    const member=memberRows[0],name=String(member?.name||'').trim(),theirName=String(body.recipient?.name||'').trim(),theirEmail=String(body.recipient?.email||'').trim().toLowerCase();
    if(!member||member.contact!==sender)return json({error:'Verify the email on your member page.'},403);
    const paused=await ops.standing(sql,member.id);if(paused)return json(paused,403);
    if(name.length<1||name.length>50||theirName.length<1||theirName.length>50||!email(theirEmail)||!photoData(member.photo)||!Array.isArray(member.answers)||![5,10].includes(member.answers.length)||!member.answers.every(x=>Number.isInteger(x)&&x>=0&&x<=2))return json({error:'Complete your first five and enter a valid recipient name and email.'},400);
    if(!reviewRecipientAllowed(theirEmail))return json({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    if(sender===theirEmail)return json({error:'Use the other person’s email address.'},400);
-   const token=randomBytes(32).toString('hex');const link=new URL(`/?invite=${token}`,req.url).href;
+   const token=randomBytes(32).toString('hex');const link=publicSiteUrl(`/?invite=${token}`,req.url);
    const reserved=await reserveInvitation(sql,member.id,theirEmail,tx=>tx`WITH invitation AS (INSERT INTO invitations(token_hash,sender_email,sender_name,sender_photo,sender_answers,recipient_name,recipient_email,sender_member_id) SELECT ${hash(token)},${sender},${name},${member.photo},${JSON.stringify(member.answers)}::jsonb,${theirName},${theirEmail},${member.id} WHERE NOT EXISTS(SELECT 1 FROM member_blocks b JOIN members recipient ON recipient.id=CASE WHEN b.blocker_id=${member.id} THEN b.blocked_id ELSE b.blocker_id END WHERE (b.blocker_id=${member.id} OR b.blocked_id=${member.id}) AND lower(recipient.contact)=${theirEmail}) RETURNING token_hash) INSERT INTO connection_state(invitation_hash) SELECT token_hash FROM invitation RETURNING invitation_hash`);
    if(!reserved[0])return json({error:'This invitation is unavailable.'},403);
    if(await deliveryBlocked(sql,member.id,theirEmail)){await sql`DELETE FROM invitations WHERE token_hash=${hash(token)}`;return json({error:'This invitation is unavailable.'},403)}

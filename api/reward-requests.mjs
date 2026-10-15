@@ -8,7 +8,7 @@ const headers={'cache-control':'no-store','x-content-type-options':'nosniff','cr
 const reply=(body,status=200)=>Response.json(body,{status,headers});
 const level=(member,state)=>`greatest(coalesce(${state}.completed_level,0),CASE WHEN jsonb_typeof(${member}.answers)='array' THEN CASE WHEN jsonb_array_length(${member}.answers)>=10 THEN 2 WHEN jsonb_array_length(${member}.answers)>=5 THEN 1 ELSE 0 END ELSE 0 END)`;
 const active=member=>`${member}.email_verified_at IS NOT NULL AND ${member}.blocked_at IS NULL AND (${member}.suspended_until IS NULL OR ${member}.suspended_until<=now())`;
-const AUTH=`SELECT m.id FROM members m LEFT JOIN member_reward_state ms ON ms.member_id=m.id WHERE m.session_hash=$1 AND ${active('m')} AND ${level('m','ms')}>=4`;
+const AUTH=`SELECT m.id FROM members m LEFT JOIN member_reward_state ms ON ms.member_id=m.id WHERE m.id=duhwild_session_member($1) AND ${active('m')} AND ${level('m','ms')}>=4`;
 // Same conservative historical-pair exclusion as the directory/media endpoint.
 const safePair=`NOT EXISTS(SELECT 1 FROM member_blocks b WHERE (b.blocker_id=s.id AND b.blocked_id=t.id) OR (b.blocker_id=t.id AND b.blocked_id=s.id))
  AND NOT EXISTS(SELECT 1 FROM invitations i LEFT JOIN connection_state c ON c.invitation_hash=i.token_hash WHERE
@@ -23,7 +23,7 @@ const ELIGIBLE=`SELECT r.*,a.id AS actor,r.sender_first_five AS sender_answers,t
 const OWNED=`SELECT r.*,a.id AS actor FROM reward_discovery_requests r JOIN (${AUTH}) a ON a.id IN(r.sender_id,r.target_id) WHERE r.id=$2::uuid`;
 const NEW_PAIR=`SELECT s.id AS sender_id,t.id AS target_id,left(split_part(trim(regexp_replace(s.name,'[[:space:]]+',' ','g')),' ',1),50) AS sender_name,s.photo AS sender_photo,p.display_name AS target_name,p.photo AS target_photo,${firstFive('s.answers')} AS sender_first_five
  FROM (${AUTH}) a JOIN members s ON s.id=a.id JOIN members t ON t.id=$2::uuid LEFT JOIN member_reward_state ss ON ss.member_id=s.id LEFT JOIN member_reward_state ts ON ts.member_id=t.id JOIN reward_directory_profile p ON p.member_id=t.id WHERE ${eligiblePair} AND ${validFive('s.answers')}`;
-const requestLock=`SELECT id FROM members WHERE id=$3::uuid OR id IN(SELECT sender_id FROM reward_discovery_requests WHERE id=$2::uuid UNION SELECT target_id FROM reward_discovery_requests WHERE id=$2::uuid) OR session_hash=$1 ORDER BY id FOR UPDATE`;
+const requestLock=`SELECT id FROM members WHERE id=$3::uuid OR id IN(SELECT sender_id FROM reward_discovery_requests WHERE id=$2::uuid UNION SELECT target_id FROM reward_discovery_requests WHERE id=$2::uuid) OR id=duhwild_session_member($1) ORDER BY id FOR UPDATE`;
 
 function photoBytes(value){
  if(typeof value!=='string'||value.length>=250000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value))return null;
@@ -83,7 +83,7 @@ async function handler(req){
    if(!pair||!photoBytes(pair.sender_photo)||!photoBytes(pair.target_photo)||!pair.sender_name)return reply({error:'This member is unavailable for a discovery request.'},404);
    const id=randomUUID();
    statements=[
-    [`SELECT id FROM members WHERE id IN($2::uuid,$3::uuid) OR session_hash=$1 ORDER BY id FOR UPDATE`,[session,actor,body.targetId]],
+    [`SELECT id FROM members WHERE id IN($2::uuid,$3::uuid) OR id=duhwild_session_member($1) ORDER BY id FOR UPDATE`,[session,actor,body.targetId]],
     [`WITH eligible AS (${NEW_PAIR}) INSERT INTO reward_discovery_requests(id,sender_id,target_id,sender_name,sender_photo,target_name,target_photo,sender_first_five) SELECT $3::uuid,sender_id,target_id,sender_name,sender_photo,target_name,target_photo,sender_first_five FROM eligible ON CONFLICT DO NOTHING RETURNING id`,[session,body.targetId,id]],
     [`WITH eligible AS (${NEW_PAIR}) SELECT r.id,r.status,r.invitation_hash FROM eligible e JOIN reward_discovery_requests r ON r.sender_id=e.sender_id AND r.target_id=e.target_id WHERE r.status IN('pending','accepted') AND r.expires_at>now()`,[session,body.targetId]]
    ];

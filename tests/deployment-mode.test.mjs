@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {createHmac} from 'node:crypto';
 import {JSDOM} from 'jsdom';
 import {deploymentMode,isTrustedLive} from '../api/_deployment.mjs';
-import {reviewGate,reviewRecipientAllowed,requireReviewRecipient} from '../api/_review.mjs';
+import {reviewGate,reviewRecipientAllowed,requireReviewRecipient,publicSiteUrl} from '../api/_review.mjs';
 import publicConfig from '../api/config.mjs';
 
 const keys=['CHEMPAT_RELEASE_MODE','VERCEL','VERCEL_PROJECT_ID','VERCEL_ENV','VERCEL_GIT_COMMIT_REF','CHEMPAT_REVIEW_DATA','CHEMPAT_REVIEW_EMAILS'];
@@ -30,6 +30,7 @@ for(const isolated of [undefined,'true','isolated-confirmed']){
  assert.equal(reviewGate()===null,trusted||review);
  assert.equal(reviewRecipientAllowed('approved@example.com'),trusted||review);
  assert.equal(reviewRecipientAllowed('public@example.net'),trusted);
+ assert.equal(publicSiteUrl('/?invite=synthetic','https://review.example/'),trusted?'https://duhwild.com/?invite=synthetic':'https://review.example/?invite=synthetic','only trusted production generates DUHWILD links');
  combinations++;
 }
 

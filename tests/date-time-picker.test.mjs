@@ -28,6 +28,7 @@ async function fixture({server=serverFixture(),role='member',status='chat',messa
   if(url.startsWith('/api/discovery'))return response({modules:[],games:[],pieces:[]});
   if(url.startsWith('/api/wildcards'))return response({connections:[],cards:[],categories:[],eligible:false});
   if(url.startsWith('/api/game-pieces'))return response({pieces:[],pendingCount:0});
+  if(url==='/api/member'&&!body)return response({member:{id:currentRole,name:'Taylor',contact:`${currentRole}@example.test`,photo:'',answers:Array(5).fill(0),verified:true}});
   if(url==='/api/member'&&body?.action==='logout')return response({ok:true});
   if(!url.startsWith('/api/datecards'))return response({},401);
   const call={url,body,options,role:currentRole};server.calls.push(call);assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');assert.equal(account,currentRole);

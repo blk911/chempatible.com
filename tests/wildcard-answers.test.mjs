@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Actual endpoint SQL on disposable local PostgreSQL. No live database, account,
 // mail service, or external network is used. PGlite serializes transactions; the
 // concurrent-request cases cover outcome invariants, and lock-order assertions
@@ -220,7 +221,7 @@ await test('answer write revalidates session, original role and lifecycle after 
   id=>db.query(`INSERT INTO connection_visibility(member_id,invitation_hash,action,frozen_at) VALUES($1,$2,'freeze',now())`,[ids.owner,id]),
   id=>db.query(`INSERT INTO connection_visibility(member_id,invitation_hash,action,trashed_at) VALUES($1,$2,'unfreeze',now())`,[ids.visitor,id]),
   ()=>db.query('INSERT INTO member_blocks(blocker_id,blocked_id) VALUES($1,$2)',[ids.owner,ids.visitor]),
-  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash('unused-answer')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash(tokens.visitor)])}
+  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash('unused-answer')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash(tokens.visitor)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.visitor),ids.owner])}
  ];
  for(const change of changes){await reset();const id=await invite();status(await ask(id));beforeTransaction=()=>change(id);status(await answer(id),409);assert.equal((await answered()).length,0);assert.equal((await messages(id)).length,3)}
  await reset();const id=await invite();status(await ask(id));afterLocks=tx=>tx.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.owner]);status(await answer(id),409);assert.equal((await answered()).length,0);
@@ -235,7 +236,7 @@ await test('an answer arriving during the preflight wait wins once and repeat re
 
 await test('read and summary reauthorization stops reassigned session or newly hidden pair leaks',async()=>{
  const changes=[
-  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash('unused-read')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.visitor)])},
+  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash('unused-read')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.other,hash(tokens.visitor)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.visitor),ids.other])},
   id=>db.query('UPDATE connection_state SET ended_at=now() WHERE invitation_hash=$1',[id]),
   id=>db.query('UPDATE connection_state SET prospect_member_id=$2 WHERE invitation_hash=$1',[id,ids.other])
  ];

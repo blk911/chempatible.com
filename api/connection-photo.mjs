@@ -19,7 +19,7 @@ async function handler(req){
   // recipient's private profile from a typed email or an unaccepted target ID.
   const rows=await sql`SELECT CASE WHEN i.sender_member_id=m.id THEN c.prospect_photo ELSE i.sender_photo END AS photo
    FROM invitations i JOIN connection_state c ON c.invitation_hash=i.token_hash
-   JOIN members m ON m.session_hash=${createHash('sha256').update(token).digest('hex')}
+   JOIN members m ON m.id=duhwild_session_member(${createHash('sha256').update(token).digest('hex')})
    WHERE i.token_hash=${id} AND (i.sender_member_id=m.id OR c.prospect_member_id=m.id)`;
   const photo=rows[0]?.photo;
   if(typeof photo!=='string'||photo.length>=250000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(photo))return error('Photo not found.',404);

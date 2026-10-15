@@ -1,3 +1,4 @@
+// Adversarial token-transfer fixtures move the canonical session row to exercise account binding.
 // Actual endpoint SQL on disposable local PostgreSQL. No live database, account,
 // mail service, or external network is used. PGlite serializes transactions; the
 // concurrent-request cases cover outcome invariants, and lock-order assertions
@@ -243,7 +244,7 @@ await test('session, standing, level, pair and lifecycle changes during lock wai
  ];
  for(const change of restrictions){await reset();const id=await invite();beforeTransaction=()=>change(id);status(await ask(id),409);assert.equal(beforeTransaction,null);assert.equal((await ledger()).length,0);assert.deepEqual(await messages(id),initialMessages)}
  // The actor's old token is transferred to the other person, not just removed.
- await reset();const id=await invite();beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('unused')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash(tokens.owner)])};
+ await reset();const id=await invite();beforeTransaction=async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('unused')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash(tokens.owner)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])};
  status(await ask(id),409);assert.equal((await ledger()).length,0);assert.deepEqual(await messages(id),initialMessages);
 });
 
@@ -253,7 +254,7 @@ await test('eligibility is revalidated by write statements, not only before acqu
 
 await test('read snapshot reauthorization stops session reassignment or lifecycle leaks',async()=>{
  const restrictions=[
-  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('unused-read')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash(tokens.owner)])},
+  async()=>{await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.owner,hash('unused-read')]);await db.query('UPDATE members SET session_hash=$2 WHERE id=$1',[ids.visitor,hash(tokens.owner)]);await db.query('UPDATE member_sessions SET member_id=$2,revoked_at=NULL WHERE token_hash=$1',[hash(tokens.owner),ids.visitor])},
   id=>db.query('UPDATE connection_state SET ended_at=now() WHERE invitation_hash=$1',[id]),
   ()=>db.query('UPDATE members SET blocked_at=now() WHERE id=$1',[ids.visitor])
  ];

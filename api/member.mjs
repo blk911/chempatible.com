@@ -1,5 +1,5 @@
 import {reviewGate,reviewRecipientAllowed} from './_review.mjs';
-import {createHash,randomBytes,randomInt,randomUUID,timingSafeEqual} from 'node:crypto';
+import {createHash,randomBytes,randomInt,randomUUID} from 'node:crypto';
 import {neon} from '@neondatabase/serverless';
 import * as ops from './_ops.mjs';
 
@@ -40,8 +40,8 @@ async function handler(req){
   if(req.method==='GET'){
    if(!token)return reply({error:'No member on this device.'},401);
    await ops.ensureOps(sql);
-   const rows=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE session_hash=${hash(token)}`;
-   return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
+   const rows=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE id=duhwild_session_member(${hash(token)})`;
+   return rows[0]?reply({member:rows[0]}):reply({error:'Your sign-in expired. Sign in again.',sessionExpired:true},401);
   }
   if(req.method!=='POST')return reply({error:'Method not allowed.'},405);
   let body;try{body=await req.json()}catch{return reply({error:'Invalid request.'},400)}
@@ -53,7 +53,7 @@ async function handler(req){
    await ops.ensureOps(sql);
    const session=cookieValue(req,'chempat_session'),proven=session?(await sql`SELECT email FROM email_sessions WHERE token_hash=${hash(session)} AND expires_at>now()`)[0]?.email===contact:false;
    if(token){
-    const existing=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE session_hash=${hash(token)}`;
+    const existing=await sql`SELECT id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified FROM members WHERE id=duhwild_session_member(${hash(token)})`;
     if(existing[0]&&existing[0].contact!==contact)return reply({error:'This device already has a different member page. Open this invitation in a private window.'},409);
     // Retried onboarding returns the canonical account without overwriting it
     // with stale signup fields. Name/photo edits use the revision-bound profile
@@ -71,13 +71,26 @@ async function handler(req){
   if(body.action==='answers'){
    if(!token)return reply({error:'Join the game first.'},401);
    if(!validAnswers(body.answers)||![5,10].includes(body.answers.length))return reply({error:'Complete your five secrets.'},400);
-   const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE session_hash=${hash(token)} RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
+   const rows=await sql`UPDATE members SET answers=${JSON.stringify(body.answers)}::jsonb,updated_at=now() WHERE id=duhwild_session_member(${hash(token)}) RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
    if(rows[0])await ops.log(sql,'ten_answered',{member:rows[0].id});
    return rows[0]?reply({member:rows[0]}):reply({error:'Member not found.'},404);
   }
   if(body.action==='logout'){
-   const member=await ops.memberIdFromToken(sql,token);if(member)await ops.log(sql,'logout',{member});
-   const session=cookieValue(req,'chempat_session');if(session)await sql`DELETE FROM email_sessions WHERE token_hash=${hash(session)}`;
+   if(body.scope!==undefined&&!['this','all'].includes(body.scope))return reply({error:'Choose this device or all devices.'},400);
+   const member=await ops.memberIdFromToken(sql,token);
+   if(member&&req.headers.get('x-chempat-member-id')!==member)return reply({error:'Your account changed. Refresh before signing out.',sessionExpired:true},409);
+   const session=cookieValue(req,'chempat_session');
+   if(member){
+    const results=await sql.transaction(tx=>[
+     tx`SELECT id FROM members WHERE id=${member} ORDER BY id FOR UPDATE`,
+     tx`WITH authorized AS (SELECT id,contact FROM members WHERE id=${member} AND id=duhwild_session_member(${hash(token)})),
+      revoked AS (UPDATE member_sessions SET revoked_at=coalesce(revoked_at,now()) WHERE member_id IN(SELECT id FROM authorized) AND (${body.scope==='all'} OR token_hash=${hash(token)}) RETURNING token_hash),
+      proofs AS (DELETE FROM email_sessions WHERE EXISTS(SELECT 1 FROM authorized) AND (token_hash=${session?hash(session):''} OR member_session_hash IN(SELECT token_hash FROM revoked) OR (${body.scope==='all'} AND email IN(SELECT contact FROM authorized))) RETURNING token_hash)
+      SELECT EXISTS(SELECT 1 FROM authorized) AS authorized`
+    ],{isolationLevel:'ReadCommitted'});
+    if(!results[1][0]?.authorized)return reply({error:'Your sign-in changed. Refresh before signing out.',sessionExpired:true},409);
+    await ops.log(sql,'logout',{member,detail:{scope:body.scope==='all'?'all':'this'}});
+   }else if(session)await sql`DELETE FROM email_sessions WHERE token_hash=${hash(session)}`;
    const names=new Set(['chempat_member','chempat_session',...((req.headers.get('cookie')||'').match(/chempat_pair_[a-f0-9]{16}/g)||[])]);
    return withCookies({ok:true},[...names].map(n=>`${n}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`));
   }
@@ -87,31 +100,48 @@ async function handler(req){
    const email=String(body.email||'').trim().toLowerCase();if(!validEmail(email))return reply({error:'Enter a valid email.'},400);
    if(!reviewRecipientAllowed(email))return reply({error:'Review email is limited to approved test recipients.',reviewOnly:true},403);
    const key=`member:${email}`;
-   const recent=await sql`SELECT last_sent_at FROM email_codes WHERE email=${key}`;
-   if(recent[0]&&Date.now()-new Date(recent[0].last_sent_at).getTime()<60000)return reply({error:'A code was just sent. Wait a minute before asking for another.'},429);
-   const code=String(randomInt(100000,1000000));
-   await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0`;
+   const code=String(randomInt(100000,1000000)),challengeId=randomUUID();
+   const challenges=await sql`INSERT INTO email_codes(email,code_hash,expires_at,last_sent_at,attempts,challenge_id,consumed_at) VALUES(${key},${hash(code)},now()+interval '10 minutes',now(),0,${challengeId},NULL) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,last_sent_at=excluded.last_sent_at,attempts=0,challenge_id=excluded.challenge_id,consumed_at=NULL WHERE email_codes.last_sent_at<=now()-interval '1 minute' RETURNING expires_at,last_sent_at`;
+   if(!challenges[0])return reply({error:'A code was just sent. Wait a minute before asking for another.'},429);
    // The code leads the subject so it shows in the phone's notification.
    await ops.sendMail(email,`${code} is your Duh Wild code`,`Your Duh Wild code is ${code}. It expires in ten minutes.\n\nIf you didn't ask for it, you can ignore this email.`);
-   return reply({ok:true});
+   return reply({ok:true,challengeId,expiresAt:new Date(challenges[0].expires_at).toISOString(),resendAt:new Date(new Date(challenges[0].last_sent_at).getTime()+60000).toISOString()});
   }
   if(body.action==='code_verify'||body.action==='signin_verify'){
    const email=String(body.email||'').trim().toLowerCase(),code=String(body.code||''),key=`member:${email}`;
    if(!validEmail(email)||!/^\d{6}$/.test(code))return reply({error:'Code expired or incorrect.'},400);
-   const codes=await sql`UPDATE email_codes SET attempts=attempts+1 WHERE email=${key} AND expires_at>now() AND attempts<5 RETURNING code_hash`;
-   if(!codes[0]||!timingSafeEqual(Buffer.from(hash(code)),Buffer.from(codes[0].code_hash)))return reply({error:'Code expired or incorrect.'},400);
-   await sql`DELETE FROM email_codes WHERE email=${key}`;
-   // The proven email also lets emailed invitations go out without another code.
-   const session=randomBytes(32).toString('hex');
-   await sql`INSERT INTO email_sessions(token_hash,email,expires_at) VALUES(${hash(session)},${email},now()+interval '30 days')`;
-   const sessionCookie=`chempat_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`;
+   const challengeId=body.challengeId??null;
+   if(challengeId!==null&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(challengeId))return reply({error:'Code expired or incorrect.'},400);
    await ops.ensureOps(sql);
-   // An email that already has a page opens it here; a new sign-in replaces the old one, so a page is open on one phone at a time.
-   const fresh=randomBytes(32).toString('hex');
-   const rows=await sql`UPDATE members SET session_hash=${hash(fresh)},email_verified_at=coalesce(email_verified_at,now()),updated_at=now() WHERE id=(SELECT id FROM members WHERE contact=${email} ORDER BY jsonb_array_length(answers) DESC,created_at ASC LIMIT 1) RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified`;
-   if(!rows[0])return withCookies({existing:false,email},[sessionCookie]);
-   await ops.log(sql,'signin',{member:rows[0].id});
-   return withCookies({existing:true,member:rows[0]},[`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`,sessionCookie]);
+   const session=randomBytes(32).toString('hex'),fresh=randomBytes(32).toString('hex'),previousProof=cookieValue(req,'chempat_session');
+   // One atomic claim creates the proof and optional member session. A replay,
+   // concurrent verify, or superseded challenge cannot mint another credential.
+   const [result]=await sql.query(`WITH attempted AS (
+    UPDATE email_codes SET attempts=attempts+1,consumed_at=CASE WHEN code_hash=$2 THEN now() ELSE consumed_at END
+    WHERE email=$1 AND expires_at>now() AND attempts<5 AND consumed_at IS NULL AND ($3::uuid IS NULL OR challenge_id=$3)
+    RETURNING code_hash=$2 AS accepted
+   ),proven AS (
+    INSERT INTO email_sessions(token_hash,email,expires_at,member_session_hash)
+    SELECT $4,$5,now()+interval '30 days',$6 WHERE EXISTS(SELECT 1 FROM attempted WHERE accepted) RETURNING token_hash
+   ),opened AS (
+    UPDATE members SET email_verified_at=coalesce(email_verified_at,now()),updated_at=now()
+    WHERE id=(SELECT id FROM members WHERE contact=$5 ORDER BY jsonb_array_length(answers) DESC,created_at ASC LIMIT 1)
+    AND EXISTS(SELECT 1 FROM proven)
+    RETURNING id,name,contact,photo,answers,email_verified_at IS NOT NULL AS verified
+   ),retired AS (
+    UPDATE member_sessions SET revoked_at=coalesce(revoked_at,now())
+    WHERE token_hash=$7 AND member_id IN(SELECT id FROM opened) RETURNING token_hash
+   ),retired_proofs AS (
+    DELETE FROM email_sessions WHERE token_hash<>$4 AND (member_session_hash IN(SELECT token_hash FROM retired)
+    OR (token_hash=$8 AND email=$5 AND EXISTS(SELECT 1 FROM retired))) RETURNING token_hash
+   ),device AS (
+    INSERT INTO member_sessions(token_hash,member_id,expires_at) SELECT $6,id,now()+interval '180 days' FROM opened RETURNING member_id
+   ) SELECT EXISTS(SELECT 1 FROM proven) AS accepted,(SELECT row_to_json(opened) FROM opened JOIN device ON device.member_id=opened.id) AS member`,[key,hash(code),challengeId,hash(session),email,hash(fresh),token?hash(token):null,previousProof?hash(previousProof):null]);
+   if(!result?.accepted)return reply({error:'Code expired or incorrect.'},400);
+   const sessionCookie=`chempat_session=${session}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=2592000`;
+   if(!result.member)return withCookies({existing:false,email},[sessionCookie]);
+   await ops.log(sql,'signin',{member:result.member.id});
+   return withCookies({existing:true,member:result.member},[`chempat_member=${fresh}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=15552000`,sessionCookie]);
   }
   return reply({error:'Unknown action.'},400);
  }catch(error){console.error('Member error:',error);return reply({error:'Could not save your page. Try again.'},500)}

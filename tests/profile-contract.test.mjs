@@ -43,6 +43,8 @@ const html=fs.readFileSync(root+'index.html','utf8').replace('<script src="game.
 let lostSave=false;
 async function fixture(actor='member'){
  const dom=new JSDOM(html,{url:'https://synthetic.example.test/',runScripts:'dangerously',pretendToBeVisual:true}),w=dom.window,d=w.document;
+ // The synthetic fetch bridge constructs Node Requests, which require Node AbortSignals.
+ w.AbortController=globalThis.AbortController;
  const calls=[],pending=new Set();let sessionAs='owner',heldProfileSave=null;
  w.setInterval=()=>0;w.scrollTo=()=>{};w.HTMLElement.prototype.scrollIntoView=()=>{};
  w.fetch=(url,options={})=>{
