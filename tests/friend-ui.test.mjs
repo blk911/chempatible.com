@@ -81,16 +81,22 @@ async function sendFriend(f,recipient){f.w.openFriendShare();fillFriend(f,recipi
 function showSentFriend(f){f.w.eval("s.modal='friendShare';renderModal()");assert.ok(f.d.querySelector('#friendShareLink'))}
 
 // All API and verification requests below are in-memory stubs. No live account or email writes.
-test('new friend registers with zero answers, explicitly connects, chats on both sides, and can later play their five',async()=>{
+test('new friend accepts once, completes signup, opens their page, chats and can later play their five',async()=>{
  const server=service(),recipient=browser(server,{url:'https://friend.example/?friend=friend-token'}),from=browser(server,{account:sender.id});
  try{
   await flush();assert.equal(recipient.w.location.search,'');assert.match(recipient.d.querySelector('#root').textContent,/Alex invited you/);assert.equal(recipient.d.querySelector('.question'),null);
   assert.equal(recipient.d.querySelector('#joinName'),null);await recipient.w.acceptFriendInvitation();recipient.d.querySelector('#joinName').value='Riley New';recipient.d.querySelector('#joinContact').value='riley@example.com';recipient.d.querySelector('#joinAgree').checked=true;
   recipient.w.nextJoinStep();await flush();recipient.d.querySelector('#signinCode').value='123456';await recipient.w.signinVerify();
-  assert.match(recipient.d.querySelector('#root').textContent,/Add your picture/);recipient.w.eval(`s.member.photo='${otherPhoto}'`);await recipient.w.finishRegistration();
-  assert.equal(server.calls.filter(c=>c.body?.action==='accept').length,0,'registration never accepts silently');
+  assert.match(recipient.d.querySelector('#root').textContent,/Add your picture/);
+  recipient.w.URL.createObjectURL=()=> 'blob:signup-photo';recipient.w.URL.revokeObjectURL=()=>{};recipient.w.Image=class{width=320;height=320;set src(_){this.onload()}};
+  recipient.w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});recipient.w.HTMLCanvasElement.prototype.toDataURL=()=>otherPhoto;
+  const upload=recipient.d.querySelector('#memberPhoto');Object.defineProperty(upload,'files',{value:[new recipient.w.File(['photo'],'self.jpg',{type:'image/jpeg'})]});
+  await recipient.w.uploadPhoto({target:upload},'member');await flush();
+  assert.equal(server.calls.filter(c=>c.body?.action==='accept').length,1,'completed signup continues the already requested acceptance exactly once');
   assert.deepEqual(server.calls.find(c=>c.body?.action==='register').body.answers,[]);assert.equal(recipient.d.querySelector('.question'),null);
-  assert.match(recipient.d.querySelector('#root').textContent,/ACCEPTPASS/);await recipient.w.acceptFriendInvitation();await flush();
+  assert.equal(recipient.state().view,'dashboard');assert.equal(recipient.d.querySelector('#friendAccept'),null);await flush();
+  assert.equal(recipient.state().account.id,recipient.state().memberId);assert.equal(recipient.state().account.name,'Riley New');assert.equal(recipient.state().account.contact,'riley@example.com');
+  assert.equal(recipient.d.querySelector('.socialMemberIdentity h1').textContent,'Riley');assert.ok(recipient.d.querySelector('.navProfile'),'new member can open their profile');assert.equal(recipient.state().friendToken,'');
   assert.match(recipient.d.querySelector('.friendRail').textContent,/Alex/);assert.equal(recipient.d.querySelector('.friendRail .secretsButton'),null);assert.equal(recipient.d.querySelector('.sharedContact'),null);
   assert.equal(recipient.d.querySelectorAll('.inlineComposer').length,1);assert.equal(recipient.state().member.answers.length,0);
   assert.equal(recipient.d.querySelector('#connectionName').textContent,'Alex');recipient.d.querySelector('#message').value='Hello Alex';await recipient.w.sendMessage();
@@ -475,4 +481,43 @@ test('bound invitations allow signed-out and wrong-account visitors to PASS loca
    clickText(f,'Explore Duhwild →');assert.equal(f.state().friendToken,'');assert.equal(f.state().friendExit,'');assert.equal(f.state().view,account?'dashboard':'landing');assert.equal(f.d.querySelector('.friendInvitation'),null);
   }finally{f.close()}
  }
+});
+
+async function signupPhotoReady(f){
+ await flush();await f.w.acceptFriendInvitation();
+ f.d.querySelector('#joinName').value='Riley New';f.d.querySelector('#joinContact').value='riley@example.com';f.d.querySelector('#joinAgree').checked=true;
+ f.w.nextJoinStep();await flush();f.d.querySelector('#signinCode').value='123456';await f.w.signinVerify();f.w.eval(`s.member.photo='${otherPhoto}'`);
+}
+test('signup acceptance failure is retryable and never creates a second account',async()=>{
+ const server=service(),f=browser(server,{url:'https://friend.example/?friend=friend-token'});
+ try{await signupPhotoReady(f);server.failAccept();await f.w.finishRegistration();assert.equal(f.state().view,'friendInvite');assert.match(f.d.querySelector('#friendError').textContent,/interrupted/);assert.equal(server.connections.length,0);
+  await f.w.acceptFriendInvitation();assert.equal(f.state().view,'dashboard');assert.equal(server.connections.length,1);assert.equal(server.calls.filter(c=>c.body?.action==='register').length,1);assert.equal(choiceCalls(server).length,2);
+ }finally{f.close()}
+});
+test('signup continuation does not accept a closed invitation or bypass verification',async()=>{
+ for(const blocked of ['closed','unverified']){const server=service(),f=browser(server,{url:'https://friend.example/?friend=friend-token'});
+  try{await signupPhotoReady(f);if(blocked==='closed')server.invites.get('friend-token').status='declined';
+   const fetch=f.w.fetch;f.w.fetch=async(url,options)=>{const response=await fetch(url,options);if(url==='/api/member'&&options?.body&&JSON.parse(options.body).action==='register'&&blocked==='unverified')server.members.get('new-member').verified=false;return response};
+   await f.w.finishRegistration();assert.equal(choiceCalls(server).length,0);assert.equal(server.connections.length,0);assert.equal(f.state().view,'friendInvite');
+  }finally{f.close()}
+ }
+});
+test('delayed signup continuation cannot accept after exit, link replacement or account change',async()=>{
+ for(const change of ['exit','link','account','modal','close-modal','same-link']){const server=service(),f=browser(server,{url:'https://friend.example/?friend=friend-token'});
+  try{await signupPhotoReady(f);const wait=deferred(),fetch=f.w.fetch;let held=false;f.w.fetch=async(url,options)=>{if(url==='/api/friend?invite=friend-token'&&!held){held=true;await wait.promise}return fetch(url,options)};
+   const saving=f.w.finishRegistration();await flush();assert.equal(held,true);
+   if(change==='exit')f.w.dismissFriendInvitation();
+   if(change==='link'){server.invites.set('replacement-token',{id:'replacement',sender:sender.id,status:'invited',token:'replacement-token'});await f.w.openFriendInvitation('replacement-token')}
+   if(change==='account'){f.client.setAccount(existing.id);f.w.openPage(existing);await flush()}
+   if(change==='modal'||change==='close-modal'){f.w.openFriendShare();if(change==='close-modal')f.w.closeInvite()}
+   if(change==='same-link')await f.w.openFriendInvitation('friend-token');
+   wait.resolve();await saving;await flush();assert.equal(choiceCalls(server).length,0);assert.equal(server.connections.length,0);
+  }finally{f.close()}
+ }
+});
+test('rapid signup submits continue the original acceptance exactly once',async()=>{
+ const server=service(),f=browser(server,{url:'https://friend.example/?friend=friend-token'});
+ try{await signupPhotoReady(f);const wait=deferred(),fetch=f.w.fetch;f.w.fetch=async(url,options)=>{if(url==='/api/member'&&options?.body&&JSON.parse(options.body).action==='register')await wait.promise;return fetch(url,options)};
+  const saving=f.w.finishRegistration();await f.w.finishRegistration();wait.resolve();await saving;assert.equal(server.calls.filter(c=>c.body?.action==='register').length,1);assert.equal(choiceCalls(server).length,1);assert.equal(server.connections.length,1);assert.equal(f.state().view,'dashboard');
+ }finally{f.close()}
 });
